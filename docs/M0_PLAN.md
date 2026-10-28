@@ -17,7 +17,7 @@ M0 把 M-1 的一次性脚本变成可复用的最小评测链路：宿主 Agent
 | 切片 | 内容 | 验收 | 是否消耗额度 |
 |---|---|---|---|
 | A | `tools/phe.py`，子命令 `run` / `judge`，参数从 proposal 读取；门槛集带版本号 | 单元测试覆盖 go / pivot / invalid_run 和每条门槛单独失败；spike-001 重新判定结果一致 | 否 |
-| B | `skill/harness-evolve/SKILL.md` | 按 Skill 步骤用切片 A 的脚本走一遍 dry-run | 否 |
+| B | `skill/harness-evolve/SKILL.md`：起草 → 冻结 → 用户批准 → `run` → `judge` | 已按 Skill 步骤用切片 A 的脚本走完 dry-run：`judge` 判 go；改错 approval Hash 后 `run` 在启动前被拒绝 | 否 |
 | C | 生产等价基线复验：原版 AGENTS.md，A1/A2/B_real 各 5 次 | 按门槛 v2 得出判定和报告 | **是，需用户批准任务和额度** |
 
 ## 门槛 v2（只对新 proposal 生效，不回改 spike-001）
