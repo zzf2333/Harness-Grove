@@ -89,18 +89,20 @@ def top_level_keys(path: Path) -> list[str] | None:
 
 
 def fingerprint(path: Path) -> dict:
-    """按真实文件取指纹；目录、断链、无权限都记 null。"""
+    """按真实文件取指纹；目录、断链、无权限都记 null。读不了内容时返回 read_error，由调用方写进 access_error。"""
     try:
         st = path.stat()
-    except OSError:
+    except (FileNotFoundError, NotADirectoryError):
         return {"sha256": None, "size": None, "mtime": None}
+    except OSError as exc:
+        return {"sha256": None, "size": None, "mtime": None, "read_error": type(exc).__name__}
     mtime = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).replace(microsecond=0).isoformat()
     if not stat.S_ISREG(st.st_mode):
         return {"sha256": None, "size": None, "mtime": mtime}
     try:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    except OSError:
-        digest = None
+    except OSError as exc:
+        return {"sha256": None, "size": st.st_size, "mtime": mtime, "read_error": type(exc).__name__}
     return {"sha256": digest, "size": st.st_size, "mtime": mtime}
 
 
@@ -108,7 +110,8 @@ def probe(path: Path) -> tuple[int | None, str | None]:
     """返回 (lstat 的 st_mode, 访问错误类型)；路径不存在时两者都是 None。"""
     try:
         return os.lstat(path).st_mode, None
-    except FileNotFoundError:
+    except (FileNotFoundError, NotADirectoryError):
+        # 父路径是普通文件时，后代路径同样确定不存在。
         return None, None
     except OSError as exc:
         # 权限不足时连类型都判断不了：保留候选记录，把错误类型写进 access_error。
@@ -140,7 +143,10 @@ def observe(path: Path, agent: str, scope: str, kind: str, hash_source: Path | N
         "resolved_path": resolved_path,
         "broken_link": broken_link,
     }
-    record.update(fingerprint(hash_source if hash_source is not None else path))
+    fp = fingerprint(hash_source if hash_source is not None else path)
+    read_error = fp.pop("read_error", None)
+    record.update(fp)
+    access_error = access_error or read_error
     record["status"] = "unmanaged"
     record["load_chain"] = "unverified"
     if hash_source is None and is_secret_bearing(path):
