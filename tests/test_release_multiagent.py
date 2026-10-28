@@ -289,6 +289,38 @@ class BoundReleaseVerificationTests(MultiAgentFixture):
         stderr = self.assert_aborts_unchanged("codex", self.snapshot())
         self.assertIn("文件集合", stderr)
 
+    def test_deploy_aborts_when_release_files_dir_is_a_symlink(self):
+        self.assertEqual(self.deploy("claude").returncode, 0)
+        files_dir = self.phe / "releases" / RELEASE_ID / "files"
+        # 只换中间这一级：资产目录和文件本身都不是软链，内容也与 manifest 一致。
+        copy = self.tmp / "copied-files"
+        shutil.copytree(files_dir, copy, symlinks=True)
+        files_dir.parent.chmod(0o755)
+        rmtree_force(files_dir)
+        os.symlink(copy, files_dir)
+        stderr = self.assert_aborts_unchanged("codex", self.snapshot())
+        self.assertIn("软链", stderr)
+
+    def test_deploy_aborts_when_manifest_name_escapes_the_release(self):
+        self.assertEqual(self.deploy("claude").returncode, 0)
+        asset = self.asset_id(self.shared)
+        outside = self.tmp / "outside/AGENTS.md"
+        write(outside, "# outside\n")
+        release_dir = self.phe / "releases" / RELEASE_ID
+        manifest_path = release_dir / "manifest.json"
+        data = self.manifest()
+        meta = data["assets"][asset]
+        meta["name"] = os.path.relpath(outside, release_dir / meta["entry"])
+        release_dir.chmod(0o755)
+        manifest_path.chmod(0o644)
+        manifest_path.write_text(json.dumps(data), encoding="utf-8")
+        # claude 的链接精确指向按新 name 拼出的路径，文件集合与 sha256 仍与 manifest 一致。
+        link = self.instructions["claude"]
+        link.unlink()
+        os.symlink(release_dir / meta["entry"] / meta["name"], link)
+        stderr = self.assert_aborts_unchanged("codex", self.snapshot())
+        self.assertIn("verify_failed", stderr)
+
     def test_deploy_aborts_when_bindings_release_id_is_not_a_release_name(self):
         self.assertEqual(self.deploy("claude").returncode, 0)
         for bad in ("../x", str(self.tmp / "elsewhere")):

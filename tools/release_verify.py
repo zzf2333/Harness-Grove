@@ -84,10 +84,15 @@ def verify_release_asset(phe: Path, release_id: str, asset_id: str) -> Path:
     meta = manifest.get("assets", {}).get(asset_id)
     if meta is None:
         raise ValueError(f"发布 {release_id} 里没有资产 {asset_id}")
-    asset_dir = release_dir / meta["entry"]
-    plain_mode(asset_dir)
+    parts = Path(meta["entry"]).parts
+    if not parts or Path(meta["entry"]).is_absolute() or ".." in parts:
+        raise ValueError(f"资产路径越出发布：{meta['entry']}")
+    # 从发布目录到资产目录逐级 lstat，中间的 files/ 被换成软链也要拒绝。
+    asset_dir = release_dir
+    for part in parts:
+        asset_dir = asset_dir / part
+        plain_mode(asset_dir)
     target = link_target(phe, release_id, meta)
-    plain_mode(target)
     prefix = meta["entry"] + "/"
     expected = {
         relative[len(prefix) :]: entry
@@ -95,6 +100,9 @@ def verify_release_asset(phe: Path, release_id: str, asset_id: str) -> Path:
         if relative.startswith(prefix)
     }
     actual = walk_asset(asset_dir)
+    if meta["kind"] == "instructions" and meta["name"] not in actual:
+        # name 必须是本资产里校验过的一个文件，不能借 `../` 指到发布之外。
+        raise ValueError(f"发布 {release_id} 资产 {asset_id} 的链接目标不在资产文件里：{meta['name']}")
     if set(actual) != set(expected):
         raise ValueError(
             f"发布 {release_id} 资产 {asset_id} 的文件集合与 manifest 不符："
