@@ -1,6 +1,6 @@
 # M1 计划：首次导入与资产库
 
-**状态：** 进行中（2026-10-28）。切片 A、B、C 完成（A 经 reviewer 3 轮、B/C 经 2 轮 PASS）；切片 D1 完成（沙箱）：见下文「切片 D1 演练」。D2（MCP、hooks、Codex config.toml）未开始；接管真实环境待用户批准。切片 A 结果：本机盘点 56 条、7 个共享分组，其中 6 组指向 `~/AI/temper/config/`。M0 结果见 [M0_PLAN](M0_PLAN.md)。
+**状态：** 进行中（2026-10-28）。切片 A、B、C 完成（A 经 reviewer 3 轮、B/C 经 2 轮 PASS）；切片 D1 完成（沙箱）：见下文「切片 D1 演练」。D2（MCP、hooks、Codex config.toml）未开始；接管真实环境待用户批准。切片 A 结果：本机盘点 56 条、7 个共享分组，其中 6 组指向 `~/AI/temper/config/`（2026-10-28 口径修订后同机复跑为 55 条，见「盘点口径修订」）。M0 结果见 [M0_PLAN](M0_PLAN.md)。
 **上位文档：** [PHE_SPEC](PHE_SPEC.md) 的「第一次运行：先盘点，再接管」「统一的 Harness 资产库」「里程碑与 Gate」。
 
 M1 的 Gate 是：首次接管不改变配置含义；发布不覆盖带外修改。
@@ -52,9 +52,18 @@ M1 的 Gate 是：首次接管不改变配置含义；发布不覆盖带外修�
 
 - 实现经三组审查：主体 3 轮、多 Agent 部署放行规则 3 轮，均 PASS。测试 114 项 OK。
 - 演练脚本 `tools/m1/rehearse_d1.sh`，可复跑；输出日志写到被 Git 忽略的 `experiments/m1-d1-rehearsal/run-*.log`（含本机路径，不入库）。真实 temper 只用 `cp -RL` 读取；沙箱 15 条链接，没有一条指回真实 temper。
-- 结果：8 个资产登记、导入、发布为 `r0001`；claude、codex、pi 依次部署都成功，15/15 条链接指向发布；改写发布文件后部署中止（退出 1），链接不变；三次 rollback 后对基线 drift 为 0，bindings 为空；`--home` 指向真实 home 时退出 2。
+- 结果：8 个资产登记、导入、发布为 `r0001`；claude、codex、pi、shared 依次部署都成功（6 + 1 + 3 + 5 条链接），15/15 条链接指向发布；改写发布文件后部署中止（退出 1），链接不变；四次 rollback 后对基线 drift 为 0，bindings 为空；`--home` 指向真实 home 时退出 2。shared 的 5 条链接替换的是沙箱里原本指向 temper 的 `~/.agents/skills/*`，所以链接总数仍是 15（2026-10-28 口径修订前是三个部署目标）。
 - 真实环境：演练前后 temper 文件与四个 Agent 目录软链的 Hash 一致。
 - 不保证：加载链未探测（沙箱里没有 Agent 读这些文件）；检查与写入之间的并发替换（TOCTOU）；同时改写发布文件和 manifest 的 sha256。
+
+## 盘点口径修订：Pi 子代理目录与共享 skills（2026-10-28）
+
+- 新增目录候选 `~/.pi/agent/agents/`（Pi 子代理定义）：按目录候选规则先记目录自身、再展开一层，kind 归 `instructions`（kind 枚举没有 agent，与 `.claude/agents` 一致）。
+- `~/.agents/skills`（用户级和项目级）原来记在 `codex` 名下，实际是跨工具共享目录：Codex 和 Pi 都读，Claude Code 不读。新增 agent 值 `shared`，这类记录另带 `readers: ["codex", "pi"]`；单一 Agent 的目录不记 `readers`（读取者就是 `agent` 本身）。不沿用相近的现有项，先扩 agent 取值集合。
+- 连锁改动：`deploy --agent` 因此接受 `shared`。实现本来没有 agent 枚举校验，按盘点记录里的 `agent` 值取路径，`bindings.json` 以 agent 名为键，所以这两处不需要改结构；只改 `tools/m1/rehearse_d1.sh`，给 claude、codex、pi、shared 各部署一次并逐次回滚。
+- 本机复跑（2026-10-28，`--home ~`，输出在被忽略的 `inventory/`）：55 条记录、7 个分组；其中 `~/.pi/agent/agents` 7 条（自身加 6 个 `.md`），`agent: shared` 7 条。同一台机器上旧实现今天得 48 条，差额是环境变化（切片 A 当日记 56 条）；本次新增 7 条全部来自 Pi 子代理目录。
+- 保证：`agent` 取值集合是 `claude`、`codex`、`pi`、`shared`；`shared` 记录一定带 `readers`，其他记录一定不带；deploy 只部署登记表 `observed` 里该 agent 值的路径。
+- 不保证：`readers` 来自本机观察，未按官方文档核实，也不代表加载顺序或优先级；`shared` 只表示同一条路径被多个工具读到，不表示它们读到的语义一致。
 
 ## 不做
 

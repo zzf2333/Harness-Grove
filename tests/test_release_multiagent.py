@@ -1,7 +1,7 @@
 """多 Agent 共享资产上的 deploy 验收：PHE 自己的部署不算 ExternalChange，带外改动仍然中止。
 
-fixture 里三个 Agent 的指令指向同一份 AGENTS.md，三个 Agent 的 skill 指向同一份 demo 目录，
-登记表按真实路径登记成两个资产。全部路径都在临时目录里。
+fixture 里三个 Agent 的指令指向同一份 AGENTS.md；claude 和 pi 的 skill 与跨工具共享的 `.agents/skills`
+指向同一份 demo 目录，后者记为 `shared`。登记表按真实路径登记成两个资产。全部路径都在临时目录里。
 """
 
 import json
@@ -22,7 +22,8 @@ from test_release import (
     write,
 )
 
-AGENTS = ("claude", "codex", "pi")
+# 部署目标：shared 是跨工具共享目录 `.agents/skills` 的 agent 值。
+AGENTS = ("claude", "codex", "pi", "shared")
 
 
 class MultiAgentFixture(unittest.TestCase):
@@ -44,8 +45,8 @@ class MultiAgentFixture(unittest.TestCase):
         }
         self.skills = {
             "claude": self.home / ".claude/skills/demo",
-            "codex": self.home / ".agents/skills/demo",
             "pi": self.home / ".pi/agent/skills/demo",
+            "shared": self.home / ".agents/skills/demo",
         }
         self._build()
         self.inv = self.inventory("inventory-1.json")
@@ -142,22 +143,29 @@ class MultiAgentFixture(unittest.TestCase):
         target = self.phe / "releases" / release_id / meta["entry"]
         return target / meta["name"] if meta["kind"] == "instructions" else target
 
+    def expected_links(self, agent: str) -> dict[str, str]:
+        """一个 Agent 本次部署应覆盖的路径与链接目标：指令和 skill 分属不同的 agent 值。"""
+        instructions = str(self.release_target(self.asset_id(self.shared)))
+        skills = str(self.release_target(self.asset_id(self.skill)))
+        links = {}
+        if agent in self.instructions:
+            links[str(self.instructions[agent])] = instructions
+        if agent in self.skills:
+            links[str(self.skills[agent])] = skills
+        return links
+
 
 class SharedAssetDeployTests(MultiAgentFixture):
-    def test_three_agents_deploy_in_sequence(self):
-        shared_id = self.asset_id(self.shared)
-        skill_id = self.asset_id(self.skill)
+    def test_all_agents_deploy_in_sequence(self):
         for agent in AGENTS:
             result = self.deploy(agent)
             self.assertEqual(result.returncode, 0, f"{agent}: {result.stderr}")
-            self.assertEqual(os.readlink(self.instructions[agent]), str(self.release_target(shared_id)))
-            self.assertEqual(os.readlink(self.skills[agent]), str(self.release_target(skill_id)))
-            self.assertEqual(
-                self.bindings()[agent],
-                {str(self.instructions[agent]): RELEASE_ID, str(self.skills[agent]): RELEASE_ID},
-            )
+            expected = self.expected_links(agent)
+            for path, target in expected.items():
+                self.assertEqual(os.readlink(path), target)
+            self.assertEqual(self.bindings()[agent], dict.fromkeys(expected, RELEASE_ID))
         self.assertEqual(sorted(self.bindings()), sorted(AGENTS))
-        self.assertEqual(len(self.journals()), 3)
+        self.assertEqual(len(self.journals()), 4)
 
     def test_registry_drift_still_reports_own_deployments(self):
         """drift 保持纯粹：单独跑 registry drift 仍把 PHE 自己部署的链接报成 symlink_target_changed。"""

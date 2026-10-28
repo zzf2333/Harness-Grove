@@ -46,7 +46,7 @@ M2 的 Gate：缺失的环境信息明确标出；两个不同 Host 能继续同
 ## 已知问题（后续再定）
 
 - Pi 会话含子代理会话和本项目自身的会话（自我引用）。首次真实运行默认排除 `sessions/subagent/`。
-- 盘点把 `~/.agents/skills` 记在 codex 名下（M1 遗留口径）。
+- 盘点的 `shared` 读取者只在本机观察，未按官方文档核实；M2 的 `--host` 枚举（claude/codex/pi）不受影响，采集仍按 Host 区分。
 
 ## 不做
 

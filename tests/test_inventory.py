@@ -28,8 +28,8 @@ BASE_FIELDS = {
     "status",
     "load_chain",
 }
-# 只在特定情况下出现的字段：密钥文件的顶层键名、访问失败的错误类型。
-OPTIONAL_FIELDS = {"top_level_keys", "access_error"}
+# 只在特定情况下出现的字段：密钥文件的顶层键名、访问失败的错误类型、共享目录的读取者。
+OPTIONAL_FIELDS = {"top_level_keys", "access_error", "readers"}
 KINDS = {"instructions", "skill", "hook", "mcp", "settings", "rules", "memory", "extension", "prompt", "plugin"}
 
 SENTINEL_JSON = "sk-json-7f3a1c9e"
@@ -118,7 +118,7 @@ class InventoryTests(unittest.TestCase):
             with self.subTest(path=rec["path"], kind=rec["kind"]):
                 self.assertLessEqual(BASE_FIELDS, set(rec))
                 self.assertLessEqual(set(rec) - BASE_FIELDS, OPTIONAL_FIELDS)
-                self.assertIn(rec["agent"], ("claude", "codex", "pi"))
+                self.assertIn(rec["agent"], ("claude", "codex", "pi", "shared"))
                 self.assertIn(rec["scope"], ("user", "project"))
                 self.assertIn(rec["kind"], KINDS)
                 self.assertEqual(rec["status"], "unmanaged")
@@ -161,7 +161,11 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(alias["symlink_target"], "demo")
         self.assertEqual(alias["resolved_path"], str(self.home / ".claude/skills/demo"))
         self.assertEqual(alias["sha256"], skill["sha256"])
-        self.assertEqual(record_at(self.data, self.project / ".agents/skills/review", "codex")["kind"], "skill")
+        review = record_at(self.data, self.project / ".agents/skills/review", "shared")
+        self.assertEqual(review["kind"], "skill")
+        self.assertEqual(review["readers"], ["codex", "pi"])
+        # 单一 Agent 的目录不记 readers：读取者就是 agent 本身。
+        self.assertNotIn("readers", skill)
 
     def test_pi_agents_directory_recorded(self):
         own = record_at(self.data, self.home / ".pi/agent/agents", "pi")
@@ -250,8 +254,9 @@ class DirectoryCandidateTests(unittest.TestCase):
         self.assertEqual(child["sha256"], hashlib.sha256(b"# demo\n").hexdigest())
 
     def test_broken_directory_symlink_recorded_without_expansion(self):
-        own = record_at(self.data, self.home / ".agents/skills", "codex")
+        own = record_at(self.data, self.home / ".agents/skills", "shared")
         self.assertEqual(own["kind"], "skill")
+        self.assertEqual(own["readers"], ["codex", "pi"])
         self.assertTrue(own["is_symlink"])
         self.assertTrue(own["broken_link"])
         self.assertEqual(own["symlink_target"], str(self.tmp / "missing-skills"))

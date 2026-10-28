@@ -11,9 +11,13 @@ from pathlib import Path
 
 # 候选路径数据表。来自本机观察，未按官方文档逐项核实；路径存在才记录。
 # kind 取值：instructions / skill / hook / mcp / settings / rules / memory / extension / prompt / plugin。
+# agent 取值：claude / codex / pi，或 shared（跨工具共享的目录，读取者见 SHARED_READERS）。
 # hook 目前没有独立候选路径（hooks 写在 settings.json 里），kind 留给后续切片。
 # scope=user 的路径相对 --home，scope=project 的路径相对每个 --project。
 # 项目级 Pi 只给出 `.pi/`，这里按用户级的同名子路径展开，kind 与用户级一致。
+# 跨工具共享目录的读取者：本机观察，未按官方文档核实。单一 Agent 的目录不记 readers。
+SHARED_AGENT = "shared"
+SHARED_READERS = ("codex", "pi")
 FILE_CANDIDATES = (
     ("claude", "user", "instructions", ".claude/CLAUDE.md"),
     ("claude", "user", "settings", ".claude/settings.json"),
@@ -53,11 +57,12 @@ DIR_CANDIDATES = (
 )
 
 # skills 目录：目录自身一条 kind=skill，每个子目录（含软链子目录）再一条，指纹取子目录的 SKILL.md。
+# `.agents/skills` 是跨工具共享目录（Codex 与 Pi 都读，Claude Code 不读），不归任何单一 Agent。
 SKILL_CANDIDATES = (
     ("claude", "user", ".claude/skills"),
     ("claude", "project", ".claude/skills"),
-    ("codex", "user", ".agents/skills"),
-    ("codex", "project", ".agents/skills"),
+    (SHARED_AGENT, "user", ".agents/skills"),
+    (SHARED_AGENT, "project", ".agents/skills"),
     ("pi", "user", ".pi/agent/skills"),
     ("pi", "project", ".pi/skills"),
 )
@@ -144,6 +149,8 @@ def observe(path: Path, agent: str, scope: str, kind: str, hash_source: Path | N
         "resolved_path": resolved_path,
         "broken_link": broken_link,
     }
+    if agent == SHARED_AGENT:
+        record["readers"] = list(SHARED_READERS)
     fp = fingerprint(hash_source if hash_source is not None else path)
     read_error = fp.pop("read_error", None)
     record.update(fp)
