@@ -1,6 +1,6 @@
 # M2 计划：历史采集、证据分组与跨 Host 续作
 
-**状态：** 进行中（2026-10-28）。切片 A0、A 完成（reviewer 3 轮 PASS，本机最近 7 天只读采集抽查指针一致）；切片 B 进行中，C 未开始。上位文档：[PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」；开发约束沿用 [M1_PLAN](M1_PLAN.md)「原则：开发与使用分离」。
+**状态：** 进行中（2026-10-28）。切片 A0、A 完成（reviewer 3 轮 PASS，本机最近 7 天只读采集抽查指针一致）；切片 B 已实现，待审查；C 未开始。上位文档：[PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」；开发约束沿用 [M1_PLAN](M1_PLAN.md)「原则：开发与使用分离」。
 
 M2 的 Gate：缺失的环境信息明确标出；两个不同 Host 能继续同一个提案；实验 Target 按需逐个适配。
 
@@ -26,6 +26,21 @@ M2 的 Gate：缺失的环境信息明确标出；两个不同 Host 能继续同
 每条：`host`、`source_path`、`session_id`、定位（行号或字节偏移）、源文件 `sha256`、`project`、`ts`、`kind`（如 `user_correction`、`tool_failure`、`retry`）、`excerpt`（≤300 字，经密钥正则脱敏）、`available`。源读不到时 `available: false` 并写 `missing_reason`，不静默跳过。
 
 保证：每条 Episode 能回到原文位置。不保证：`kind` 的识别完整或准确（启发式）；脱敏只到正则级别，所以摘录仍按私人数据对待。
+
+## 分组（切片 B）
+
+`tools/history.py group --episodes <Episode JSON…> --out <分组 JSON>` 读一份或多份 collect 产物，输出 `{"groups": […], "sources_unavailable": […]}`（分组实现在 `tools/history_group.py`）。
+
+- `correlation_group` 是 host、session_id、kind 的 sha256 前 12 位：同输入同输出。同一会话里反复出现的同类信号算一组，不拆成多份独立证据（[PHE_SPEC](PHE_SPEC.md) §4.5）；不同 Host 的同名 `session_id` 不合并。
+- 每组记 `correlation_group`、`host`、`session_id`、`project`、`kind`、`count`、首末 ts 和指针列表（`source_path`、`line`、`ts`、已脱敏的 `excerpt`）；不复制会话原文，也不重新拼接。
+- 跨会话、同 project 同 kind 的组不合并，只在 `same_project` 里互相列出组 id。只做标记，不判断是不是同一件事。
+- 输入里 `available: false` 的来源按 host、`source_path`、`missing_reason` 汇总进 `sources_unavailable`，不静默丢弃。
+- 输出排序固定：组按 host、project、session_id、kind，组内指针按 `source_path`、`line`；同一指针重复出现（例如同时传入 7 天和 30 天的产物）只计一次。
+- `--out` 复用 collect 的输出守卫：落在真实 home 的 Agent 配置目录、或与任一输入文件是同一文件时退出 2，写入走原子替换。
+
+保证：同一份输入得到字节相同的分组结果；每条指针仍能回到原文位置。
+
+不保证：一组内的记录语义上是同一件事；跨会话只标记 `same_project`，没有关联强度；`kind` 的启发式误差原样带过来。
 
 ## 已知问题（后续再定）
 

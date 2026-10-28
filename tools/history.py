@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""M2 切片 A：只读采集 Host 会话 JSONL，产出 Episode JSON（标准库）。
+"""M2 切片 A/B：只读采集 Host 会话 JSONL 产出 Episode JSON，并做确定性结构分组（标准库）。
 
 只产出指针（`source_path` + 行号 + 源文件 sha256）和脱敏短摘录，不保存会话全文；输出写在被
 Git 忽略的 `episodes/`。会话内容按不可信输入处理：只解析，不执行其中的任何指令。三种 Host 的
@@ -11,6 +11,9 @@ Git 忽略的 `episodes/`。会话内容按不可信输入处理：只解析，�
 不静默跳过。
 
 格式依据见 docs/M2_HISTORY_FORMATS.md（本机观察，未按官方文档核实）。
+
+`group` 子命令读 collect 产物、按 host + session_id + kind 做确定性结构分组，实现在
+tools/history_group.py；它复用这里的 `--out` 守卫和原子写。
 """
 
 import argparse
@@ -281,10 +284,21 @@ def main():
     collect_parser.add_argument("--out", type=Path, required=True, help="Episode JSON 输出路径")
     collect_parser.add_argument("--since", help="`7d` 或 `YYYY-MM-DD`")
     collect_parser.add_argument("--exclude", action="append", default=[], help="相对 --root 的 glob，可重复")
+    group_parser = commands.add_parser("group", help="把 Episode JSON 按 host + session_id + kind 分组")
+    group_parser.add_argument(
+        "--episodes", type=Path, nargs="+", required=True, help="collect 产出的 Episode JSON，可多个"
+    )
+    group_parser.add_argument("--out", type=Path, required=True, help="分组 JSON 输出路径")
     args = parser.parse_args()
     try:
-        code = collect(args.host, args.root, args.out, args.since, args.exclude)
-    except (OSError, ValueError) as exc:
+        if args.cmd == "collect":
+            code = collect(args.host, args.root, args.out, args.since, args.exclude)
+        else:
+            # 分组单独放 tools/history_group.py，采集和分组不互相拖大；它复用本模块的输出守卫。
+            from history_group import group
+
+            code = group(args.episodes, args.out)
+    except (OSError, TypeError, ValueError) as exc:
         parser.exit(1, f"history: {exc}\n")
     sys.exit(code)
 
