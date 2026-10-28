@@ -247,6 +247,43 @@ class RunTests(unittest.TestCase):
             json.loads((self.exp / "stop.json").read_text())["stop_reason"], "invalid_run:config_hash_changed"
         )
 
+    def test_changed_oracle_file_is_invalid_run(self):
+        trusted = self.exp / "trusted.test.ts"
+        trusted.write_text("expect(true)")
+        self.p["task"] = {"oracle_files_sha256": {str(trusted): phe.sha(trusted)}}
+        self.freeze()
+        trusted.write_text("expect(anything)")
+        with patch.object(phe, "run_slot") as target:
+            phe.run(self.exp)
+            target.assert_not_called()
+        self.assertEqual(
+            json.loads((self.exp / "stop.json").read_text())["stop_reason"], "invalid_run:oracle_hash_changed"
+        )
+
+    def test_oracle_overwrites_every_trusted_test(self):
+        work = self.exp / "oracle-work"
+        (work / "a").mkdir(parents=True)
+        (work / "b").mkdir()
+        for name in ("a/x.test.ts", "b/y.test.ts"):
+            (work / name).write_text("agent edited")
+            (self.exp / name.replace("/", "-")).write_text("trusted " + name)
+        cfg = {
+            "oracle_tests": [
+                {"src": str(self.exp / n.replace("/", "-")), "dest": n} for n in ("a/x.test.ts", "b/y.test.ts")
+            ],
+            "oracle_argv": [
+                sys.executable,
+                "-I",
+                "-c",
+                "import pathlib,sys;sys.exit(0 if all(pathlib.Path(n).read_text().startswith('trusted') for n in ('a/x.test.ts','b/y.test.ts')) else 1)",
+            ],
+            "oracle_cwd": ".",
+            "oracle_timeout_s": 30,
+            "process_kill_grace_seconds": 1,
+        }
+        self.assertTrue(phe.oracle(work, cfg, receipt_required=False)["test_pass"])
+        self.assertEqual((work / "a/x.test.ts").read_text(), "agent edited")
+
     def test_receipt_contract_depends_on_required_rule(self):
         work = self.exp / "oracle-work"
         work.mkdir()

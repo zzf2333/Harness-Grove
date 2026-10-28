@@ -77,7 +77,10 @@ def oracle(work: Path, cfg: dict, receipt_required=True) -> dict:
     check_root = Path(tempfile.mkdtemp(prefix="phe-oracle-", dir="/tmp"))
     check = check_root / "repo"
     subprocess.run(["cp", "-Rc", str(work), str(check)], check=True)
-    shutil.copyfile(cfg["oracle_test_src"], check / cfg["oracle_test_dest"])
+    # 可信测试覆盖 Agent 改过的同名文件；oracle_tests 支持跨包的多个文件。
+    tests = cfg.get("oracle_tests") or [{"src": cfg["oracle_test_src"], "dest": cfg["oracle_test_dest"]}]
+    for t in tests:
+        shutil.copyfile(t["src"], check / t["dest"])
     rc, out, err, dur, to = run_with_timeout(
         cfg["oracle_argv"],
         check / cfg["oracle_cwd"],
@@ -168,11 +171,13 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
     except json.JSONDecodeError:
         record["result_parse_error"] = True
 
-    diff = subprocess.run(
-        ["git", "diff", "HEAD", "--stat"], cwd=work, capture_output=True, text=True, check=True
-    ).stdout
+    # 对比任务起点提交，而不是 HEAD：Agent 可能在临时仓库里自己提交。
+    root = subprocess.run(
+        ["git", "rev-list", "--max-parents=0", "HEAD"], cwd=work, capture_output=True, text=True, check=True
+    ).stdout.split()[0]
+    diff = subprocess.run(["git", "diff", root, "--stat"], cwd=work, capture_output=True, text=True, check=True).stdout
     (art / "diff.patch").write_text(
-        subprocess.run(["git", "diff", "HEAD"], cwd=work, capture_output=True, text=True, check=True).stdout
+        subprocess.run(["git", "diff", root], cwd=work, capture_output=True, text=True, check=True).stdout
     )
     record["diff_stat"] = diff.strip().splitlines()[-1] if diff.strip() else ""
     status = subprocess.run(["git", "status", "--short"], cwd=work, capture_output=True, text=True, check=True).stdout
@@ -223,6 +228,9 @@ def integrity_problem(p, cfg, exp) -> str | None:
     for g in p["experiment"]["groups"]:
         if sha(Path(cfg["harness"][g])) != p["harness"]["variants"][g]["snapshot_sha256"]:
             return f"harness_hash_changed:{g}"
+    for path, digest in p["task"].get("oracle_files_sha256", {}).items():
+        if sha(Path(path)) != digest:
+            return "oracle_hash_changed"
     return None
 
 
