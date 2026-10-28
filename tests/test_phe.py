@@ -235,6 +235,18 @@ class RunTests(unittest.TestCase):
             phe.run(self.exp)
             target.assert_not_called()
 
+    def test_resume_integrity_failure_overrides_previous_pivot(self):
+        self.freeze()
+        (self.exp / "stop.json").write_text(json.dumps({"stop_reason": "pivot:telemetry_missing"}))
+        with (self.exp / "config.json").open("a") as f:
+            f.write(" ")
+        with patch.object(phe, "run_slot") as target:
+            phe.run(self.exp)
+            target.assert_not_called()
+        self.assertEqual(
+            json.loads((self.exp / "stop.json").read_text())["stop_reason"], "invalid_run:config_hash_changed"
+        )
+
     def test_receipt_contract_depends_on_required_rule(self):
         work = self.exp / "oracle-work"
         work.mkdir()
