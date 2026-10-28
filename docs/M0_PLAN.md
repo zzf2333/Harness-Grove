@@ -25,6 +25,7 @@ M0 把 M-1 的一次性脚本变成可复用的最小评测链路：宿主 Agent
 - spike-001 中，中性的冗余控制组 Token 也比基线低约 16%，和 B_real 差不多。v1 只检查冗余组的通过数，没检查它的 Token。
 - v2：`N_cost = max(N_gap, 2·N_mad, |1 − T[B_redundant]/T[A]|)`；没有冗余组时退回 v1 公式。
 - `follow_up_candidate` 的节约必须超过 v2 的 N_cost。
+- `gates.version` 缺省按 v1；新 proposal 模板使用 v2。没有必要控制组或冗余控制组时，对应门槛标为 `not_applicable`。`proposal.rules` 不含 `required_control` 时，`contract_pass = test_pass`；有该规则时仍要求正确回执，回执原始字段始终记录。
 
 ## 选任务的要求（切片 C）
 

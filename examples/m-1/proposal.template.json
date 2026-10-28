@@ -316,6 +316,7 @@
     "infrastructure_failure_is_missing_run": true
   },
   "gates": {
+    "version": "v2",
     "go_requires": {
       "task_provenance": "historical_reconstructed",
       "snapshot_rebuild_passes": 3,
@@ -361,7 +362,7 @@
     "follow_up_min_task_passes": "max(A1_test_pass_count, A2_test_pass_count)",
     "follow_up_min_contract_passes": "max(A1_contract_pass_count, A2_contract_pass_count)",
     "min_token_saving_fraction": 0.15,
-    "saving_must_exceed": "max(aa_token_median_relative_gap, 2 * aa_pooled_tokens_relative_mad)",
+    "saving_must_exceed": "N_cost_for_gates_version",
     "min_blocks_with_token_saving": 4,
     "max_blocks_with_task_quality_drop_vs_both_baselines": 0,
     "max_blocks_with_contract_drop_vs_both_baselines": 0,
