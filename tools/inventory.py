@@ -35,7 +35,8 @@ FILE_CANDIDATES = (
     ("pi", "project", "mcp", ".pi/mcp.json"),
 )
 
-# 目录候选按一层条目展开，条目的 kind 由所在目录决定；子目录的 sha256 记 null。
+# 目录候选自身记一条（sha256 记 null），再按一层条目展开；条目的 kind 由所在目录决定。
+# 目录候选是断链或无权限时只记自身那一条，不展开。
 DIR_CANDIDATES = (
     ("claude", "user", "rules", ".claude/rules"),
     # 子代理定义本身是指令文件；kind 枚举里没有 agent，归到 instructions。
@@ -50,7 +51,7 @@ DIR_CANDIDATES = (
     ("pi", "project", "prompt", ".pi/prompts"),
 )
 
-# skills 目录：每个子目录（含软链子目录）一条 kind=skill，指纹取该目录的 SKILL.md。
+# skills 目录：目录自身一条 kind=skill，每个子目录（含软链子目录）再一条，指纹取子目录的 SKILL.md。
 SKILL_CANDIDATES = (
     ("claude", "user", ".claude/skills"),
     ("claude", "project", ".claude/skills"),
@@ -103,9 +104,32 @@ def fingerprint(path: Path) -> dict:
     return {"sha256": digest, "size": st.st_size, "mtime": mtime}
 
 
+def probe(path: Path) -> tuple[int | None, str | None]:
+    """返回 (lstat 的 st_mode, 访问错误类型)；路径不存在时两者都是 None。"""
+    try:
+        return os.lstat(path).st_mode, None
+    except FileNotFoundError:
+        return None, None
+    except OSError as exc:
+        # 权限不足时连类型都判断不了：保留候选记录，把错误类型写进 access_error。
+        return None, type(exc).__name__
+
+
 def observe(path: Path, agent: str, scope: str, kind: str, hash_source: Path | None = None) -> dict:
-    is_link = path.is_symlink()
-    exists = path.exists()
+    mode, access_error = probe(path)
+    is_link = mode is not None and stat.S_ISLNK(mode)
+    resolved_path = None
+    broken_link = False
+    if mode is not None:
+        try:
+            os.stat(path)
+            resolved_path = os.path.realpath(path)
+        except FileNotFoundError:
+            # 链接项本身可读、目标确实不存在时才判断链。
+            broken_link = is_link
+        except OSError as exc:
+            # 目标不可访问或软链成环（ELOOP）时无法解析，不判断链。
+            access_error = type(exc).__name__
     record = {
         "agent": agent,
         "scope": scope,
@@ -113,14 +137,16 @@ def observe(path: Path, agent: str, scope: str, kind: str, hash_source: Path | N
         "path": str(path),
         "is_symlink": is_link,
         "symlink_target": os.readlink(path) if is_link else None,
-        "resolved_path": os.path.realpath(path) if exists else None,
-        "broken_link": is_link and not exists,
+        "resolved_path": resolved_path,
+        "broken_link": broken_link,
     }
     record.update(fingerprint(hash_source if hash_source is not None else path))
     record["status"] = "unmanaged"
     record["load_chain"] = "unverified"
     if hash_source is None and is_secret_bearing(path):
         record["top_level_keys"] = top_level_keys(path)
+    if access_error is not None:
+        record["access_error"] = access_error
     return record
 
 
@@ -128,12 +154,43 @@ def bases(scope: str, home: Path, projects: list[Path]) -> list[Path]:
     return [home] if scope == "user" else projects
 
 
-def entries(directory: Path) -> list[Path]:
-    try:
-        return sorted(directory.iterdir())
-    except OSError:
-        # 无权限、路径不存在或盘点中途消失时跳过这一层，盘点本身不中断。
+def file_candidate(path: Path) -> bool:
+    mode, access_error = probe(path)
+    if access_error is not None:
+        return True
+    return mode is not None and (stat.S_ISREG(mode) or stat.S_ISLNK(mode))
+
+
+def skill_candidate(path: Path) -> bool:
+    mode, access_error = probe(path)
+    if access_error is not None:
+        return True
+    return mode is not None and (stat.S_ISDIR(mode) or stat.S_ISLNK(mode))
+
+
+def directory_records(directory: Path, agent: str, scope: str, kind: str, skills: bool) -> list[dict]:
+    """候选目录自身先记一条；断链或无权限只记这一条，不展开。"""
+    mode, access_error = probe(directory)
+    if mode is None and access_error is None:
         return []
+    own = observe(directory, agent, scope, kind)
+    if own["broken_link"] or "access_error" in own:
+        return [own]
+    try:
+        children = sorted(directory.iterdir())
+    except OSError as exc:
+        # 目录自身可 stat 但不可读：错误记在它那条记录上，不中断盘点。
+        own["access_error"] = type(exc).__name__
+        return [own]
+    records = [own]
+    for entry in children:
+        if entry.name == "node_modules":
+            continue
+        if skills and not skill_candidate(entry):
+            continue
+        hash_source = entry / "SKILL.md" if skills else None
+        records.append(observe(entry, agent, scope, kind, hash_source=hash_source))
+    return records
 
 
 def collect(home: Path, projects: list[Path]) -> list[dict]:
@@ -141,23 +198,17 @@ def collect(home: Path, projects: list[Path]) -> list[dict]:
     for agent, scope, kind, rel in FILE_CANDIDATES:
         for base in bases(scope, home, projects):
             path = base / rel
-            if path.is_file() or path.is_symlink():
+            if file_candidate(path):
                 records.append(observe(path, agent, scope, kind))
     for agent, scope, kind, rel in DIR_CANDIDATES:
         for base in bases(scope, home, projects):
-            for entry in entries(base / rel):
-                if entry.name != "node_modules":
-                    records.append(observe(entry, agent, scope, kind))
+            records.extend(directory_records(base / rel, agent, scope, kind, skills=False))
     for agent, scope, rel in SKILL_CANDIDATES:
         for base in bases(scope, home, projects):
-            for entry in entries(base / rel):
-                # 软链无法判断目标类型（断链尤甚），一并记录，断链由 broken_link 标出。
-                if entry.name != "node_modules" and (entry.is_dir() or entry.is_symlink()):
-                    records.append(observe(entry, agent, scope, "skill", hash_source=entry / "SKILL.md"))
+            records.extend(directory_records(base / rel, agent, scope, "skill", skills=True))
     for agent, pattern in MEMORY_CANDIDATES:
         for memory_dir in sorted(home.glob(pattern)):
-            for entry in entries(memory_dir):
-                records.append(observe(entry, agent, "user", "memory"))
+            records.extend(directory_records(memory_dir, agent, "user", "memory", skills=False))
     return records
 
 

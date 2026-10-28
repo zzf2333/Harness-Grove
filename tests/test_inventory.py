@@ -28,6 +28,8 @@ BASE_FIELDS = {
     "status",
     "load_chain",
 }
+# 只在特定情况下出现的字段：密钥文件的顶层键名、访问失败的错误类型。
+OPTIONAL_FIELDS = {"top_level_keys", "access_error"}
 KINDS = {"instructions", "skill", "hook", "mcp", "settings", "rules", "memory", "extension", "prompt", "plugin"}
 
 SENTINEL_JSON = "sk-json-7f3a1c9e"
@@ -113,7 +115,8 @@ class InventoryTests(unittest.TestCase):
         self.assertTrue(self.data["records"])
         for rec in self.data["records"]:
             with self.subTest(path=rec["path"], kind=rec["kind"]):
-                self.assertIn(set(rec), (BASE_FIELDS, BASE_FIELDS | {"top_level_keys"}))
+                self.assertLessEqual(BASE_FIELDS, set(rec))
+                self.assertLessEqual(set(rec) - BASE_FIELDS, OPTIONAL_FIELDS)
                 self.assertIn(rec["agent"], ("claude", "codex", "pi"))
                 self.assertIn(rec["scope"], ("user", "project"))
                 self.assertIn(rec["kind"], KINDS)
@@ -199,6 +202,143 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["records"][0]["status"], "unmanaged")
         self.assertEqual(tree(self.tmp), before)
+
+
+class DirectoryCandidateTests(unittest.TestCase):
+    """候选目录自身也记一条：有效软链、断链、软链环都保留，断链和失败不展开。"""
+
+    def setUp(self):
+        self.tmp = Path(os.path.realpath(tempfile.mkdtemp(prefix="inventory-dir-")))
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.home = self.tmp / "home"
+        self.project = self.tmp / "project"
+        self.shared_skills = self.tmp / "shared-skills"
+        write(self.shared_skills / "demo/SKILL.md", "# demo\n")
+        write(self.project / ".claude/rules/rule.md", "# rule\n")
+        (self.home / ".claude/projects/demo").mkdir(parents=True)
+        (self.home / ".agents").mkdir(parents=True)
+        os.symlink(self.shared_skills, self.home / ".claude/skills")
+        os.symlink(self.tmp / "missing-skills", self.home / ".agents/skills")
+        # 指向自己的软链：解析必然报错，盘点不能崩。
+        os.symlink("memory", self.home / ".claude/projects/demo/memory")
+
+        self.out = self.tmp / "out/local.json"
+        result = run_cli("--home", str(self.home), "--project", str(self.project), "--out", str(self.out))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.data = json.loads(self.out.read_text(encoding="utf-8"))
+
+    def test_valid_directory_symlink_has_own_record(self):
+        own = record_at(self.data, self.home / ".claude/skills", "claude")
+        self.assertEqual(own["kind"], "skill")
+        self.assertTrue(own["is_symlink"])
+        self.assertEqual(own["symlink_target"], str(self.shared_skills))
+        self.assertEqual(own["resolved_path"], str(self.shared_skills))
+        self.assertFalse(own["broken_link"])
+        self.assertIsNone(own["sha256"])
+        self.assertIsNone(own["size"])
+        child = record_at(self.data, self.home / ".claude/skills/demo", "claude")
+        self.assertEqual(child["sha256"], hashlib.sha256(b"# demo\n").hexdigest())
+
+    def test_broken_directory_symlink_recorded_without_expansion(self):
+        own = record_at(self.data, self.home / ".agents/skills", "codex")
+        self.assertEqual(own["kind"], "skill")
+        self.assertTrue(own["is_symlink"])
+        self.assertTrue(own["broken_link"])
+        self.assertEqual(own["symlink_target"], str(self.tmp / "missing-skills"))
+        self.assertIsNone(own["resolved_path"])
+        self.assertIsNone(own["sha256"])
+        self.assertIsNone(own["size"])
+
+    def test_directory_symlink_loop_recorded_as_access_error(self):
+        own = record_at(self.data, self.home / ".claude/projects/demo/memory", "claude")
+        self.assertEqual(own["kind"], "memory")
+        self.assertTrue(own["is_symlink"])
+        self.assertEqual(own["symlink_target"], "memory")
+        self.assertFalse(own["broken_link"])
+        self.assertIsNone(own["resolved_path"])
+        self.assertEqual(own["access_error"], "OSError")
+
+    def test_plain_directory_candidate_has_own_record(self):
+        own = record_at(self.data, self.project / ".claude/rules", "claude")
+        self.assertEqual(own["kind"], "rules")
+        self.assertFalse(own["is_symlink"])
+        self.assertIsNone(own["sha256"])
+        self.assertIsNone(own["size"])
+        entry = record_at(self.data, self.project / ".claude/rules/rule.md", "claude")
+        self.assertEqual(entry["size"], len(b"# rule\n"))
+
+
+class PermissionDeniedTests(unittest.TestCase):
+    """无权限路径保留候选记录并标 access_error，不误判断链，也不中断后续盘点。"""
+
+    def setUp(self):
+        if os.geteuid() == 0:
+            self.skipTest("以 root 运行无法用 chmod 构造权限错误")
+        self.tmp = Path(os.path.realpath(tempfile.mkdtemp(prefix="inventory-perm-")))
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.home = self.tmp / "home"
+        self.project = self.tmp / "project"
+        self.locked = self.home / ".claude"
+        self.locked_target = self.tmp / "locked-target"
+        self.locked_rules = self.project / ".claude/rules"
+        write(self.locked / "CLAUDE.md", "# locked\n")
+        write(self.locked / "settings.json", "{}")
+        write(self.locked_target / "AGENTS.md", "# locked target\n")
+        write(self.home / ".codex/AGENTS.md", "# codex\n")
+        write(self.locked_rules / "rule.md", "# rule\n")
+        (self.home / ".pi/agent").mkdir(parents=True)
+        os.symlink(self.locked_target / "AGENTS.md", self.home / ".pi/agent/AGENTS.md")
+        # LIFO：先恢复权限，rmtree 才能删掉这几层。
+        self.addCleanup(os.chmod, self.locked, 0o700)
+        self.addCleanup(os.chmod, self.locked_target, 0o700)
+        self.addCleanup(os.chmod, self.locked_rules, 0o700)
+        os.chmod(self.locked, 0o000)
+        os.chmod(self.locked_target, 0o000)
+        os.chmod(self.locked_rules, 0o000)
+
+        self.out = self.tmp / "out/local.json"
+        result = run_cli("--home", str(self.home), "--project", str(self.project), "--out", str(self.out))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.data = json.loads(self.out.read_text(encoding="utf-8"))
+
+    def test_unreadable_file_candidate_keeps_access_error(self):
+        record = record_at(self.data, self.locked / "CLAUDE.md", "claude")
+        self.assertEqual(record["access_error"], "PermissionError")
+        self.assertFalse(record["is_symlink"])
+        self.assertFalse(record["broken_link"])
+        self.assertIsNone(record["resolved_path"])
+        self.assertIsNone(record["sha256"])
+        self.assertIsNone(record["size"])
+
+    def test_unreadable_directory_candidate_recorded_once(self):
+        own = record_at(self.data, self.locked / "skills", "claude")
+        self.assertEqual(own["kind"], "skill")
+        self.assertEqual(own["access_error"], "PermissionError")
+        # 无权限时只记候选自身那一条，不展开也不丢候选。
+        for record in self.data["records"]:
+            if record["path"].startswith(str(self.locked) + os.sep):
+                self.assertEqual(record.get("access_error"), "PermissionError", record["path"])
+
+    def test_unreadable_symlink_target_is_not_broken_link(self):
+        record = record_at(self.data, self.home / ".pi/agent/AGENTS.md", "pi")
+        self.assertTrue(record["is_symlink"])
+        self.assertEqual(record["symlink_target"], str(self.locked_target / "AGENTS.md"))
+        self.assertFalse(record["broken_link"])
+        self.assertIsNone(record["resolved_path"])
+        self.assertEqual(record["access_error"], "PermissionError")
+
+    def test_unreadable_candidate_directory_flags_access_error(self):
+        own = record_at(self.data, self.locked_rules, "claude")
+        self.assertEqual(own["kind"], "rules")
+        self.assertEqual(own["access_error"], "PermissionError")
+        self.assertEqual(own["resolved_path"], str(self.locked_rules))
+        self.assertFalse(own["broken_link"])
+        # 展开失败时不产生子项记录。
+        self.assertEqual([r for r in self.data["records"] if r["path"] == str(self.locked_rules / "rule.md")], [])
+
+    def test_candidates_after_failure_still_reported(self):
+        codex = record_at(self.data, self.home / ".codex/AGENTS.md", "codex")
+        self.assertEqual(codex["sha256"], hashlib.sha256(b"# codex\n").hexdigest())
 
 
 if __name__ == "__main__":
