@@ -5,7 +5,7 @@ Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 运�
 ## 当前状态
 
 - 只有设计文档和实验模板，**还没有代码**。
-- 第一步是 M-1 评测可行性探针，**尚未执行**，没有任何实测数据或实验结论。
+- M-1 已完成：spike-001 判定 **go**（2026-10-28，25 次运行，7 项门槛全部通过）；真实规则信号为 inconclusive。下一阶段是 M0。运行产物位于被忽略的 `experiments/`。
 
 ## 文档地图
 
