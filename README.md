@@ -20,5 +20,6 @@ Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 运�
 
 ## 目录约定
 
+- `tools/m1/run_spike.py`：M-1 最小 Runner，只用标准库；一次调用跑一个 slot，产出写到 `experiments/<id>/`。
 - `experiments/`：M-1 和 M0 的运行产物，已被 Git 忽略。提交脱敏样本需要另行批准。
 - 被测任务所在的仓库只读，实验只在临时目录里运行。
