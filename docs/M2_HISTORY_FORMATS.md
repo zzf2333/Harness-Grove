@@ -14,6 +14,12 @@
 
 会话文件是追加写的：正在进行的会话在采集之后还会增长，行号仍然指向同一行，但 `sha256` 会变。核对指针时以行号为准，`sha256` 只用于判断文件是否被改写过。
 
+每个来源（`sources` 条目）记 `available`、`sha256`、`episode_count`；不可用时另记 `missing_reason`：
+
+- 文件读不到：`missing_reason` 是异常类名（如 `PermissionError`），`sha256` 为 `null`，整份来源的 Episode 作废。
+- 有坏行：`bad_lines` 列出 `{line, missing_reason}`，`missing_reason` 取第一条；其余行照常产出 Episode。坏行原因只有三种：`invalid_json`（不是 JSON）、`not_an_object`（是 JSON 但不是对象）、`malformed_record: <异常类名>`（结构对不上，例如 `message` 不是对象）。原因只写行号和异常类名，不带原文。
+- 整份文件没有一行是本 Host 的已知记录类型：`missing_reason: unsupported_schema`（例如 Pi 的 `*_transcript.jsonl`）。已知类型但不采集的记录（下表「其他记录」）不算，照常跳过；空文件也不算。有坏行时先报坏行。
+
 ## Claude Code
 
 本机观察：12 个项目目录、285 个会话文件；另有 2 个子代理记录在 `projects/<项目目录>/<会话 id>/subagents/` 下（不在采集范围）。
@@ -67,7 +73,7 @@
 | 工具结果 | `type: "message"` + `message.role: "toolResult"`（`toolName`、`toolCallId`、`isError`、`content`、`details`） | 本机没在 `details` 里观察到 `exitCode`；`details` 的形状随工具（`diff`/`patch`、`calls`、`results` 等） |
 | 工具失败 | `toolResult.isError == true` | 只认这个标记 |
 | 其他记录 | `model_change`、`thinking_level_change`、`session_info`、`compaction`、`context_edit`、`custom` 与 `custom_message`（`customType` 如 `subagent-notify`、`goal-state`、`web-search-results`） | 采集器忽略 |
-| 另一种 schema | `<项目目录>/*_transcript.jsonl`：顶层没有 `type`，用 `recordType`、`agent`、`runId`、`role`、`text` | 采集器只认 `type`，这类文件不产生 Episode；是否要单独解析：`unknown` |
+| 另一种 schema | `<项目目录>/*_transcript.jsonl`：顶层没有 `type`，用 `recordType`、`agent`、`runId`、`role`、`text` | 采集器只认 `type`，这类文件不产出 Episode，整份 source 记 `available: false`、`missing_reason: unsupported_schema`；单独解析：`unknown` |
 
 ## kind 的判定（三个 Host 共用）
 
@@ -77,7 +83,7 @@
 |---|---|---|
 | `user_correction` | 用户消息命中纠正词表（`不对`、`不是这样`、`错了`、`别`、`重新`、`wrong`、`don't`、行首 `no,` 等） | 该条用户消息 |
 | `tool_failure` | Claude：`tool_result.is_error`；Pi：`toolResult.isError`；Codex：`item_completed.item.exit_code` 非 0 或工具结果以 `Script failed` 开头 | 工具结果（或 Codex 的 `item_completed`） |
-| `retry` | 同一会话里相邻两次工具调用完全同（工具名和参数都相同） | 第二次调用。一串连续相同的调用只记第一条 |
+| `retry` | 同一会话里相邻两次工具调用完全同（工具名和参数都相同） | 第二次调用。一串连续相同的调用只记第一条（连续 4 次也只记 1 条），signature 一变就重新计数 |
 
 `excerpt` 取触发那条记录里的文本：工具失败是「工具名: 结果」，重试是「工具名 + 参数」，纠正取消息开头最多 300 字，因此纠正词可能在截断之外。摘录先脱敏再截断，覆盖 `sk-…`、`ghp_…`、`AKIA…`、`Bearer …`、`-----BEGIN … PRIVATE KEY-----`、`password=`/`api_key=` 后面的值。脱敏只到正则级别，摘录仍按私人数据对待。
 

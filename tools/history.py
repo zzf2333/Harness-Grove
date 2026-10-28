@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""M2 切片 A：只读采集 Host 会话 JSONL，产出 Episode JSON（标准库，单文件）。
+"""M2 切片 A：只读采集 Host 会话 JSONL，产出 Episode JSON（标准库）。
 
 只产出指针（`source_path` + 行号 + 源文件 sha256）和脱敏短摘录，不保存会话全文；输出写在被
-Git 忽略的 `episodes/`。会话内容按不可信输入处理：只解析，不执行其中的任何指令。
+Git 忽略的 `episodes/`。会话内容按不可信输入处理：只解析，不执行其中的任何指令。三种 Host 的
+字段解析在 tools/history_hosts.py。
 
-`kind` 是启发式（见 CORRECTION_TERMS / 各 Host 的失败信号），召回率与准确率未评估。
-`episode.available` 在 collect 阶段恒为 true：该行刚被解析、指针刚被确认。源文件读不到或有行
-解析失败时，`sources` 里对应条目记 `available: false` 和 `missing_reason`，不静默跳过。
+`kind` 是启发式（见 history_hosts.CORRECTION_TERMS / 各 Host 的失败信号），召回率与准确率未评估。
+`episode.available` 在 collect 阶段恒为 true：该行刚被解析、指针刚被确认。`sources` 里读不到、
+有坏行、或整份文件没有一行是本 Host 的已知记录类型时，记 `available: false` 和 `missing_reason`，
+不静默跳过。
 
 格式依据见 docs/M2_HISTORY_FORMATS.md（本机观察，未按官方文档核实）。
 """
@@ -23,6 +25,9 @@ from datetime import datetime, timedelta, timezone
 from fnmatch import fnmatch
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from history_hosts import SESSIONS
+
 # --out 不得落进真实 home 下的这些目录（与 tools/release_deploy.py 同一份清单，独立实现）。
 PROTECTED_SUBPATHS = (".claude", ".codex", ".pi", ".phe", ".agents", "AI/temper")
 REFUSAL_EXIT = 2
@@ -37,32 +42,14 @@ LAYOUTS = {
 # Pi 的 sessions/subagent/ 是子代理会话，默认排除；--exclude 在默认之外追加。
 DEFAULT_EXCLUDES = {"pi": ("sessions/subagent/*",)}
 
-# 纠正用语：命中即记 user_correction。宁可宽，只用来挑候选。
-CORRECTION_TERMS = (
-    "不对",
-    "不是这样",
-    "不是这个",
-    "错了",
-    "搞错",
-    "理解错",
-    "我说的是",
-    "我的意思是",
-    "不是让你",
-    "没有按",
-    "别再",
-    "重新",
-    "别",
-)
-CORRECTION_PATTERNS = (r"\bwrong\b", r"\bdon'?t\b", r"^no[,，。. ]")
-CORRECTION_RE = re.compile(
-    "|".join([re.escape(term) for term in CORRECTION_TERMS] + list(CORRECTION_PATTERNS)),
-    re.IGNORECASE | re.MULTILINE,
-)
-
 # 密钥脱敏：摘录按私人数据处理，这里只到正则级别。
+# 私钥块先整体换掉带结束标记的；找不到结束标记时（源文本被截断或本来就残缺）从 BEGIN 一直替到
+# 文本末尾，只删 BEGIN 会把私钥正文留在摘录里。
+PRIVATE_KEY_BLOCK = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.DOTALL)
+PRIVATE_KEY_UNCLOSED = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*", re.DOTALL)
 REDACTIONS = (
-    (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.DOTALL), "<private-key>"),
-    (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"), "<private-key>"),
+    (PRIVATE_KEY_BLOCK, "<private-key>"),
+    (PRIVATE_KEY_UNCLOSED, "<private-key>"),
     (re.compile(r"\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}"), "<key>"),
     (re.compile(r"\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{16,}"), "<key>"),
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "<key>"),
@@ -72,13 +59,10 @@ REDACTIONS = (
         r"\1\2<redacted>",
     ),
 )
-
-# Claude Code 以 user 角色注入的上下文，不是真人输入。
-CLAUDE_SKIP_PREFIX = ("<command-", "<local-command", "<system-reminder>", "<task-notification>", "Caveat:")
-# Codex 旧格式没有 content_item_kinds，按前缀过滤注入的上下文。
-CODEX_SKIP_PREFIX = ("<", "# AGENTS.md")
-CODEX_USER_KINDS = {"user.text", "user.image"}
 EXCERPT_MAX = 300
+
+# 解析器碰到结构异常的行时抛这些异常：记为坏行，不影响同文件的其他行。
+PARSER_ERRORS = (AttributeError, TypeError, KeyError, ValueError)
 
 
 def redact(text):
@@ -92,27 +76,6 @@ def excerpt(text):
     return " ".join(redact(text or "").split())[:EXCERPT_MAX]
 
 
-def blocks_text(content, kinds=("text", "input_text", "output_text")):
-    if isinstance(content, str):
-        return content
-    if not isinstance(content, list):
-        return ""
-    return "\n".join(
-        block.get("text", "") for block in content if isinstance(block, dict) and block.get("type") in kinds
-    )
-
-
-def canonical(value):
-    if isinstance(value, str):
-        return value
-    return json.dumps(value, sort_keys=True, ensure_ascii=False)
-
-
-def failure_text(name, text):
-    """工具失败摘录：工具名 + 结果。工具名查不到（例如结果引用了别的会话文件里的调用）记 unknown。"""
-    return f"{name or 'unknown'}: {text}"
-
-
 def parse_ts(value):
     if isinstance(value, (int, float)):
         return datetime.fromtimestamp(value / 1000 if value > 1e11 else value, tz=timezone.utc)
@@ -123,155 +86,6 @@ def parse_ts(value):
     except ValueError:
         return None
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
-
-
-class Session:
-    """一个会话文件的解析状态：session_id、project、最近一次工具调用（判 retry）。"""
-
-    host = ""
-
-    def __init__(self, path):
-        self.path = path
-        self.session_id = path.stem
-        self.project = ""
-        self.calls = {}
-        self.last_call = None
-        self.repeat_flagged = False
-
-    def call(self, name, arguments):
-        """登记一次工具调用；与上一次调用完全相同（名字和参数）时返回 retry 的摘录。
-
-        一串连续相同的调用（例如反复轮询同一个长任务）只记一次：信号是“出现了一对连续相同的调用”，
-        不是每对都记一条。
-        """
-        signature = (name, canonical(arguments))
-        repeat = signature == self.last_call and not self.repeat_flagged
-        self.repeat_flagged = repeat
-        self.last_call = signature
-        return f"{name} {signature[1]}" if repeat else None
-
-    def record(self, line_no, record):
-        """返回该行的 [(kind, excerpt, ts)]；不产生 Episode 的行返回空列表。"""
-        raise NotImplementedError
-
-
-class ClaudeSession(Session):
-    host = "claude"
-
-    def record(self, line_no, record):
-        ts = record.get("timestamp")
-        if record.get("cwd"):
-            self.project = record["cwd"]
-        session_id = record.get("sessionId") or record.get("session_id")
-        if session_id:
-            self.session_id = session_id
-        content = (record.get("message") or {}).get("content")
-        found = []
-        if record.get("type") == "user":
-            if record.get("isMeta") or record.get("isCompactSummary"):
-                return found
-            texts = []
-            for block in content if isinstance(content, list) else []:
-                if not isinstance(block, dict):
-                    continue
-                if block.get("type") == "text":
-                    texts.append(block.get("text") or "")
-                elif block.get("type") == "tool_result" and block.get("is_error"):
-                    name = self.calls.get(block.get("tool_use_id"))
-                    found.append(("tool_failure", failure_text(name, blocks_text(block.get("content"))), ts))
-            text = (content if isinstance(content, str) else "\n".join(texts)).strip()
-            if text and not text.startswith(CLAUDE_SKIP_PREFIX) and CORRECTION_RE.search(text):
-                found.append(("user_correction", text, ts))
-        elif record.get("type") == "assistant":
-            for block in content if isinstance(content, list) else []:
-                if not isinstance(block, dict) or block.get("type") != "tool_use":
-                    continue
-                self.calls[block.get("id")] = block.get("name")
-                repeat = self.call(block.get("name"), block.get("input"))
-                if repeat:
-                    found.append(("retry", repeat, ts))
-        return found
-
-
-class CodexSession(Session):
-    host = "codex"
-
-    def record(self, line_no, record):
-        ts = record.get("timestamp")
-        payload = record.get("payload") or {}
-        payload_type = payload.get("type")
-        found = []
-        if record.get("type") == "session_meta":
-            self.session_id = payload.get("id") or payload.get("session_id") or self.session_id
-            self.project = payload.get("cwd") or self.project
-        elif record.get("type") == "event_msg" and payload_type == "item_completed":
-            item = payload.get("item") or {}
-            code = item.get("exit_code")
-            if isinstance(code, int) and code != 0:
-                command = " ".join(str(part) for part in item.get("command") or [])
-                found.append(("tool_failure", f"exit_code={code} {command}", ts))
-        elif record.get("type") == "response_item":
-            if payload_type == "message":
-                text = blocks_text(payload.get("content"))
-                if payload.get("role") == "user" and codex_human_message(payload, text) and CORRECTION_RE.search(text):
-                    found.append(("user_correction", text, ts))
-            elif payload_type in ("function_call", "custom_tool_call"):
-                name = payload.get("name")
-                self.calls[payload.get("call_id")] = name
-                repeat = self.call(name, payload.get("arguments") or payload.get("input"))
-                if repeat:
-                    found.append(("retry", repeat, ts))
-            elif payload_type in ("function_call_output", "custom_tool_call_output"):
-                text = blocks_text(payload.get("output"))
-                if text.lstrip().startswith("Script failed"):
-                    name = self.calls.get(payload.get("call_id"))
-                    found.append(("tool_failure", failure_text(name, text), ts))
-        return found
-
-
-def codex_human_message(payload, text):
-    """新格式用 content_item_kinds 区分真人输入和注入的上下文，旧格式按前缀判断。"""
-    kinds = (payload.get("internal_chat_message_metadata_passthrough") or {}).get("content_item_kinds")
-    if kinds is not None:
-        return set(kinds) <= CODEX_USER_KINDS
-    return not text.lstrip().startswith(CODEX_SKIP_PREFIX)
-
-
-class PiSession(Session):
-    host = "pi"
-
-    def record(self, line_no, record):
-        ts = record.get("timestamp")
-        if record.get("type") == "session":
-            self.session_id = record.get("id") or self.session_id
-            self.project = record.get("cwd") or self.project
-            return []
-        if record.get("type") != "message":
-            return []
-        message = record.get("message") or {}
-        role = message.get("role")
-        found = []
-        if role == "user":
-            text = blocks_text(message.get("content")).strip()
-            # Pi 把 /skill 调用展开成 <skill name="..."> 块，展开的正文不是用户写的。
-            if text and not text.startswith("<") and CORRECTION_RE.search(text):
-                found.append(("user_correction", text, ts))
-        elif role == "assistant":
-            for block in message.get("content") or []:
-                if not isinstance(block, dict) or block.get("type") != "toolCall":
-                    continue
-                self.calls[block.get("id")] = block.get("name")
-                repeat = self.call(block.get("name"), block.get("arguments"))
-                if repeat:
-                    found.append(("retry", repeat, ts))
-        elif role == "toolResult" and message.get("isError"):
-            found.append(
-                ("tool_failure", failure_text(message.get("toolName"), blocks_text(message.get("content"))), ts)
-            )
-        return found
-
-
-SESSIONS = {"claude": ClaudeSession, "codex": CodexSession, "pi": PiSession}
 
 
 def in_window(ts, since):
@@ -287,21 +101,32 @@ def collect_source(host, path, since):
     session = SESSIONS[host](path)
     hasher = hashlib.sha256()
     episodes, bad_lines, error = [], [], None
+    seen = recognized = 0
     try:
         with path.open("rb") as handle:
             for line_no, raw in enumerate(handle, 1):
                 hasher.update(raw)
                 if not raw.strip():
                     continue
+                seen += 1
                 try:
                     record = json.loads(raw)
                 except ValueError:
-                    bad_lines.append(line_no)
+                    bad_lines.append({"line": line_no, "missing_reason": "invalid_json"})
                     continue
                 if not isinstance(record, dict):
-                    bad_lines.append(line_no)
+                    bad_lines.append({"line": line_no, "missing_reason": "not_an_object"})
                     continue
-                for kind, text, ts in session.record(line_no, record):
+                # Host 解析和 json.loads 在同一层异常边界里：坏行只废掉自己，不中断整份文件。
+                try:
+                    known = session.recognizes(record)
+                    found = session.record(line_no, record)
+                except PARSER_ERRORS as exc:
+                    bad_lines.append({"line": line_no, "missing_reason": f"malformed_record: {type(exc).__name__}"})
+                    continue
+                if known:
+                    recognized += 1
+                for kind, text, ts in found:
                     if in_window(ts, since):
                         episodes.append({"kind": kind, "line": line_no, "ts": ts, "excerpt": excerpt(text)})
     except OSError as exc:
@@ -312,17 +137,22 @@ def collect_source(host, path, since):
         digest = None
     else:
         digest = hasher.hexdigest()
+    # 一行都认不出本 Host 的已知记录类型（例如 Pi 的 `*_transcript.jsonl`）时，不能静默产出空结果。
+    # 有坏行时先说坏行：那时无法断言整份文件的 schema。空文件不算。
+    unsupported = error is None and not bad_lines and seen > 0 and recognized == 0
     source = {
         "host": host,
         "source_path": str(path),
         "session_id": session.session_id,
         "sha256": digest,
-        "available": error is None and not bad_lines,
+        "available": error is None and not bad_lines and not unsupported,
         "episode_count": len(episodes),
     }
     if bad_lines:
         source["bad_lines"] = bad_lines
-        source["missing_reason"] = f"line {bad_lines[0]}: JSON 解析失败"
+        source["missing_reason"] = f"line {bad_lines[0]['line']}: {bad_lines[0]['missing_reason']}"
+    if unsupported:
+        source["missing_reason"] = "unsupported_schema"
     if error is not None:
         source["missing_reason"] = error
     for episode in episodes:
@@ -363,6 +193,26 @@ def refusal_reason(out):
     return None
 
 
+def out_inside_root(out, root):
+    """--out 是否落在 --root 之内：那里是源会话文件，写进去就盖掉原始证据。
+
+    父目录取 realpath（`--out` 常指向还不存在的文件），比较时 casefold；路径已存在时再用 samefile，
+    因为 realpath 不化解硬链接。
+    """
+    root_real = Path(os.path.realpath(root))
+    guard = str(root_real).casefold()
+    candidates = [Path(os.path.realpath(out.parent)) / out.name]
+    if out.exists():
+        candidates.append(Path(os.path.realpath(out)))
+    for candidate in candidates:
+        spelled = str(candidate).casefold()
+        if spelled == guard or spelled.startswith(guard + os.sep):
+            return True
+        if candidate.exists() and root_real.exists() and os.path.samefile(candidate, root_real):
+            return True
+    return False
+
+
 def write_atomic(path, text):
     """同目录写完临时文件再替换：写到一半失败时不留半个文件。"""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -400,6 +250,9 @@ def collect(host, root, out, since_value, extra_excludes):
         return REFUSAL_EXIT
     if not root.is_dir():
         raise ValueError(f"--root 不是可用的目录：{root}")
+    if out_inside_root(out, root):
+        print(f"history: 拒绝写入：{out} 位于 --root {root} 之内", file=sys.stderr)
+        return REFUSAL_EXIT
     excludes = tuple(DEFAULT_EXCLUDES.get(host, ())) + tuple(extra_excludes)
     episodes, sources = [], []
     for path in iter_sources(root, host, excludes):

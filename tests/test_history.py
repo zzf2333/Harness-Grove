@@ -218,5 +218,58 @@ class CollectTests(unittest.TestCase):
         self.assertEqual(episodes_of(self.data["pi"], "user_correction")[0]["ts"], "2026-10-28T03:00:01.000Z")
 
 
+class RetryRunTests(unittest.TestCase):
+    """连续相同的调用只在第一对记一次 retry；signature 一变就重新计数。"""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory(prefix="phe-history-retry-")
+        self.addCleanup(temp.cleanup)
+        self.tmp = Path(os.path.realpath(temp.name))
+        self.root = self.tmp / "claude"
+        self.source = self.root / render(CLAUDE_RELATIVE)
+        self.out = self.tmp / "episodes.json"
+
+    def write_calls(self, commands):
+        lines = []
+        for index, command in enumerate(commands, 1):
+            lines.append(
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "sessionId": CLAUDE_SID,
+                        "cwd": PROJECT,
+                        "timestamp": f"2026-10-28T04:00:{index:02d}Z",
+                        "message": {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": f"toolu_{index}",
+                                    "name": "Bash",
+                                    "input": {"command": command},
+                                }
+                            ],
+                        },
+                    }
+                )
+            )
+        self.source.parent.mkdir(parents=True, exist_ok=True)
+        self.source.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def retry_lines(self):
+        result = run_cli("--host", "claude", "--root", self.root, "--out", self.out)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(self.out.read_text(encoding="utf-8"))
+        return [episode["line"] for episode in episodes_of(data, "retry")]
+
+    def test_run_of_four_identical_calls_records_one_retry(self):
+        self.write_calls(["echo poll"] * 4)
+        self.assertEqual(self.retry_lines(), [2])
+
+    def test_signature_change_resets_the_run(self):
+        self.write_calls(["echo poll", "echo poll", "echo other", "echo poll", "echo poll"])
+        self.assertEqual(self.retry_lines(), [2, 5])
+
+
 if __name__ == "__main__":
     unittest.main()
