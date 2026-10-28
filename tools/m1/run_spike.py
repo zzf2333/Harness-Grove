@@ -5,6 +5,7 @@
 Git 仓库 → 核对用户级文件 Hash → 启动 Target → 外置验收 → 追加一行到 runs.jsonl。
 它不判定 go/pivot，只产出原始记录。
 """
+
 import argparse
 import hashlib
 import json
@@ -40,8 +41,9 @@ def user_fingerprint() -> dict:
 def run_with_timeout(argv, cwd, env, timeout_s, grace_s=3):
     """单调时钟计时；超时先 SIGTERM 进程组，宽限后 SIGKILL。"""
     start = time.monotonic()
-    proc = subprocess.Popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, start_new_session=True)
+    proc = subprocess.Popen(
+        argv, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
+    )
     timed_out = False
     try:
         out, err = proc.communicate(timeout=timeout_s)
@@ -76,8 +78,8 @@ def oracle(work: Path, cfg: dict) -> dict:
     subprocess.run(["cp", "-Rc", str(work), str(check)], check=True)
     shutil.copyfile(cfg["oracle_test_src"], check / cfg["oracle_test_dest"])
     rc, out, err, dur, to = run_with_timeout(
-        cfg["oracle_argv"], check / cfg["oracle_cwd"], os.environ.copy(),
-        cfg["oracle_timeout_s"])
+        cfg["oracle_argv"], check / cfg["oracle_cwd"], os.environ.copy(), cfg["oracle_timeout_s"]
+    )
     text = (out + err).decode(errors="replace")
     tests_line = next((line.strip() for line in text.splitlines() if line.strip().startswith("Tests ")), None)
     receipt_path = work / ".phe-calibration-receipt"
@@ -103,8 +105,9 @@ def usage_from(result: dict) -> dict:
     mu = result.get("modelUsage") or {}
     total = 0
     for v in mu.values():
-        total += sum(v.get(k, 0) for k in
-                     ("inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens"))
+        total += sum(
+            v.get(k, 0) for k in ("inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
+        )
     return {
         "model_usage": mu,
         "total_tokens_v1": total if mu else None,
@@ -131,19 +134,29 @@ def main():
 
     harness = Path(cfg["harness"][a.group])
     work = build_workdir(Path(cfg["base_dir"]), harness)
-    argv = ["claude", "-p", cfg["prompt"], *cfg["claude_args"],
-            "--settings", json.dumps(cfg["settings"]),
-            "--debug-file", str(art / "debug.log")]
+    argv = [
+        "claude",
+        "-p",
+        cfg["prompt"],
+        *cfg["claude_args"],
+        "--settings",
+        json.dumps(cfg["settings"]),
+        "--debug-file",
+        str(art / "debug.log"),
+    ]
     env = os.environ.copy()
     env.update(cfg["env"])
     for k in cfg.get("env_unset", []):
         env.pop(k, None)
 
     record = {
-        "experiment_id": cfg["experiment_id"], "slot": a.slot, "group": a.group,
+        "experiment_id": cfg["experiment_id"],
+        "slot": a.slot,
+        "group": a.group,
         "harness_sha256": sha256_file(harness),
         "argv_sha256": hashlib.sha256(json.dumps(argv[3:]).encode()).hexdigest(),
-        "workdir": str(work), "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "workdir": str(work),
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "user_files_before": user_fingerprint(),
     }
     (art / "argv.json").write_text(json.dumps(argv, ensure_ascii=False, indent=2))
@@ -161,11 +174,14 @@ def main():
     except json.JSONDecodeError:
         record["result_parse_error"] = True
 
-    diff = subprocess.run(["git", "diff", "HEAD", "--stat"], cwd=work, capture_output=True, text=True).stdout
+    diff = subprocess.run(
+        ["git", "diff", "HEAD", "--stat"], cwd=work, capture_output=True, text=True, check=False
+    ).stdout
     (art / "diff.patch").write_text(
-        subprocess.run(["git", "diff", "HEAD"], cwd=work, capture_output=True, text=True).stdout)
+        subprocess.run(["git", "diff", "HEAD"], cwd=work, capture_output=True, text=True, check=False).stdout
+    )
     record["diff_stat"] = diff.strip().splitlines()[-1] if diff.strip() else ""
-    status = subprocess.run(["git", "status", "--short"], cwd=work, capture_output=True, text=True).stdout
+    status = subprocess.run(["git", "status", "--short"], cwd=work, capture_output=True, text=True, check=False).stdout
     record["untracked_or_changed"] = status.strip().splitlines()
 
     o = oracle(work, cfg)
@@ -176,8 +192,13 @@ def main():
 
     with open(exp / "runs.jsonl", "a") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    print(json.dumps({k: v for k, v in record.items() if k not in ("model_usage", "user_files_before", "user_files_after")},
-                     ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {k: v for k, v in record.items() if k not in ("model_usage", "user_files_before", "user_files_after")},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
