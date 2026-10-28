@@ -45,12 +45,12 @@ release 编号用和 registry 一样的高水位，不复用。deploy 的目标�
 |---|---|
 | `import --registry R --inventory I [--asset-id ...]` | 把选中资产复制到 `assets/<asset_id>/`；来源 realpath 必须在 `--home`、`--phe-home` 或两者的共同祖先（沙箱根）之下；`--inventory` 用来确认资产确实出现在这次 `--home` 的盘点里；已导入的编号拒绝覆盖；资产内容含软链时拒绝 |
 | `release` | 由 `assets/` 构建 `releases/rNNNN/` 与 manifest；来源目录不可用或遍历失败（含子目录读不到）、发布内容含软链时失败，并删掉本次 `rNNNN`，不留可部署的发布；编号照常推进，不复用 |
-| `deploy --agent X --release rNNNN --registry R` | 先对 `--home` 跑 inventory + drift，任何 `ExternalChange` 都中止，一条链接都不动；全部目标检查完（父目录存在、守卫通过、不是普通文件）才写；写前记 journal，再逐条原子替换链接（临时链接 + `os.replace`），最后更新 bindings |
+| `deploy --agent X --release rNNNN --registry R` | 先对 `--home` 跑 inventory + drift，任何 `ExternalChange` 都中止，一条链接都不动；例外是 `symlink_target_changed` 且路径在 `bindings.json` 里（任意 agent）、链接精确指向该绑定 release 对应文件的，视为 PHE 自己的部署，不算漂移（推导目标复用 `link_target()`，与写链接时同一个函数）；全部目标检查完（父目录存在、守卫通过、不是普通文件）才写；写前记 journal，再逐条原子替换链接（临时链接 + `os.replace`），最后更新 bindings |
 | `rollback --journal J` | 按 journal 倒序恢复旧状态，再撤掉这些链接的 binding |
 
 “记录式事务”就是 journal + rollback，不另设状态机。保证：任一链接替换失败（含 bindings 写入失败）按 journal 恢复已改过的链接；临时链接名带随机后缀，撞名就换名字重试，不删不是本次创建的对象；恢复时单条被守卫拒绝或 IO 失败不中断其余条目，最终报错同时带上原始的部署失败和恢复失败；不保证并发 deploy 的互斥。
 
-deploy 不改登记表：部署后同一份登记表会把这些链接报成 `symlink_target_changed`，所以验收里的“再盘点 drift 为 0”要先把新盘点 adopt 成新基线。deploy 只盘点 `--home`（没有 `--project`），登记表里的项目级条目会被判为 `missing` 并中止；该 agent 的 `observed` 路径不在 `--home` 之下的跳过并打印。
+deploy 不改登记表，基线不变。PHE 自己部署的链接由 deploy 预检按 `bindings.json` 识别，所以多个 Agent 共享同一资产时可以逐个部署。保证：已绑定且精确指向绑定 release 对应文件的链接不算漂移；路径只在 bindings 里但链接被改指别处、绑定的 release 不存在、release 里没有对应资产时仍报 `symlink_target_changed` 并中止；`content_changed`、`missing`、`unreadable` 一概不放行。不保证：识别 `bindings.json` 之外的任何 PHE 写入。单独运行 `registry drift` 仍会把这些链接报成 `symlink_target_changed`，所以验收里的“再盘点 drift 为 0”要先把新盘点 adopt 成新基线。deploy 只盘点 `--home`（没有 `--project`），登记表里的项目级条目会被判为 `missing` 并中止；该 agent 的 `observed` 路径不在 `--home` 之下的跳过并打印。
 
 ## 实现
 
@@ -59,6 +59,7 @@ deploy 不改登记表：部署后同一份登记表会把这些链接报成 `sy
 ## 验收
 
 - 合成 fixture 单测：import → release → deploy → 再盘点并 adopt 后 drift 为 0 → 改一个文件后 deploy 中止 → rollback 后与 deploy 前逐字节一致（含 `symlink_target`）；四层守卫各有用例。
+- 多 Agent 共享资产（`tests/test_release_multiagent.py`）：claude → codex → pi 逐个部署都成功；已绑定的链接被改指别处、bindings 指向不存在的 release 时 deploy 中止且链接不变；deploy → rollback 后再部署其他 Agent 仍然成功；单独跑 `registry drift` 仍把 PHE 自己的部署报成 `symlink_target_changed`。
 - 主控手动演练：`cp -RL ~/AI/temper/config` 到临时目录（只读 temper），在临时 HOME 里走完整流程。
 - reviewer 重点：写入路径能否逃出沙箱；deploy 是否真的在写之前完成全部检查。
 - 尚未验证：加载链（沙箱里没有 Agent 真的读这些文件）；真实 temper 副本上的演练。

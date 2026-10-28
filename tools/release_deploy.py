@@ -270,15 +270,20 @@ def drift_changes(data: dict, observed: dict) -> list[dict]:
     return changes
 
 
+def link_target(phe: Path, release_id: str, meta: dict) -> Path:
+    """发布里一个资产的链接目标：instructions 指到文件，skill 指到整个目录。"""
+    target = phe / "releases" / release_id / meta["entry"]
+    if meta["kind"] == "instructions":
+        target = target / meta["name"]
+    return target
+
+
 def link_plan(data: dict, manifest: dict, agent: str, home: Path, phe: Path) -> list[dict]:
     """按登记表里该 agent 的 observed 路径算目标链接；只处理 --home 之下的用户级路径。"""
     home_real = Path(os.path.realpath(home))
-    release_dir = phe / "releases" / manifest["release"]
     plans = []
     for asset_id, meta in sorted(manifest["assets"].items()):
-        target = release_dir / meta["entry"]
-        if meta["kind"] == "instructions":
-            target = target / meta["name"]
+        target = link_target(phe, manifest["release"], meta)
         for asset in data["assets"]:
             if asset["asset_id"] != asset_id:
                 continue
@@ -400,6 +405,36 @@ def read_bindings(phe: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def bound_target(phe: Path, release_id: str, asset_id: str) -> Path | None:
+    """bindings 记的发布里该资产的目标；发布或其中资产不存在时返回 None。"""
+    release_dir = phe / "releases" / release_id
+    if not (release_dir / "manifest.json").is_file():
+        return None
+    meta = read_manifest(release_dir)["assets"].get(asset_id)
+    if meta is None:
+        return None
+    return link_target(phe, release_id, meta)
+
+
+def expected_deployment(change: dict, bindings: dict, phe: Path) -> bool:
+    """这条 symlink_target_changed 是不是 PHE 自己的部署：路径已绑定，链接精确指向绑定发布里的对应文件。
+
+    只看路径在 bindings 里不够：链接被改指别处、发布或其中资产不存在时仍然算漂移。
+    """
+    path = change["path"]
+    if not os.path.islink(path):
+        return False
+    current = os.readlink(path)
+    for entries in bindings.values():
+        release_id = entries.get(path)
+        if release_id is None:
+            continue
+        target = bound_target(phe, release_id, change["asset_id"])
+        if target is not None and current == str(target):
+            return True
+    return False
+
+
 def bind(sandbox: Sandbox, phe: Path, agent: str, paths: list[str], release_id: str) -> None:
     data = read_bindings(phe)
     entries = data.setdefault(agent, {})
@@ -424,10 +459,16 @@ def deploy(args, roots: list[Path]) -> int:
     data = registry_tool.read_registry(args.registry)
     manifest = read_manifest(phe / "releases" / args.release)
     changes = drift_changes(data, inventory_tool.inventory(home, []))
-    if changes:
-        for change in changes:
+    bindings = read_bindings(phe)
+    external = [
+        change
+        for change in changes
+        if not (change["type"] == "symlink_target_changed" and expected_deployment(change, bindings, phe))
+    ]
+    if external:
+        for change in external:
             print(f"external_change {change['type']} {change['path']} ({change['asset_id']})", file=sys.stderr)
-        raise ValueError(f"盘点发现 {len(changes)} 条 ExternalChange，未改动任何链接")
+        raise ValueError(f"盘点发现 {len(external)} 条 ExternalChange，未改动任何链接")
     plans = link_plan(data, manifest, args.agent, home, phe)
     if not plans:
         raise ValueError(f"{args.agent} 在 {args.release} 里没有可部署的链接")

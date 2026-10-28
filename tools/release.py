@@ -2,7 +2,7 @@
 """PHE 资产导入、发布与 CLI（标准库）。写入层的守卫和 deploy/rollback 在 release_deploy.py。
 
 只在沙箱里运行：`--home` 和 `--phe-home` 必填，且不得指向真实环境。
-deploy 不改登记表：部署后要重新盘点并 adopt 才会得到新基线。
+deploy 不改登记表：基线不变，PHE 自己部署的链接由 deploy 预检按 bindings.json 识别。
 """
 
 import argparse
