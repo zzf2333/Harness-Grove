@@ -8,7 +8,9 @@ ExternalChange 只报告，不自动接受、覆盖或写回登记表。
 import argparse
 import hashlib
 import json
+import os
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,9 +29,40 @@ def read_registry(path: Path) -> dict:
 
 
 def next_asset_id(registry: dict) -> str:
-    """编号只增不减：取现有最大编号 + 1。本切片没有删除功能，不需要另存计数器。"""
+    """编号只增不减：登记表保存高水位 next_asset_number，删掉条目也不会回退。
+
+    边界：手改或删掉整份登记表时，只能保证不与当前剩余条目重号。
+    """
     numbers = [int(asset["asset_id"].rsplit("-", 1)[1]) for asset in registry["assets"]]
-    return f"asset-{max(numbers, default=0) + 1:04d}"
+    number = max(registry.get("next_asset_number", 1), max(numbers, default=0) + 1)
+    registry["next_asset_number"] = number + 1
+    return f"asset-{number:04d}"
+
+
+def write_atomic(path: Path, text: str) -> None:
+    """同目录写完临时文件再替换，写到一半失败时旧文件保持不变。不防并发登记的丢更新。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def refuse_protected_out(out: Path, protected: list[str]) -> None:
+    """报告不得覆盖登记表、盘点或任何已登记文件（含软链和硬链接别名）。"""
+    real_out = os.path.realpath(out)
+    for path in protected:
+        same = os.path.realpath(path) == real_out
+        if not same and out.exists() and os.path.exists(path):
+            same = os.path.samefile(out, path)
+        if same:
+            raise ValueError(f"--out 不能指向受保护的文件：{path}")
 
 
 def refusal_reason(record: dict) -> str | None:
@@ -127,8 +160,7 @@ def adopt(inventory_path: Path, registry_path: Path, paths: list[str], groups: l
         print(f"adopted {asset['asset_id']} {resolved_path} ({len(asset['observed'])} 个 observed path)")
     if added:
         # 只写登记表本身；被登记的文件一个字节都不动。
-        registry_path.parent.mkdir(parents=True, exist_ok=True)
-        registry_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        write_atomic(registry_path, json.dumps(registry, ensure_ascii=False, indent=2) + "\n")
     for refusal in refusals:
         print(f"refused {refusal}", file=sys.stderr)
     return 1 if refusals else 0
@@ -208,8 +240,12 @@ def drift(inventory_path: Path, registry_path: Path, out: Path | None) -> int:
     if out is None:
         print(text, end="")
     else:
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(text, encoding="utf-8")
+        protected = [str(registry_path), str(inventory_path)]
+        for asset in registry["assets"]:
+            protected.append(asset["resolved_path"])
+            protected.extend(o["path"] for o in asset["observed"])
+        refuse_protected_out(out, protected)
+        write_atomic(out, text)
     return 0
 
 
