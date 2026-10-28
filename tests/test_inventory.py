@@ -95,6 +95,7 @@ class InventoryTests(unittest.TestCase):
         write(self.home / ".codex/config.toml", f'model = "gpt"\n[secrets]\nkey = "{SENTINEL_TOML}"\n')
         write(self.home / ".claude/skills/demo/SKILL.md", "# demo\n")
         write(self.home / ".pi/agent/keep.txt", "")
+        write(self.home / ".pi/agent/agents/scout.md", "# scout\n")
         # 两条软链指向同一真实文件；一条断链；一条指向同目录的相对软链。
         os.symlink(self.shared, self.home / ".claude/CLAUDE.md")
         os.symlink(self.shared, self.home / ".codex/AGENTS.md")
@@ -161,6 +162,15 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(alias["resolved_path"], str(self.home / ".claude/skills/demo"))
         self.assertEqual(alias["sha256"], skill["sha256"])
         self.assertEqual(record_at(self.data, self.project / ".agents/skills/review", "codex")["kind"], "skill")
+
+    def test_pi_agents_directory_recorded(self):
+        own = record_at(self.data, self.home / ".pi/agent/agents", "pi")
+        self.assertEqual(own["kind"], "instructions")
+        self.assertFalse(own["is_symlink"])
+        self.assertIsNone(own["sha256"])
+        entry = record_at(self.data, self.home / ".pi/agent/agents/scout.md", "pi")
+        self.assertEqual(entry["kind"], "instructions")
+        self.assertEqual(entry["sha256"], hashlib.sha256(b"# scout\n").hexdigest())
 
     def test_groups_are_shared_real_paths(self):
         groups = {g["resolved_path"]: g for g in self.data["groups"]}

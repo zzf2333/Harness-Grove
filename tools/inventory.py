@@ -47,6 +47,7 @@ DIR_CANDIDATES = (
     ("claude", "project", "instructions", ".claude/agents"),
     ("pi", "user", "extension", ".pi/agent/extensions"),
     ("pi", "user", "prompt", ".pi/agent/prompts"),
+    ("pi", "user", "instructions", ".pi/agent/agents"),
     ("pi", "project", "extension", ".pi/extensions"),
     ("pi", "project", "prompt", ".pi/prompts"),
 )
