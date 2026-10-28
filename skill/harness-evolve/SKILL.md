@@ -78,7 +78,42 @@ python3 -I tools/phe.py judge ${PHE_REPO}/experiments/<id> [--out <结果路径>
 - `pivot` / `invalid_run` 保留全部原始数据，换任务、机制或预算后新建 ID 重来。
 - 任何发布、部署、推送都不在本 Skill 范围内，需要用户单独批准。
 
-## 8. 不调模型的演练（dry-run）
+## 8. 续作（换 Host 继续）
+
+同一份提案可以由另一个 Host 接着做。阶段只从 `experiments/<id>/` 里已有的文件推导，不靠会话记忆。
+
+1. 先看阶段，不要先动手：
+
+   ```bash
+   python3 -I tools/phe.py status ${PHE_REPO}/experiments/<id>
+   ```
+
+   stdout 是 JSON（`stage`、`evidence`、`last_log`、`inconsistent`、`notes`），stderr 是一行摘要。它只读，不写任何文件。
+2. 按下表从下一步继续。已经有证据文件的步骤不重做。
+
+   | `stage` | 文件证据 | 下一步 |
+   |---|---|---|
+   | `empty` | 无 | 起草 `proposal.json`（§2） |
+   | `drafted` | `proposal.json` | 冻结并写 `proposal.sha256`（§3） |
+   | `frozen` | 加 `proposal.sha256` | 请用户批准并写 `approval.json`（§4） |
+   | `approved` | 加 `approval.json` | 执行 `run`（§5） |
+   | `running` | 加 `runs.jsonl` | 看 `stop.json` 的 `stop_reason`：为 null 表示没结束，继续 `run`；非 null 表示已结束，做 `judge`（§6） |
+   | `judged` | 加 `result.json` | 写 `report.md`（§7） |
+   | `reported` | 加 `report.md` | 结束；只汇报，不重跑 |
+
+   `judge --out` 写到别处时本目录没有 `result.json`，`status` 仍报 `running`，按实际路径核对或重跑 `judge`。
+3. 每完成一步运行一次 `log`，声明是哪个 Host 做的哪一步：
+
+   ```bash
+   python3 -I tools/phe.py log ${PHE_REPO}/experiments/<id> \
+       --host {claude|codex|pi} --step {draft|freeze|approve|run|judge|report} [--note "简短说明"]
+   ```
+
+   `--note` 最多 200 字。写简短说明即可，不写会话内容、不贴原文、不写私人路径。
+4. **批准只能由用户本人做。** 换 Host 不改变这一点：`approve` 这一步永远等用户明确同意，不沿用“上一个 Host 已经批准过”的说法，也不改 `approval.json`。
+5. `status` 报 `inconsistent: true`（日志声称的步骤比文件证据更靠后），或 `notes` 里出现坏行行号时，停下报告差异。不自己补文件、不改日志、不重算 Hash。
+
+## 9. 不调模型的演练（dry-run）
 
 用已冻结的实验副本验证流程，不启动任何 Target：
 

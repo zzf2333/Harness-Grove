@@ -14,6 +14,8 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from phe_hostlog import log as host_log
+from phe_hostlog import status as host_status
 from phe_judge import (  # noqa: F401
     TOK,
     evaluate,
@@ -344,12 +346,22 @@ def main():
     judge_parser = commands.add_parser("judge")
     judge_parser.add_argument("experiment_dir", type=Path)
     judge_parser.add_argument("--out", type=Path)
+    log_parser = commands.add_parser("log")
+    log_parser.add_argument("experiment_dir", type=Path)
+    log_parser.add_argument("--host", required=True)
+    log_parser.add_argument("--step", required=True)
+    log_parser.add_argument("--note", default="")
+    commands.add_parser("status").add_argument("experiment_dir", type=Path)
     a = ap.parse_args()
     try:
         if a.cmd == "run":
             run(a.experiment_dir.resolve())
-        else:
+        elif a.cmd == "judge":
             judge(a.experiment_dir.resolve(), a.out)
+        elif a.cmd == "log":
+            sys.exit(host_log(a.experiment_dir, a.host, a.step, a.note))
+        else:
+            sys.exit(host_status(a.experiment_dir))
     except (OSError, ValueError, KeyError) as exc:
         ap.exit(1, f"phe: {exc}\n")
 
