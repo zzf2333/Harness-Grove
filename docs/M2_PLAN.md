@@ -33,10 +33,11 @@ M2 的 Gate：缺失的环境信息明确标出；两个不同 Host 能继续同
 
 - `correlation_group` 是 host、session_id、kind 的 sha256 前 12 位：同输入同输出。同一会话里反复出现的同类信号算一组，不拆成多份独立证据（[PHE_SPEC](PHE_SPEC.md) §4.5）；不同 Host 的同名 `session_id` 不合并。
 - 每组记 `correlation_group`、`host`、`session_id`、`project`、`kind`、`count`、首末 ts 和指针列表（`source_path`、`line`、`ts`、已脱敏的 `excerpt`）；不复制会话原文，也不重新拼接。
-- 跨会话、同 project 同 kind 的组不合并，只在 `same_project` 里互相列出组 id。只做标记，不判断是不是同一件事。
+- 跨会话、同 project 同 kind 的组不合并，只在 `same_project` 里互相列出组 id。只做标记，不判断是不是同一件事。project 未知（空或 null）的组不进这个索引，`same_project` 为 `[]`：未知项目不等于同一个项目。
 - 输入里 `available: false` 的来源按 host、`source_path`、`missing_reason` 汇总进 `sources_unavailable`，不静默丢弃。
+- 参与分组和输出的字段先严格校验，不合格时退出 1，不写输出：episode 的 `host`、`session_id`、`kind`、`source_path` 为非空字符串，`line` 为正整数，`excerpt` 为字符串，`ts`、`project` 为字符串或 null；source 的 `available` 为布尔值，不可用来源的 `host`、`source_path`、`missing_reason` 为非空字符串。
 - 输出排序固定：组按 host、project、session_id、kind，组内指针按 `source_path`、`line`；同一指针重复出现（例如同时传入 7 天和 30 天的产物）只计一次。
-- `--out` 复用 collect 的输出守卫：落在真实 home 的 Agent 配置目录、或与任一输入文件是同一文件时退出 2，写入走原子替换。
+- `--out` 复用 collect 的输出守卫：落在真实 home 的 Agent 配置目录、与任一输入文件是同一文件、或与会话源冲突（等于 `episodes`/`sources` 里的某个 `source_path`，或落进该源文件所在目录）时退出 2，写入走原子替换。
 
 保证：同一份输入得到字节相同的分组结果；每条指针仍能回到原文位置。
 

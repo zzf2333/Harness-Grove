@@ -30,6 +30,7 @@ GROUP_SORT_KEYS = ("host", "project", "session_id", "kind")
 POINTER_FIELDS = ("source_path", "line", "ts", "excerpt")
 UNAVAILABLE_FIELDS = ("source_path", "host", "missing_reason")
 REQUIRED_TEXT_FIELDS = ("host", "session_id", "kind", "source_path")
+OPTIONAL_TEXT_FIELDS = ("ts", "project")
 
 
 def correlation_group(host, session_id, kind):
@@ -43,13 +44,30 @@ def check_episode(path, index, episode):
     if not isinstance(episode, dict):
         raise TypeError(f"{where} 不是对象")
     for field in REQUIRED_TEXT_FIELDS:
-        if not isinstance(episode.get(field), str):
-            raise TypeError(f"{where}.{field} 不是字符串")
+        if not isinstance(episode.get(field), str) or not episode[field]:
+            raise TypeError(f"{where}.{field} 不是非空字符串")
     line = episode.get("line")
-    if not isinstance(line, int) or isinstance(line, bool):
-        raise TypeError(f"{where}.line 不是整数")
-    if not isinstance(episode.get("project", ""), str):
-        raise TypeError(f"{where}.project 不是字符串")
+    if not isinstance(line, int) or isinstance(line, bool) or line < 1:
+        raise TypeError(f"{where}.line 不是正整数")
+    if not isinstance(episode.get("excerpt"), str):
+        raise TypeError(f"{where}.excerpt 不是字符串")
+    for field in OPTIONAL_TEXT_FIELDS:
+        if episode.get(field) is not None and not isinstance(episode[field], str):
+            raise TypeError(f"{where}.{field} 不是字符串或 null")
+
+
+def check_source(path, index, source):
+    """来源也要能进输出：available 决定走汇总还是被忽略，不可用来源必须能定位、能说明原因。"""
+    where = f"{path}: sources[{index}]"
+    if not isinstance(source, dict):
+        raise TypeError(f"{where} 不是对象")
+    if not isinstance(source.get("available"), bool):
+        raise TypeError(f"{where}.available 不是布尔值")
+    if source["available"]:
+        return
+    for field in UNAVAILABLE_FIELDS:
+        if not isinstance(source.get(field), str) or not source[field]:
+            raise TypeError(f"{where}.{field} 不是非空字符串")
 
 
 def read_episode_file(path):
@@ -65,8 +83,8 @@ def read_episode_file(path):
     sources = data.get("sources", [])
     if not isinstance(sources, list):
         raise TypeError(f"{path}: sources 不是列表")
-    if not all(isinstance(source, dict) for source in sources):
-        raise TypeError(f"{path}: sources 里有非对象条目")
+    for index, source in enumerate(sources):
+        check_source(path, index, source)
     return episodes, sources
 
 
@@ -114,12 +132,13 @@ def build_groups(episodes):
     groups.sort(key=lambda group: tuple(group[key] for key in GROUP_SORT_KEYS))
     by_project = {}
     for group in groups:
-        by_project.setdefault((group["project"], group["kind"]), []).append(group["correlation_group"])
+        # project 未知（空串或 null）的组不进索引：未知项目不是同一个项目，不能互相关联。
+        if group["project"]:
+            by_project.setdefault((group["project"], group["kind"]), []).append(group["correlation_group"])
     for group in groups:
         # 同 project 同 kind 的其他组只做标记：是不是同一件事留给 Host 判断。
-        group["same_project"] = sorted(
-            other for other in by_project[(group["project"], group["kind"])] if other != group["correlation_group"]
-        )
+        related = by_project.get((group["project"], group["kind"]), []) if group["project"] else []
+        group["same_project"] = sorted(other for other in related if other != group["correlation_group"])
     return groups
 
 
@@ -135,10 +154,34 @@ def unavailable_sources(sources):
 
 
 def same_file(left, right):
-    """realpath 比较；两边都存在时再用 samefile，因为 realpath 不化解硬链接。"""
-    if os.path.realpath(left) == os.path.realpath(right):
+    """realpath 比较，大小写不敏感；两边都存在时再用 samefile，因为 realpath 不化解硬链接。"""
+    if os.path.realpath(left).casefold() == os.path.realpath(right).casefold():
         return True
-    return left.exists() and right.exists() and os.path.samefile(left, right)
+    return os.path.exists(left) and os.path.exists(right) and os.path.samefile(left, right)
+
+
+def session_source_paths(episodes, sources):
+    """参与分组和汇总的会话源路径：--out 不得覆盖它们，也不得落进它们所在目录。"""
+    paths = []
+    for entry in (*episodes, *sources):
+        value = entry.get("source_path")
+        if isinstance(value, str) and value:
+            paths.append(value)
+    return paths
+
+
+def out_in_session_dir(out, source_paths):
+    """`--out` 与会话源冲突时返回原因，否则 None。
+
+    目录比较取 `realpath(--out)` 的父目录：`--out` 常指向还不存在的文件，经软链时也能解析到目标目录。
+    """
+    out_dir = os.path.dirname(os.path.realpath(out))
+    for source_path in source_paths:
+        if same_file(out, source_path):
+            return f"--out {out} 与会话源 {source_path} 是同一个文件"
+        if os.path.realpath(os.path.dirname(source_path)) == out_dir:
+            return f"--out {out} 与会话源 {source_path} 在同一目录"
+    return None
 
 
 def group(episode_paths, out):
@@ -156,6 +199,11 @@ def group(episode_paths, out):
         found, seen = read_episode_file(path)
         episodes.extend(found)
         sources.extend(seen)
+    # 输入读齐并校验后才比会话源路径：写到会话文件或会话目录里就是覆盖原始证据。
+    reason = out_in_session_dir(out, session_source_paths(episodes, sources))
+    if reason is not None:
+        print(f"history: 拒绝写入：{reason}", file=sys.stderr)
+        return REFUSAL_EXIT
     groups = build_groups(episodes)
     unavailable = unavailable_sources(sources)
     document = {"groups": groups, "sources_unavailable": unavailable}

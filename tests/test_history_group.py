@@ -31,7 +31,7 @@ PI_PATH = "/home/alice/.pi/agent/sessions/--home-alice-proj--/cccc.jsonl"
 REFUSAL_EXIT = 2
 
 
-def episode(host, session_id, kind, line, ts, excerpt, source_path, project=PROJECT):
+def episode(host, session_id, kind, line, ts, excerpt, source_path, project: str | None = PROJECT):
     return {
         "kind": kind,
         "line": line,
@@ -46,8 +46,8 @@ def episode(host, session_id, kind, line, ts, excerpt, source_path, project=PROJ
     }
 
 
-def correction(session_id, line, ts, excerpt="不对，改成这样"):
-    return episode("claude", session_id, "user_correction", line, ts, excerpt, CLAUDE_PATH)
+def correction(session_id, line, ts, excerpt="不对，改成这样", project: str | None = PROJECT):
+    return episode("claude", session_id, "user_correction", line, ts, excerpt, CLAUDE_PATH, project=project)
 
 
 def source(host, path, session_id, available=True, missing_reason=None):
@@ -218,6 +218,23 @@ class CorrelationGroupTests(GroupCase):
         self.assertEqual(first.read_bytes(), second.read_bytes())
 
 
+class UnknownProjectTests(GroupCase):
+    def test_sessions_without_project_are_not_linked(self):
+        path = self.write(
+            "a.json",
+            [
+                correction(SESSION_A, 1, "2026-10-28T01:00:00Z", project=""),
+                correction(SESSION_B, 1, "2026-10-28T02:00:00Z", project=None),
+            ],
+        )
+        groups = self.group(path)["groups"]
+        self.assertEqual(len(groups), 2)
+        for group in groups:
+            # project 未知时按空串输出，且不建 same_project 索引：未知项目不是同一个项目。
+            self.assertEqual(group["project"], "")
+            self.assertEqual(group["same_project"], [])
+
+
 class UnavailableSourceTests(GroupCase):
     def test_unavailable_sources_are_summarized_without_content(self):
         path = self.write(
@@ -240,6 +257,49 @@ class UnavailableSourceTests(GroupCase):
         second = self.write("b.json", [], [unavailable])
         data = self.group(first, second)
         self.assertEqual(len(data["sources_unavailable"]), 1)
+
+
+class SessionSourceGuardTests(GroupCase):
+    def setUp(self):
+        super().setUp()
+        # 合成会话目录：source_path 指向这里，模拟 collect 产物里的真实指针。
+        self.session_dir = self.tmp / "sessions" / "--home-alice-proj--"
+        self.session_dir.mkdir(parents=True)
+        self.session_source = self.session_dir / "eeee.jsonl"
+        self.session_source.write_text('{"type": "user"}\n', encoding="utf-8")
+
+    def episodes_pointing_at_session_source(self):
+        pointer = str(self.session_source)
+        return self.write(
+            "a.json",
+            [episode("claude", SESSION_A, "user_correction", 1, "2026-10-28T01:00:00Z", "不对", pointer)],
+            [source("claude", pointer, SESSION_A)],
+        )
+
+    def test_out_equal_to_a_session_source_is_refused(self):
+        path = self.episodes_pointing_at_session_source()
+        before = self.session_source.read_bytes()
+        result = run_group("--episodes", path, "--out", self.session_source)
+        self.assertEqual(result.returncode, REFUSAL_EXIT, result.stderr)
+        self.assertEqual(self.session_source.read_bytes(), before, "拒绝时会话源字节不变")
+
+    def test_out_linking_to_a_session_source_is_refused(self):
+        path = self.episodes_pointing_at_session_source()
+        link = self.tmp / "link.json"
+        link.symlink_to(self.session_source)
+        before = self.session_source.read_bytes()
+        result = run_group("--episodes", path, "--out", link)
+        self.assertEqual(result.returncode, REFUSAL_EXIT, result.stderr)
+        self.assertEqual(self.session_source.read_bytes(), before, "拒绝时会话源字节不变")
+
+    def test_out_in_a_session_source_directory_is_refused(self):
+        path = self.episodes_pointing_at_session_source()
+        before = self.session_source.read_bytes()
+        out = self.session_dir / "groups.json"
+        result = run_group("--episodes", path, "--out", out)
+        self.assertEqual(result.returncode, REFUSAL_EXIT, result.stderr)
+        self.assertFalse(out.exists(), "拒绝时不得写文件")
+        self.assertEqual(self.session_source.read_bytes(), before, "拒绝时会话源字节不变")
 
 
 class OutputGuardTests(GroupCase):
@@ -281,6 +341,37 @@ class OutputGuardTests(GroupCase):
         result = run_group("--episodes", path, "--out", self.out)
         self.assertEqual(result.returncode, 1)
         self.assertFalse(self.out.exists())
+
+
+class InputValidationTests(GroupCase):
+    def assert_rejected(self, episodes, sources=()):
+        path = self.write("bad.json", episodes, sources)
+        result = run_group("--episodes", path, "--out", self.out)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertFalse(self.out.exists(), "校验失败时不得写输出")
+
+    def test_empty_session_id_is_rejected(self):
+        self.assert_rejected([correction("", 1, "2026-10-28T01:00:00Z")])
+
+    def test_non_string_excerpt_is_rejected(self):
+        broken = correction(SESSION_A, 1, "2026-10-28T01:00:00Z")
+        broken["excerpt"] = {"text": "不对"}
+        self.assert_rejected([broken])
+
+    def test_non_positive_line_is_rejected(self):
+        for line in (0, -1, True):
+            with self.subTest(line=line):
+                self.assert_rejected([correction(SESSION_A, line, "2026-10-28T01:00:00Z")])
+
+    def test_non_boolean_available_is_rejected(self):
+        broken = source("pi", PI_PATH, SESSION_B)
+        broken["available"] = "false"
+        self.assert_rejected([], [broken])
+
+    def test_unavailable_source_without_source_path_is_rejected(self):
+        broken = source("pi", PI_PATH, SESSION_B, available=False, missing_reason="PermissionError")
+        del broken["source_path"]
+        self.assert_rejected([], [broken])
 
 
 if __name__ == "__main__":
