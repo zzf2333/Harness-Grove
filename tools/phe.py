@@ -223,7 +223,7 @@ def stop_reason(exp: Path):
 
 
 def integrity_problem(p, cfg, exp) -> str | None:
-    if sha(exp / "config.json") != p["runner"]["config_sha256"]:
+    if sha256_file(exp / "config.json") != p["runner"]["config_sha256"]:
         return "config_hash_changed"
     for g in p["experiment"]["groups"]:
         if sha256_file(Path(cfg["harness"][g])) != p["harness"]["variants"][g]["snapshot_sha256"]:
@@ -235,8 +235,10 @@ def integrity_problem(p, cfg, exp) -> str | None:
     return None
 
 
-def crash_stop(p, cfg, exp):
+def crash_stop(p, cfg, exp, proposal_digest):
     # Runner 异常退出前也复核完整性：invalid_run 优先于 pivot。
+    if sha256_file(exp / "proposal.json") != proposal_digest:
+        return "invalid_run:proposal_hash_changed"
     problem = integrity_problem(p, cfg, exp)
     return "invalid_run:" + problem if problem else "pivot:runner_crashed_no_record"
 
@@ -308,11 +310,11 @@ def run(exp: Path):
             run_slot(exp, cfg, item, budget, receipt_required="required_control" in p["rules"])
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             print(f"slot {item['slot']} runner failed: {exc}", file=sys.stderr)
-            stop = crash_stop(p, cfg, exp)
+            stop = crash_stop(p, cfg, exp, proposal_digest)
             break
         rs = records(exp)
         if len(rs) != before + 1:
-            stop = crash_stop(p, cfg, exp)
+            stop = crash_stop(p, cfg, exp, proposal_digest)
             break
         r = rs[-1]
         print(f"slot {r['slot']} {r['group']} complete", flush=True)
