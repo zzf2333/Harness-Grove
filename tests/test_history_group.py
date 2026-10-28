@@ -301,6 +301,33 @@ class SessionSourceGuardTests(GroupCase):
         self.assertFalse(out.exists(), "拒绝时不得写文件")
         self.assertEqual(self.session_source.read_bytes(), before, "拒绝时会话源字节不变")
 
+    def test_out_in_a_subdirectory_of_a_session_directory_is_refused(self):
+        path = self.episodes_pointing_at_session_source()
+        out = self.session_dir / "sub" / "groups.json"
+        result = run_group("--episodes", path, "--out", out)
+        self.assertEqual(result.returncode, REFUSAL_EXIT, result.stderr)
+        self.assertFalse(out.parent.exists(), "拒绝时不得在会话目录里建子目录")
+
+    def test_out_case_alias_of_a_session_directory_is_refused(self):
+        alias_dir = Path(str(self.session_dir).replace("sessions", "SESSIONS"))
+        if not alias_dir.exists():
+            self.skipTest("文件系统区分大小写，没有大小写别名可测")
+        path = self.episodes_pointing_at_session_source()
+        result = run_group("--episodes", path, "--out", alias_dir / "groups.json")
+        self.assertEqual(result.returncode, REFUSAL_EXIT, result.stderr)
+        self.assertEqual(sorted(p.name for p in self.session_dir.iterdir()), ["eeee.jsonl"])
+
+    def test_out_symlink_inside_a_session_directory_is_refused(self):
+        path = self.episodes_pointing_at_session_source()
+        results = self.tmp / "results"
+        results.mkdir()
+        link = self.session_dir / "groups.json"
+        link.symlink_to(results / "groups.json")
+        result = run_group("--episodes", path, "--out", link)
+        self.assertEqual(result.returncode, REFUSAL_EXIT, result.stderr)
+        self.assertTrue(link.is_symlink(), "拒绝时会话目录里的软链不变")
+        self.assertFalse((results / "groups.json").exists())
+
 
 class OutputGuardTests(GroupCase):
     def test_episodes_and_out_are_required(self):

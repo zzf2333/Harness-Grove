@@ -173,14 +173,17 @@ def session_source_paths(episodes, sources):
 def out_in_session_dir(out, source_paths):
     """`--out` 与会话源冲突时返回原因，否则 None。
 
-    目录比较取 `realpath(--out)` 的父目录：`--out` 常指向还不存在的文件，经软链时也能解析到目标目录。
+    两个落点都要查：`realpath(out)`（软链目标）和 `realpath(父目录)/名字`（原子替换实际改动的位置，
+    out 本身是软链时会替换链接）。会话目录及其子目录都算在内；按 casefold 比较，挡住大小写别名。
     """
-    out_dir = os.path.dirname(os.path.realpath(out))
+    out = Path(out)
+    landings = {os.path.realpath(out), os.path.join(os.path.realpath(out.parent), out.name)}
     for source_path in source_paths:
         if same_file(out, source_path):
             return f"--out {out} 与会话源 {source_path} 是同一个文件"
-        if os.path.realpath(os.path.dirname(source_path)) == out_dir:
-            return f"--out {out} 与会话源 {source_path} 在同一目录"
+        source_dir = os.path.realpath(os.path.dirname(source_path)).casefold().rstrip(os.sep) + os.sep
+        if any(landing.casefold().startswith(source_dir) for landing in landings):
+            return f"--out {out} 落在会话源 {source_path} 所在目录内"
     return None
 
 
