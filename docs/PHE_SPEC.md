@@ -207,7 +207,7 @@ Proposal：draft → frozen → evaluated → closed
 
 ## 5. 统一的 Harness 资产库（M1 起）
 
-**逻辑资产只有一份来源，正式部署使用不可变的 Release。** 下面的 `~/.phe/` 是将来的用户部署目录。它不是 M-1 或 M0 的实验产物路径，目前也还没有创建。
+**逻辑资产只有一份来源，正式部署使用不可变的 Release。** 本机的资产源已定为 `~/AI/temper/config/`，不另建 `~/.phe/assets/`，见 [M1_PLAN](M1_PLAN.md)「已定：资产源是 temper」；下面的目录树只保留作结构示意。 下面的 `~/.phe/` 是将来的用户部署目录。它不是 M-1 或 M0 的实验产物路径，目前也还没有创建。
 
 ```text
 ~/.phe/

@@ -29,9 +29,16 @@ M1 的 Gate 是：首次接管不改变配置含义；发布不覆盖带外修�
 - 同一真实路径的多条记录归为一组，作为"可统一托管"的候选。
 - 不存在的路径不记录；无权限的路径保留一条并写 `access_error`；`broken_link` 只在软链目标确实不存在时为 true。目录候选先记自身一条，再展开一层；断链、无权限或软链成环时只记自身。
 
-## 待用户决定（切片 A 之后问）
+## 已定：资产源是 temper（2026-10-28，用户决定）
 
-- 本机已有事实上的统一资产源 `~/AI/temper/config/`：`~/.claude/CLAUDE.md`、`~/.pi/agent/AGENTS.md` 都软链到它的 `AGENTS.md`，`~/.claude/skills/*` 软链到它的 `skills/`。规范里的 `~/.phe/assets/` 会与它重复。PHE 是 adopt temper 作为资产源，还是另建？决定之前不设计 `~/.phe/assets/`。
+- 本机已有统一资产源 `~/AI/temper/config/`：`~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md`、`~/.pi/agent/AGENTS.md` 都软链到它的 `AGENTS.md`，5 个 Skill 也由它共享。
+- PHE 不新建 `~/.phe/assets/`，不复制 temper 的内容。切片 B 只在 PHE 仓库里登记 temper 下的文件；切片 D 再决定如何在 temper 上做版本和回滚。
+- 这替代了 PHE_SPEC「统一的 Harness 资产库」中 `~/.phe/assets/` 的目录示例；`releases/`、`bindings.yaml` 的位置在切片 D 定。
+
+## 登记与漂移（切片 B、C）
+
+- 登记表写在被 Git 忽略的 `registry/`，只记路径、Hash、软链目标和状态，不记文件内容。
+- `ExternalChange` 只针对已登记的条目：内容变化、软链目标变化、文件删除或变得不可读。未登记的新文件不算漂移。
 
 ## 不做
 
