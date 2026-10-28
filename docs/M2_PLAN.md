@@ -1,6 +1,6 @@
 # M2 计划：历史采集、证据分组与跨 Host 续作
 
-**状态：** 进行中（2026-10-28）。切片 A0、A 完成（reviewer 3 轮 PASS，本机最近 7 天只读采集抽查指针一致）；切片 B 完成（reviewer 3 轮 PASS，本机 7 天数据 923 条 → 376 组）；切片 C 代码已实现，待审查。上位文档：[PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」；开发约束沿用 [M1_PLAN](M1_PLAN.md)「原则：开发与使用分离」。
+**状态：** 进行中（2026-10-28）。切片 A0、A 完成（reviewer 3 轮 PASS，本机最近 7 天只读采集抽查指针一致）；切片 B 完成（reviewer 3 轮 PASS，本机 7 天数据 923 条 → 376 组）；切片 C 代码部分完成（reviewer 2 轮 PASS；c-002、spike-001 只读 status 均为 reported）；两个真实 Host 续作同一提案待用户批准（消耗额度）。上位文档：[PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」；开发约束沿用 [M1_PLAN](M1_PLAN.md)「原则：开发与使用分离」。
 
 M2 的 Gate：缺失的环境信息明确标出；两个不同 Host 能继续同一个提案；实验 Target 按需逐个适配。
 
