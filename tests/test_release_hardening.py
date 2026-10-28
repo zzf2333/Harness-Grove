@@ -199,5 +199,33 @@ class RestoreEntriesTests(unittest.TestCase):
         self.assertEqual(os.readlink(self.outside / "AGENTS.md"), str(self.tmp / "stale"))
 
 
+class OutsideLinkToRootTests(unittest.TestCase):
+    """第 3 层：沙箱外指向沙箱根的软链不能被当成沙箱本身，rollback 不得删除它。"""
+
+    def setUp(self):
+        self.tmp = Path(os.path.realpath(tempfile.mkdtemp(prefix="release-outlink-")))
+        self.addCleanup(rmtree_force, self.tmp)
+        self.home = self.tmp / "home"
+        self.phe = self.tmp / "phe"
+        self.outside = self.tmp / "outside"
+        for directory in (self.home, self.phe, self.outside):
+            directory.mkdir()
+        self.link = self.outside / "link"
+        os.symlink(self.home, self.link)
+
+    def test_write_guard_rejects_outside_link_to_root(self):
+        with self.assertRaises(release_deploy.GuardError):
+            release_deploy.guarded_write_path(self.link, [self.home, self.phe])
+
+    def test_rollback_keeps_outside_link_to_root(self):
+        journal = self.phe / "journal.json"
+        entries = [{"path": str(self.link), "state": "absent", "old_target": None}]
+        journal.write_text(json.dumps({"agent": "claude", "release": RELEASE_ID, "entries": entries}))
+        args = type("Args", (), {"journal": journal})()
+        with self.assertRaises((ValueError, release_deploy.GuardError)):
+            release_deploy.rollback(args, [self.home, self.phe])
+        self.assertEqual(os.readlink(self.link), str(self.home))
+
+
 if __name__ == "__main__":
     unittest.main()

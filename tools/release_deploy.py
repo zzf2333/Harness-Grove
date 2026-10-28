@@ -11,6 +11,7 @@ import json
 import os
 import pwd
 import secrets
+import stat
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -125,8 +126,18 @@ def write_target(path: Path) -> Path:
     return Path(os.path.realpath(Path(path).parent)) / Path(path).name
 
 
-def path_key(path: Path) -> tuple[str, ...]:
-    """比较键：存在时用文件身份，不存在时退回 realpath 字符串（沙箱根可能还没建出来）。"""
+def path_key(path: Path, follow: bool = True) -> tuple[str, ...]:
+    """比较键：存在时用文件身份，不存在时退回 realpath 字符串（沙箱根可能还没建出来）。
+
+    follow=False 用 lstat：叶子是软链时取链接自身的身份，不会被认成它指向的沙箱根。
+    """
+    if not follow:
+        try:
+            info = os.lstat(path)
+        except OSError:
+            info = None
+        if info is not None and stat.S_ISLNK(info.st_mode):
+            return ("identity", str(info.st_dev), str(info.st_ino))
     identity = file_identity(path)
     if identity is not None:
         return ("identity", str(identity[0]), str(identity[1]))
@@ -137,12 +148,15 @@ def under(path: Path, roots: list[Path]) -> bool:
     """path 等于某个根或在其之下；逐级向上比文件身份，所以大小写别名不会误判。"""
     keys = {path_key(root) for root in roots}
     current = Path(path)
+    # 叶子不跟随软链；write_target 已把父目录解析成真实路径，向上逐级比目录身份。
+    follow = False
     while True:
-        if path_key(current) in keys:
+        if path_key(current, follow) in keys:
             return True
         if current == current.parent:
             return False
         current = current.parent
+        follow = True
 
 
 def guarded_write_path(path: Path, roots: list[Path]) -> None:
