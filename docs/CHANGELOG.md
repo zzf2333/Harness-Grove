@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## v0.6 — 2026-10-28
+
+- 新增原则：只用用户已有的 Agent 环境和登录额度，不需要、也不申请单独的模型 API key 或计费账户。取代 v0.5 中“隔离配置目录下可能只能用 API key 按量计费”的说法。
+- M-1 的 Target 隔离改为：在现有登录下用 `--setting-sources project`、`--strict-mcp-config`、`--disable-slash-commands`、`--settings` 收窄加载范围，具体组合由 spike-000 探测。排除不掉的用户级 `CLAUDE.md` 作为各组共有的常量记录 Hash；自动记忆必须关闭或确认不写入。只有另开账户才能隔离时，结果为 `pivot(isolation_unavailable)`。
+- `total_cost_usd` 明确为用量代理值，不是额外付款；订阅额度用尽或限流按基础设施失败处理，占用运行位置。
+- 模板新增 `auth_source`、`separate_api_key_allowed=false`、`isolation_flags`、`unexcludable_user_content_sha256`、`auto_memory_disabled` 等字段。
+
 ## v0.5 — 2026-10-28
 
 文档结构：
