@@ -9,6 +9,8 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
+import stat
 import sys
 from pathlib import Path
 
@@ -34,10 +36,17 @@ def source_roots(home: Path, phe_home: Path) -> list[Path]:
     return [*roots, Path(os.path.commonpath(roots))]
 
 
+def walk_error(error: OSError) -> None:
+    """os.walk 默认吞掉遍历错误；发布不能把读不到的子目录当成空目录。"""
+    raise error
+
+
 def copy_tree(sandbox: Sandbox, source: Path, destination: Path) -> None:
     """逐项复制并逐项过守卫；资产内容里出现软链或特殊文件就拒绝，避免把链接目标混进发布。"""
+    if not source.is_dir():
+        raise ValueError(f"资产来源不是可用的目录：{source}")
     sandbox.makedirs(destination)
-    for directory, dirnames, filenames in os.walk(source, followlinks=False):
+    for directory, dirnames, filenames in os.walk(source, followlinks=False, onerror=walk_error):
         dirnames.sort()
         target = destination / Path(directory).relative_to(source)
         sandbox.makedirs(target)
@@ -144,21 +153,31 @@ def file_sha256(path: Path) -> str:
 
 
 def freeze(sandbox: Sandbox, release_dir: Path) -> None:
-    """发布不可变：文件和目录都去掉写权限。"""
+    """发布不可变：文件和目录都去掉写权限。
+
+    用 lstat 判类型，不跟随软链：发布里出现软链说明内容被污染，chmod 会改到链接目标上。
+    """
     for item in sorted(release_dir.rglob("*"), reverse=True):
-        sandbox.chmod(item, 0o555 if item.is_dir() else 0o444)
+        mode = os.lstat(item).st_mode
+        if stat.S_ISLNK(mode):
+            raise ValueError(f"发布内容含软链，拒绝冻结：{item}")
+        sandbox.chmod(item, 0o555 if stat.S_ISDIR(mode) else 0o444)
     sandbox.chmod(release_dir, 0o555)
 
 
-def build_release(sandbox: Sandbox, phe: Path, assets: list[dict]) -> str:
-    number = next_release_number(phe)
-    release_id = f"r{number:04d}"
-    release_dir = phe / "releases" / release_id
-    if os.path.lexists(release_dir):
-        raise ValueError(f"发布编号已存在，拒绝覆盖：{release_dir}")
-    sandbox.makedirs(phe / "releases")
-    sandbox.write_json(phe / "releases" / "high_water.json", {"next_release_number": number + 1})
-    sandbox.makedirs(release_dir)
+def discard_release(release_dir: Path) -> None:
+    """失败清理：已冻结的文件是只读的，先放开所有者写权限再删；编号不复用，由高水位照常推进。"""
+    if not os.path.lexists(release_dir):
+        return
+    for item in sorted(release_dir.rglob("*"), reverse=True):
+        mode = os.lstat(item).st_mode
+        if not stat.S_ISLNK(mode):
+            os.chmod(item, stat.S_IMODE(mode) | stat.S_IWUSR)
+    os.chmod(release_dir, stat.S_IMODE(os.lstat(release_dir).st_mode) | stat.S_IWUSR)
+    shutil.rmtree(release_dir)
+
+
+def collect_release(sandbox: Sandbox, phe: Path, release_id: str, release_dir: Path, assets: list[dict]) -> dict:
     manifest = {"release": release_id, "created_at": utc_now(), "assets": {}, "files": {}}
     for asset in assets:
         content = phe / "assets" / asset["asset_id"] / "content"
@@ -176,8 +195,26 @@ def build_release(sandbox: Sandbox, phe: Path, assets: list[dict]) -> str:
                     "size": item.stat().st_size,
                     "asset_id": asset["asset_id"],
                 }
-    sandbox.write_json(release_dir / "manifest.json", manifest)
-    freeze(sandbox, release_dir)
+    return manifest
+
+
+def build_release(sandbox: Sandbox, phe: Path, assets: list[dict]) -> str:
+    """构建不可变发布；任何一步失败都删掉本次 rNNNN，不留半成品和有效 manifest。"""
+    number = next_release_number(phe)
+    release_id = f"r{number:04d}"
+    release_dir = phe / "releases" / release_id
+    if os.path.lexists(release_dir):
+        raise ValueError(f"发布编号已存在，拒绝覆盖：{release_dir}")
+    sandbox.makedirs(phe / "releases")
+    sandbox.write_json(phe / "releases" / "high_water.json", {"next_release_number": number + 1})
+    try:
+        sandbox.makedirs(release_dir)
+        manifest = collect_release(sandbox, phe, release_id, release_dir, assets)
+        sandbox.write_json(release_dir / "manifest.json", manifest)
+        freeze(sandbox, release_dir)
+    except BaseException:
+        discard_release(release_dir)
+        raise
     return release_id
 
 

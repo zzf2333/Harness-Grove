@@ -5,10 +5,12 @@
 每次写入前的 guarded_write_path、单测覆盖。deploy 和 rollback 都只用这里的 Sandbox 写盘。
 """
 
+import contextlib
 import importlib.util
 import json
 import os
 import pwd
+import secrets
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -38,6 +40,10 @@ class GuardError(Exception):
     """目标越出沙箱或指向真实环境；调用方以退出码 2 结束。"""
 
 
+class RollbackIncomplete(ValueError):
+    """部署或回滚失败后没能恢复全部链接；消息里同时带上原始失败。"""
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -54,16 +60,52 @@ def real_home() -> Path:
     return Path(os.path.realpath(pwd.getpwuid(os.getuid()).pw_dir))
 
 
+def file_identity(path: Path) -> tuple[int, int] | None:
+    """文件身份 (st_dev, st_ino)：大小写不敏感的文件系统上别名指向同一个 inode。"""
+    try:
+        info = os.stat(path)
+    except OSError:
+        return None
+    return (info.st_dev, info.st_ino)
+
+
+def identity_chain(path: Path) -> list[tuple[int, int]]:
+    """从 path 自身或最近一个已存在的祖先起逐级向上，返回每一级的文件身份。"""
+    chain = []
+    current = Path(path)
+    while True:
+        identity = file_identity(current)
+        if identity is not None:
+            chain.append(identity)
+        if current == current.parent:
+            return chain
+        current = current.parent
+
+
 def refusal_reason(path: Path) -> str | None:
+    """真实环境判定：realpath 字符串（按 casefold）和文件身份各查一遍。
+
+    大小写不敏感的文件系统上同一路径有多种拼写，只比字符串会漏掉别名；路径还不存在时
+    没有身份可比，字符串这一遍仍然生效。按 casefold 比字符串在大小写敏感的文件系统上
+    只会更严，不会放行真实环境。
+    """
     home = real_home()
     real = Path(os.path.realpath(path))
-    if real == home:
+    spelled = str(real).casefold()
+    home_spelled = str(home).casefold()
+    own = file_identity(path)
+    if spelled == home_spelled or (own is not None and own == file_identity(home)):
         return f"{path} 是真实 home"
-    if real in home.parents:
+    if home_spelled.startswith(spelled.rstrip(os.sep) + os.sep) or (own is not None and own in identity_chain(home)):
         return f"{path} 是真实 home 的祖先目录"
+    above = identity_chain(path)
     for relative in PROTECTED_SUBPATHS:
         protected = home / relative
-        if real == protected or protected in real.parents:
+        protected_spelled = str(protected).casefold()
+        if spelled == protected_spelled or spelled.startswith(protected_spelled + os.sep):
+            return f"{path} 位于真实环境 {protected} 之内"
+        guarded = file_identity(protected)
+        if guarded is not None and guarded in above:
             return f"{path} 位于真实环境 {protected} 之内"
     return None
 
@@ -83,8 +125,24 @@ def write_target(path: Path) -> Path:
     return Path(os.path.realpath(Path(path).parent)) / Path(path).name
 
 
+def path_key(path: Path) -> tuple[str, ...]:
+    """比较键：存在时用文件身份，不存在时退回 realpath 字符串（沙箱根可能还没建出来）。"""
+    identity = file_identity(path)
+    if identity is not None:
+        return ("identity", str(identity[0]), str(identity[1]))
+    return ("path", os.path.realpath(path))
+
+
 def under(path: Path, roots: list[Path]) -> bool:
-    return any(path == root or root in path.parents for root in roots)
+    """path 等于某个根或在其之下；逐级向上比文件身份，所以大小写别名不会误判。"""
+    keys = {path_key(root) for root in roots}
+    current = Path(path)
+    while True:
+        if path_key(current) in keys:
+            return True
+        if current == current.parent:
+            return False
+        current = current.parent
 
 
 def guarded_write_path(path: Path, roots: list[Path]) -> None:
@@ -93,8 +151,7 @@ def guarded_write_path(path: Path, roots: list[Path]) -> None:
     只看目录、不看叶子：写软链时检查的是链接自身所在的目录，不是它指向的目标。
     沙箱根本身允许创建，否则 phe-home 还不存在时建不出来；根已经在第 2 层校验过。
     """
-    target = write_target(path)
-    if under(target, roots) or under(target.parent, roots):
+    if under(write_target(path), roots):
         return
     raise GuardError(f"拒绝写入沙箱之外的路径：{path}")
 
@@ -269,20 +326,34 @@ def write_journal(sandbox: Sandbox, phe: Path, agent: str, release_id: str, entr
     return path
 
 
+TEMP_LINK_ATTEMPTS = 5
+
+
 def temp_link_path(path: Path) -> Path:
-    return path.parent / f".{path.name}.phe-tmp-{os.getpid()}"
+    """同目录临时链接名带随机后缀：残留或并发的同名对象不会被当成自己的。"""
+    return path.parent / f".{path.name}.phe-tmp-{secrets.token_hex(4)}"
 
 
 def atomic_symlink(sandbox: Sandbox, target: str, path: Path) -> None:
-    """先建同目录临时链接再 os.replace：替换是原子的，不会留下半条链接。"""
-    temporary = temp_link_path(path)
-    if os.path.lexists(temporary):
-        sandbox.unlink(temporary)
-    sandbox.symlink(target, temporary)
+    """先建同目录临时链接再 os.replace：替换是原子的，不会留下半条链接。
+
+    撞名就换名字重试；只清理本次创建成功的临时链接，绝不 unlink 不是自己创建的对象。
+    """
+    temporary = None
+    for _ in range(TEMP_LINK_ATTEMPTS):
+        candidate = temp_link_path(path)
+        try:
+            sandbox.symlink(target, candidate)
+        except FileExistsError:
+            continue
+        temporary = candidate
+        break
+    if temporary is None:
+        raise OSError(f"{TEMP_LINK_ATTEMPTS} 次都没能建出临时链接：{path}")
     try:
         sandbox.replace(temporary, path)
     except BaseException:
-        if os.path.lexists(temporary):
+        with contextlib.suppress(FileNotFoundError):
             sandbox.unlink(temporary)
         raise
 
@@ -303,7 +374,7 @@ def restore_entries(sandbox: Sandbox, entries: list[dict]) -> list[str]:
     for entry in entries:
         try:
             restore_entry(sandbox, entry)
-        except OSError as exc:
+        except (GuardError, OSError) as exc:
             failures.append(f"{entry['path']}: {exc}")
     return failures
 
@@ -354,9 +425,14 @@ def deploy(args, roots: list[Path]) -> int:
             atomic_symlink(sandbox, str(entry["target"]), entry["path"])
             applied.append(entry)
         bind(sandbox, phe, args.agent, [str(entry["path"]) for entry in entries], args.release)
-    except BaseException:
-        for failure in restore_entries(sandbox, list(reversed(applied))):
+    except BaseException as exc:
+        failures = restore_entries(sandbox, list(reversed(applied)))
+        for failure in failures:
             print(f"rollback_failed {failure}", file=sys.stderr)
+        if failures:
+            raise RollbackIncomplete(
+                f"部署 {args.release} 失败（{exc}），且 {len(failures)} 条链接未能恢复：{'；'.join(failures)}"
+            ) from exc
         raise
     print(f"deployed {args.release} -> {args.agent}: {len(entries)} 条链接，journal {journal}")
     return 0
@@ -379,7 +455,7 @@ def rollback(args, roots: list[Path]) -> int:
         plans.append(entry | {"path": path})
     failures = restore_entries(sandbox, plans)
     if failures:
-        raise ValueError("回滚未完成：" + "；".join(failures))
+        raise RollbackIncomplete("回滚未完成：" + "；".join(failures))
     unbind(sandbox, phe, journal["agent"], [str(plan["path"]) for plan in plans])
     print(f"rolled back {journal['release']} for {journal['agent']}: {len(plans)} 条链接")
     return 0

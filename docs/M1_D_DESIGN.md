@@ -17,9 +17,11 @@
 ## 防止碰到真实环境（四层，全在代码里）
 
 1. `--home` 和 `--phe-home` 必填，没有默认值。
-2. 真实 home 用 `pwd.getpwuid(os.getuid()).pw_dir` 取，不跟 `$HOME`。两个参数 realpath 后，等于真实 home、是它的祖先，或落在 `~/.claude`、`~/.codex`、`~/.pi`、`~/.phe`、`~/.agents`、`~/AI/temper` 之下，一律在任何写入前退出 2。没有逃生参数。
-3. 每次写入（建文件、建/换 symlink、mkdir、chmod、写 journal 和 bindings）都经过 `guarded_write_path()`：被写对象所在目录的 realpath 必须在 `--home` 或 `--phe-home` 之下，否则抛异常。检查看目录、不解析叶子，所以写链接时查的是链接自身所在目录，不是它指向的目标；沙箱根本身允许创建。
+2. 真实 home 用 `pwd.getpwuid(os.getuid()).pw_dir` 取，不跟 `$HOME`。两个参数 realpath 后，等于真实 home、是它的祖先，或落在 `~/.claude`、`~/.codex`、`~/.pi`、`~/.phe`、`~/.agents`、`~/AI/temper` 之下，一律在任何写入前退出 2。没有逃生参数。字符串比较按 casefold，并用文件身份（`st_dev`、`st_ino`）逐级向上再判一遍，所以大小写不敏感的文件系统上 `/Users/…` 和 `/users/…` 这类别名同样被拒绝。
+3. 每次写入（建文件、建/换 symlink、mkdir、chmod、写 journal 和 bindings）都经过 `guarded_write_path()`：被写对象所在目录的 realpath 必须在 `--home` 或 `--phe-home` 之下，否则抛异常。检查看目录、不解析叶子，所以写链接时查的是链接自身所在目录，不是它指向的目标；沙箱根本身允许创建。“在根之下”同样按文件身份逐级向上比，避免大小写别名误判。
 4. 单测：对每个子命令传真实 home，断言退出 2、沙箱前后不变、写入函数未被调用。
+
+边界：不保证防住检查与写入之间沙箱目录被并发替换的竞态（需要有人在沙箱内主动换目录）；单用户手动运行可以接受。
 
 ## 目录与对象
 
@@ -42,11 +44,11 @@ release 编号用和 registry 一样的高水位，不复用。deploy 的目标�
 | 命令 | 行为 |
 |---|---|
 | `import --registry R --inventory I [--asset-id ...]` | 把选中资产复制到 `assets/<asset_id>/`；来源 realpath 必须在 `--home`、`--phe-home` 或两者的共同祖先（沙箱根）之下；`--inventory` 用来确认资产确实出现在这次 `--home` 的盘点里；已导入的编号拒绝覆盖；资产内容含软链时拒绝 |
-| `release` | 由 `assets/` 构建 `releases/rNNNN/` 与 manifest |
+| `release` | 由 `assets/` 构建 `releases/rNNNN/` 与 manifest；来源目录不可用或遍历失败（含子目录读不到）、发布内容含软链时失败，并删掉本次 `rNNNN`，不留可部署的发布；编号照常推进，不复用 |
 | `deploy --agent X --release rNNNN --registry R` | 先对 `--home` 跑 inventory + drift，任何 `ExternalChange` 都中止，一条链接都不动；全部目标检查完（父目录存在、守卫通过、不是普通文件）才写；写前记 journal，再逐条原子替换链接（临时链接 + `os.replace`），最后更新 bindings |
 | `rollback --journal J` | 按 journal 倒序恢复旧状态，再撤掉这些链接的 binding |
 
-“记录式事务”就是 journal + rollback，不另设状态机。保证：任一链接替换失败（含 bindings 写入失败）按 journal 恢复已改过的链接；不保证并发 deploy 的互斥。
+“记录式事务”就是 journal + rollback，不另设状态机。保证：任一链接替换失败（含 bindings 写入失败）按 journal 恢复已改过的链接；临时链接名带随机后缀，撞名就换名字重试，不删不是本次创建的对象；恢复时单条被守卫拒绝或 IO 失败不中断其余条目，最终报错同时带上原始的部署失败和恢复失败；不保证并发 deploy 的互斥。
 
 deploy 不改登记表：部署后同一份登记表会把这些链接报成 `symlink_target_changed`，所以验收里的“再盘点 drift 为 0”要先把新盘点 adopt 成新基线。deploy 只盘点 `--home`（没有 `--project`），登记表里的项目级条目会被判为 `missing` 并中止；该 agent 的 `observed` 路径不在 `--home` 之下的跳过并打印。
 
