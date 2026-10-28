@@ -6,6 +6,7 @@ fixture 里三个 Agent 的指令指向同一份 AGENTS.md，三个 Agent 的 sk
 
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -213,6 +214,103 @@ class SharedAssetDeployTests(MultiAgentFixture):
         shared_id = self.asset_id(self.shared)
         self.assertEqual(os.readlink(self.instructions["codex"]), str(self.release_target(shared_id)))
         self.assertEqual(sorted(self.bindings()), ["codex"])
+
+
+class BoundReleaseVerificationTests(MultiAgentFixture):
+    """放行前按 manifest 校验绑定发布：内容被改写、换成软链、多出文件、编号非法都不放行。"""
+
+    def release_asset_dir(self, asset_id: str) -> Path:
+        return self.phe / "releases" / RELEASE_ID / "files" / asset_id
+
+    def snapshot(self) -> dict:
+        """中止前后要比对的三样：home 链接树、bindings、journal 数量。"""
+        return {"links": tree(self.home), "bindings": self.bindings(), "journals": len(self.journals())}
+
+    def assert_aborts_unchanged(self, agent: str, before: dict) -> str:
+        result = self.deploy(agent)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertEqual(tree(self.home), before["links"])
+        self.assertEqual(self.bindings(), before["bindings"])
+        self.assertEqual(len(self.journals()), before["journals"])
+        self.assertIn("symlink_target_changed", result.stderr)
+        return result.stderr
+
+    def test_deploy_aborts_when_bound_release_file_was_rewritten(self):
+        self.assertEqual(self.deploy("claude").returncode, 0)
+        target = self.release_target(self.asset_id(self.shared))
+        target.chmod(0o644)
+        target.write_text("# rewritten\n", encoding="utf-8")
+        stderr = self.assert_aborts_unchanged("codex", self.snapshot())
+        self.assertIn(str(self.instructions["claude"]), stderr)
+        self.assertIn("verify_failed", stderr)
+
+    def test_deploy_aborts_when_bound_release_asset_dir_is_a_symlink(self):
+        self.assertEqual(self.deploy("claude").returncode, 0)
+        asset_dir = self.release_asset_dir(self.asset_id(self.skill))
+        # 软链指向的目录内容与 manifest 完全一致：只有 lstat 拒绝软链才能挡住这条漂移。
+        elsewhere = self.tmp / "elsewhere/demo"
+        write(elsewhere / "SKILL.md", "# demo skill\n")
+        write(elsewhere / "run.py", "print('demo')\n")
+        asset_dir.parent.chmod(0o755)
+        rmtree_force(asset_dir)
+        os.symlink(elsewhere, asset_dir)
+        stderr = self.assert_aborts_unchanged("codex", self.snapshot())
+        self.assertIn(str(self.skills["claude"]), stderr)
+        self.assertIn("软链", stderr)
+
+    def test_deploy_aborts_when_bound_release_dir_is_a_symlink(self):
+        self.assertEqual(self.deploy("claude").returncode, 0)
+        release_dir = self.phe / "releases" / RELEASE_ID
+        # 副本内容与 manifest 完全一致：只有 lstat 拒绝发布目录是软链才能挡住这条漂移。
+        copy = self.tmp / "copied-release"
+        shutil.copytree(release_dir, copy, symlinks=True)
+        (self.phe / "releases").chmod(0o755)
+        rmtree_force(release_dir)
+        os.symlink(copy, release_dir)
+        stderr = self.assert_aborts_unchanged("codex", self.snapshot())
+        self.assertIn("软链", stderr)
+
+    def test_deploy_aborts_when_bound_release_manifest_is_a_symlink(self):
+        self.assertEqual(self.deploy("claude").returncode, 0)
+        manifest = self.phe / "releases" / RELEASE_ID / "manifest.json"
+        copy = self.tmp / "copied-manifest.json"
+        copy.write_bytes(manifest.read_bytes())
+        manifest.parent.chmod(0o755)
+        manifest.unlink()
+        os.symlink(copy, manifest)
+        stderr = self.assert_aborts_unchanged("codex", self.snapshot())
+        self.assertIn("软链", stderr)
+
+    def test_deploy_aborts_when_bound_release_asset_has_an_extra_file(self):
+        self.assertEqual(self.deploy("claude").returncode, 0)
+        asset_dir = self.release_asset_dir(self.asset_id(self.skill))
+        asset_dir.chmod(0o755)
+        (asset_dir / "extra.md").write_text("# extra\n", encoding="utf-8")
+        stderr = self.assert_aborts_unchanged("codex", self.snapshot())
+        self.assertIn("文件集合", stderr)
+
+    def test_deploy_aborts_when_bindings_release_id_is_not_a_release_name(self):
+        self.assertEqual(self.deploy("claude").returncode, 0)
+        for bad in ("../x", str(self.tmp / "elsewhere")):
+            with self.subTest(release_id=bad):
+                bindings = json.loads(json.dumps(self.bindings()))
+                for path in bindings["claude"]:
+                    bindings["claude"][path] = bad
+                self.write_bindings(bindings)
+                stderr = self.assert_aborts_unchanged("codex", self.snapshot())
+                self.assertIn("发布编号不合法", stderr)
+
+    def test_verify_runs_once_per_release_and_asset(self):
+        """同一 release+asset 在一次预检里只校验一次：两条同资产漂移只打一条 verify_failed。"""
+        self.assertEqual(self.deploy("claude").returncode, 0)
+        self.assertEqual(self.deploy("codex").returncode, 0)
+        target = self.release_target(self.asset_id(self.shared))
+        target.chmod(0o644)
+        target.write_text("# rewritten\n", encoding="utf-8")
+        stderr = self.assert_aborts_unchanged("pi", self.snapshot())
+        self.assertIn(str(self.instructions["claude"]), stderr)
+        self.assertIn(str(self.instructions["codex"]), stderr)
+        self.assertEqual(stderr.count("verify_failed"), 1)
 
 
 if __name__ == "__main__":

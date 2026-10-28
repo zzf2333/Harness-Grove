@@ -31,6 +31,8 @@ def load_sibling(name: str):
 
 registry_tool = load_sibling("registry")
 inventory_tool = load_sibling("inventory")
+# 放行 PHE 自己的部署前，按 manifest 校验绑定发布；校验逻辑独立成模块，避免本文件继续变长。
+release_verify_tool = load_sibling("release_verify")
 
 # 真实 home 下这些路径属于用户正在使用的 Agent 配置和 temper，任何写入都不允许。
 PROTECTED_SUBPATHS = (".claude", ".codex", ".pi", ".phe", ".agents", "AI/temper")
@@ -251,13 +253,6 @@ def current_state(path: Path) -> tuple[str, str | None]:
     return "other", None
 
 
-def read_manifest(release_dir: Path) -> dict:
-    path = release_dir / "manifest.json"
-    if not path.is_file():
-        raise ValueError(f"没有发布清单：{path}")
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 def drift_changes(data: dict, observed: dict) -> list[dict]:
     """复用 registry 的比对口径：只针对已登记条目，同一 path 取第一条记录。"""
     latest: dict[str, dict] = {}
@@ -270,20 +265,12 @@ def drift_changes(data: dict, observed: dict) -> list[dict]:
     return changes
 
 
-def link_target(phe: Path, release_id: str, meta: dict) -> Path:
-    """发布里一个资产的链接目标：instructions 指到文件，skill 指到整个目录。"""
-    target = phe / "releases" / release_id / meta["entry"]
-    if meta["kind"] == "instructions":
-        target = target / meta["name"]
-    return target
-
-
 def link_plan(data: dict, manifest: dict, agent: str, home: Path, phe: Path) -> list[dict]:
     """按登记表里该 agent 的 observed 路径算目标链接；只处理 --home 之下的用户级路径。"""
     home_real = Path(os.path.realpath(home))
     plans = []
     for asset_id, meta in sorted(manifest["assets"].items()):
-        target = link_target(phe, manifest["release"], meta)
+        target = release_verify_tool.link_target(phe, manifest["release"], meta)
         for asset in data["assets"]:
             if asset["asset_id"] != asset_id:
                 continue
@@ -405,36 +392,6 @@ def read_bindings(phe: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def bound_target(phe: Path, release_id: str, asset_id: str) -> Path | None:
-    """bindings 记的发布里该资产的目标；发布或其中资产不存在时返回 None。"""
-    release_dir = phe / "releases" / release_id
-    if not (release_dir / "manifest.json").is_file():
-        return None
-    meta = read_manifest(release_dir)["assets"].get(asset_id)
-    if meta is None:
-        return None
-    return link_target(phe, release_id, meta)
-
-
-def expected_deployment(change: dict, bindings: dict, phe: Path) -> bool:
-    """这条 symlink_target_changed 是不是 PHE 自己的部署：路径已绑定，链接精确指向绑定发布里的对应文件。
-
-    只看路径在 bindings 里不够：链接被改指别处、发布或其中资产不存在时仍然算漂移。
-    """
-    path = change["path"]
-    if not os.path.islink(path):
-        return False
-    current = os.readlink(path)
-    for entries in bindings.values():
-        release_id = entries.get(path)
-        if release_id is None:
-            continue
-        target = bound_target(phe, release_id, change["asset_id"])
-        if target is not None and current == str(target):
-            return True
-    return False
-
-
 def bind(sandbox: Sandbox, phe: Path, agent: str, paths: list[str], release_id: str) -> None:
     data = read_bindings(phe)
     entries = data.setdefault(agent, {})
@@ -457,13 +414,17 @@ def deploy(args, roots: list[Path]) -> int:
     sandbox = Sandbox(roots)
     home, phe = roots
     data = registry_tool.read_registry(args.registry)
-    manifest = read_manifest(phe / "releases" / args.release)
+    manifest = release_verify_tool.read_manifest(phe / "releases" / args.release)
     changes = drift_changes(data, inventory_tool.inventory(home, []))
     bindings = read_bindings(phe)
+    verified: dict[tuple[str, str], Path | None] = {}
     external = [
         change
         for change in changes
-        if not (change["type"] == "symlink_target_changed" and expected_deployment(change, bindings, phe))
+        if not (
+            change["type"] == "symlink_target_changed"
+            and release_verify_tool.expected_deployment(change, bindings, phe, verified)
+        )
     ]
     if external:
         for change in external:
