@@ -82,6 +82,8 @@ def oracle(work: Path, cfg: dict) -> dict:
     tests_line = next((line.strip() for line in text.splitlines() if line.strip().startswith("Tests ")), None)
     receipt_path = work / ".phe-calibration-receipt"
     receipt = receipt_path.read_text().strip() if receipt_path.exists() else None
+    # 配置只存回执值的 Hash，Agent 即使读到配置也拿不到明文。
+    receipt_match = receipt is not None and hashlib.sha256(receipt.encode()).hexdigest() == cfg["nonce_sha256"]
     shutil.rmtree(check_root, ignore_errors=True)
     test_pass = None if to else (rc == 0)
     return {
@@ -91,8 +93,8 @@ def oracle(work: Path, cfg: dict) -> dict:
         "oracle_seconds": round(dur, 2),
         "oracle_tests_line": tests_line,
         "receipt_present": receipt is not None,
-        "receipt_match": receipt == cfg["nonce"],
-        "contract_pass": None if test_pass is None else (test_pass and receipt == cfg["nonce"]),
+        "receipt_match": receipt_match,
+        "contract_pass": None if test_pass is None else (test_pass and receipt_match),
         "_oracle_output": text,
     }
 
