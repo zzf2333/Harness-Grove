@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -167,6 +168,29 @@ class LogTests(SyntheticExperiment):
         self.assertEqual(target.read_text(), "")
         self.assertTrue((self.exp / "host_log.jsonl").is_symlink())
 
+    def test_hardlinked_host_log_exits_2_and_target_bytes_unchanged(self):
+        self.freeze()
+        outside = self.root / "outside.txt"
+        outside.write_text("outside\n")
+        for target in (self.exp / "proposal.json", outside):
+            with self.subTest(target=target.name):
+                log = self.exp / "host_log.jsonl"
+                log.unlink(missing_ok=True)
+                os.link(target, log)
+                before = target.read_bytes()
+                code, err = self.run_log(self.exp, host="claude", step="draft")
+                self.assertEqual(code, 2)
+                self.assertIn("硬链接", err)
+                self.assertEqual(target.read_bytes(), before)
+        self.assertEqual(hashlib.sha256((self.exp / "proposal.json").read_bytes()).hexdigest(), PROPOSAL_SHA)
+
+    def test_unicode_line_separator_in_note_round_trips(self):
+        note = "第一段\u2028第二段\u2029第三段"
+        self.assertEqual(self.run_log(self.exp, host="pi", step="draft", note=note)[0], 0)
+        report = hostlog.derive(self.exp)
+        self.assertEqual(report["notes"], [])
+        self.assertEqual(report["last_log"]["note"], note)
+
 
 class StatusTests(SyntheticExperiment):
     def test_log_ahead_of_file_evidence_is_inconsistent(self):
@@ -247,6 +271,29 @@ class CommandLineTests(unittest.TestCase):
                 proc = self.phe(*argv)
                 self.assertEqual(proc.returncode, 2, proc.stderr)
         self.assertEqual(list(self.outside.iterdir()), [])
+
+    def test_cli_success_path_in_a_synthetic_repo_copy(self):
+        # 仓库根由模块 __file__ 决定：把 tools/ 复制到临时仓库，走真实 CLI 接线，不碰本仓库 experiments/。
+        repo = self.outside.parent / "repo"
+        shutil.copytree(ROOT / "tools", repo / "tools", ignore=shutil.ignore_patterns("__pycache__"))
+        exp = repo / "experiments" / "e1"
+        exp.mkdir(parents=True)
+        (exp / "proposal.json").write_bytes(PROPOSAL)
+        phe = [sys.executable, "-I", str(repo / "tools/phe.py")]
+        logged = subprocess.run(
+            [*phe, "log", str(exp), "--host", "codex", "--step", "draft", "--note", "起草"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(logged.returncode, 0, logged.stderr)
+        shown = subprocess.run([*phe, "status", str(exp)], capture_output=True, text=True, check=False)
+        self.assertEqual(shown.returncode, 0, shown.stderr)
+        report = json.loads(shown.stdout)
+        self.assertEqual(report["stage"], "drafted")
+        self.assertEqual((report["last_log"]["host"], report["last_log"]["step"]), ("codex", "draft"))
+        self.assertFalse(report["inconsistent"])
+        self.assertEqual((exp / "proposal.json").read_bytes(), PROPOSAL)
 
 
 if __name__ == "__main__":

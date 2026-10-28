@@ -97,7 +97,7 @@ python3 -I tools/phe.py judge ${PHE_REPO}/experiments/<id> [--out <结果路径>
    | `drafted` | `proposal.json` | 冻结并写 `proposal.sha256`（§3） |
    | `frozen` | 加 `proposal.sha256` | 请用户批准并写 `approval.json`（§4） |
    | `approved` | 加 `approval.json` | 执行 `run`（§5） |
-   | `running` | 加 `runs.jsonl` | 看 `stop.json` 的 `stop_reason`：为 null 表示没结束，继续 `run`；非 null 表示已结束，做 `judge`（§6） |
+   | `running` | 加 `runs.jsonl` | 看 `stop.json`：`stop_reason` 非 null 表示有停止事件，做 `judge`（§6）；为 null 只表示没有停止事件，再比对 `runs.jsonl` 的 `slot` 集合与 `proposal.json` 冻结的 `experiment.schedule`，全部完成做 `judge`，未完成继续 `run`；没有 `stop.json` 表示上次 `run` 中断，再执行 `run`（它跳过已完成的 slot 并先核对完整性） |
    | `judged` | 加 `result.json` | 写 `report.md`（§7） |
    | `reported` | 加 `report.md` | 结束；只汇报，不重跑 |
 

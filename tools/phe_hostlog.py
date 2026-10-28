@@ -25,6 +25,7 @@ inconsistent 为 true，阶段仍以文件为准，退出码仍是 0。
 
 import json
 import os
+import stat
 import sys
 import time
 from pathlib import Path
@@ -74,22 +75,29 @@ def validate_entry(host: str, step: str, note: str) -> None:
 
 
 def log_path(exp: Path) -> Path:
-    path = exp / LOG_NAME
-    if path.is_symlink():
-        raise ValueError(f"{LOG_NAME} 是软链，拒绝写入：{path}")
-    return path
+    return exp / LOG_NAME
 
 
 def append_line(path: Path, line: str) -> None:
-    """用 O_APPEND 追加一整行并 fsync：已有行不会被截断或改写。"""
-    # 已有文件最后一行没有换行时先补一个，否则新记录会接在那一行后面。
-    prefix = ""
-    if path.is_file() and path.stat().st_size:
-        with open(path, "rb") as f:
+    """用 O_APPEND 追加一整行并 fsync：已有行不会被截断或改写。
+
+    O_NOFOLLOW 拒绝软链；打开后对同一个描述符 fstat，拒绝非普通文件和硬链接（st_nlink != 1），
+    否则会向 proposal.json 或实验目录外的同一个 inode 追加内容。检查和写入用同一个描述符。
+    """
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o644)
+    except OSError as exc:
+        raise ValueError(f"{LOG_NAME} 无法安全打开（软链或不可写）：{path}") from exc
+    with os.fdopen(fd, "r+b") as f:
+        info = os.fstat(f.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise ValueError(f"{LOG_NAME} 不是独立的普通文件（硬链接或特殊文件），拒绝写入：{path}")
+        # 已有文件最后一行没有换行时先补一个，否则新记录会接在那一行后面。
+        prefix = b""
+        if info.st_size:
             f.seek(-1, os.SEEK_END)
-            prefix = "" if f.read(1) == b"\n" else "\n"
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(prefix + line + "\n")
+            prefix = b"" if f.read(1) == b"\n" else b"\n"
+        f.write(prefix + line.encode("utf-8") + b"\n")
         f.flush()
         os.fsync(f.fileno())
 
@@ -117,7 +125,8 @@ def read_log(exp: Path) -> tuple[list[dict], list[str]]:
     if not path.exists():
         return [], []
     entries, notes = [], []
-    for number, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
+    # 只按 JSONL 的 "\n" 分行；splitlines 会把 note 里的 U+2028 等当成行边界。
+    for number, line in enumerate(path.read_text(errors="replace").split("\n"), 1):
         if not line.strip():
             continue
         try:
