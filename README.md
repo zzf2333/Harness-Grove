@@ -5,7 +5,7 @@ Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 运�
 ## 当前状态
 
 - 已有设计文档、实验模板和标准库评测入口 `tools/phe.py`（M0 切片 A）。
-- M-1 已完成：spike-001 判定 **go**（2026-10-28，25 次运行，7 项门槛全部通过）；真实规则信号为 inconclusive。下一阶段是 M0。运行产物位于被忽略的 `experiments/`。
+- M-1 已完成：spike-001 判定 **go**（2026-10-28，25 次运行，7 项门槛全部通过）；真实规则信号为 inconclusive。M0 已完成：生产等价基线复验 c-002 判定 go（15 次，规则信号 inconclusive）。运行产物位于被忽略的 `experiments/`。
 
 ## 文档地图
 

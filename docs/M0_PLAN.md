@@ -1,6 +1,6 @@
 # M0 计划：最小评测链路
 
-**状态：** 进行中（2026-10-28）。切片 A、B 已完成；切片 C 首次运行 c-001 判 pivot（基线大多失败，单次费用超上限），详见被忽略的 experiments/c-001/report.md。M-1 spike-001 判定为 go，结果见 README。
+**状态：** 完成条件 1–4 已达到（2026-10-28）。切片 A、B 完成；切片 C 第 1 次 c-001（fb77805d）因任务过难判 pivot，第 2 次 c-002（2010f3a9）在生产等价基线上判 go，真实规则信号 inconclusive。报告在被忽略的 `experiments/c-00{1,2}/report.md`。
 **上位文档：** [PHE_SPEC](PHE_SPEC.md) 的「里程碑与 Gate」、[M-1 协议](M-1_PROTOCOL.md)。
 
 M0 把 M-1 的一次性脚本变成可复用的最小评测链路：宿主 Agent 能起草并冻结 proposal，调用同一套 Runner 和判定，读到报告。M0 不做发布，不改任何生产配置。
