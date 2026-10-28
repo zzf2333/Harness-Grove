@@ -132,6 +132,10 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
     art.mkdir(parents=True, exist_ok=True)
     harness = Path(cfg["harness"][item["group"]])
     work = build_workdir(Path(cfg["base_dir"]), harness)
+    # 启动前记下任务起点；Agent 可能在临时仓库里提交甚至改写历史，diff 一律对比这个 SHA。
+    root = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=work, capture_output=True, text=True, check=True
+    ).stdout.strip()
     argv = cfg.get("target_argv") or [
         "claude",
         "-p",
@@ -171,10 +175,6 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
     except json.JSONDecodeError:
         record["result_parse_error"] = True
 
-    # 对比任务起点提交，而不是 HEAD：Agent 可能在临时仓库里自己提交。
-    root = subprocess.run(
-        ["git", "rev-list", "--max-parents=0", "HEAD"], cwd=work, capture_output=True, text=True, check=True
-    ).stdout.split()[0]
     diff = subprocess.run(["git", "diff", root, "--stat"], cwd=work, capture_output=True, text=True, check=True).stdout
     (art / "diff.patch").write_text(
         subprocess.run(["git", "diff", root], cwd=work, capture_output=True, text=True, check=True).stdout
@@ -226,12 +226,19 @@ def integrity_problem(p, cfg, exp) -> str | None:
     if sha(exp / "config.json") != p["runner"]["config_sha256"]:
         return "config_hash_changed"
     for g in p["experiment"]["groups"]:
-        if sha(Path(cfg["harness"][g])) != p["harness"]["variants"][g]["snapshot_sha256"]:
+        if sha256_file(Path(cfg["harness"][g])) != p["harness"]["variants"][g]["snapshot_sha256"]:
             return f"harness_hash_changed:{g}"
+    # 文件缺失返回 None，同样视为被改写。
     for path, digest in p["task"].get("oracle_files_sha256", {}).items():
-        if sha(Path(path)) != digest:
+        if sha256_file(Path(path)) != digest:
             return "oracle_hash_changed"
     return None
+
+
+def crash_stop(p, cfg, exp):
+    # Runner 异常退出前也复核完整性：invalid_run 优先于 pivot。
+    problem = integrity_problem(p, cfg, exp)
+    return "invalid_run:" + problem if problem else "pivot:runner_crashed_no_record"
 
 
 def most_severe(reasons):
@@ -301,11 +308,11 @@ def run(exp: Path):
             run_slot(exp, cfg, item, budget, receipt_required="required_control" in p["rules"])
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             print(f"slot {item['slot']} runner failed: {exc}", file=sys.stderr)
-            stop = "pivot:runner_crashed_no_record"
+            stop = crash_stop(p, cfg, exp)
             break
         rs = records(exp)
         if len(rs) != before + 1:
-            stop = "pivot:runner_crashed_no_record"
+            stop = crash_stop(p, cfg, exp)
             break
         r = rs[-1]
         print(f"slot {r['slot']} {r['group']} complete", flush=True)

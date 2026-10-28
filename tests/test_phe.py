@@ -260,6 +260,39 @@ class RunTests(unittest.TestCase):
             json.loads((self.exp / "stop.json").read_text())["stop_reason"], "invalid_run:oracle_hash_changed"
         )
 
+    def test_deleted_oracle_file_is_invalid_run(self):
+        trusted = self.exp / "trusted.test.ts"
+        trusted.write_text("expect(true)")
+        self.p["task"] = {"oracle_files_sha256": {str(trusted): phe.sha(trusted)}}
+        self.freeze()
+        trusted.unlink()
+        with patch.object(phe, "run_slot") as target:
+            phe.run(self.exp)
+            target.assert_not_called()
+        self.assertEqual(
+            json.loads((self.exp / "stop.json").read_text())["stop_reason"], "invalid_run:oracle_hash_changed"
+        )
+
+    def test_runner_crash_after_oracle_tamper_is_invalid_run(self):
+        trusted = self.exp / "trusted.test.ts"
+        trusted.write_text("expect(true)")
+        self.p["task"] = {"oracle_files_sha256": {str(trusted): phe.sha(trusted)}}
+        self.freeze()
+        for name, change in (("rewrite", lambda: trusted.write_text("tampered")), ("delete", trusted.unlink)):
+            with self.subTest(change=name):
+                trusted.write_text("expect(true)")
+                (self.exp / "stop.json").unlink(missing_ok=True)
+
+                def crash(*_args, change=change, **_kwargs):
+                    change()
+                    raise OSError("simulated runner failure")
+
+                with patch.object(phe, "run_slot", side_effect=crash):
+                    phe.run(self.exp)
+                self.assertEqual(
+                    json.loads((self.exp / "stop.json").read_text())["stop_reason"], "invalid_run:oracle_hash_changed"
+                )
+
     def test_oracle_overwrites_every_trusted_test(self):
         work = self.exp / "oracle-work"
         (work / "a").mkdir(parents=True)
