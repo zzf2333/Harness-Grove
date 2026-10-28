@@ -1,4 +1,4 @@
-"""tools/registry.py adopt 的契约验收：选择、幂等、拒绝，以及登记不改被登记文件。"""
+"""tools/registry.py 的 adopt/drift 契约验收：选择、幂等、拒绝、四类 ExternalChange、不改被登记文件。"""
 
 import hashlib
 import json
@@ -84,9 +84,31 @@ class RegistryFixture(unittest.TestCase):
             *selectors,
         )
 
+    def drift(self, *extra: str, registry: Path | None = None, inventory: Path | None = None):
+        return run_cli(
+            REGISTRY,
+            "drift",
+            "--inventory",
+            str(inventory or self.inv),
+            "--registry",
+            str(registry or self.reg),
+            *extra,
+        )
+
     def assets(self, registry: Path | None = None) -> list[dict]:
         data = json.loads((registry or self.reg).read_text(encoding="utf-8"))
         return data["assets"]
+
+    def asset_id(self, resolved_path: Path) -> str:
+        for asset in self.assets():
+            if asset["resolved_path"] == str(resolved_path):
+                return asset["asset_id"]
+        raise AssertionError(f"登记表里没有 {resolved_path}")
+
+    def drift_report(self, *extra: str, inventory: Path | None = None) -> dict:
+        result = self.drift(*extra, inventory=inventory)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
 
 
 class AdoptTests(RegistryFixture):
@@ -181,6 +203,97 @@ class AdoptTests(RegistryFixture):
             self.assertEqual(sha256(path), digest, path)
             self.assertEqual(os.lstat(path).st_mtime_ns, mtime, path)
         self.assertEqual(tree(self.home) | tree(self.project), tree_before)
+
+    def test_adopt_then_drift_reports_nothing(self):
+        self.assertEqual(self.adopt("--group", str(self.shared), "--path", str(self.settings)).returncode, 0)
+        report = self.drift_report(inventory=self.inventory("inventory-2.json"))
+        self.assertEqual(report["changes"], 0)
+        self.assertEqual(report["external_changes"], [])
+
+
+class DriftTests(RegistryFixture):
+    def setUp(self):
+        super().setUp()
+        self.assertEqual(self.adopt("--group", str(self.shared), "--path", str(self.settings)).returncode, 0)
+
+    def test_content_change_reported(self):
+        write(self.shared, "# shared v2\n")
+        report = self.drift_report(inventory=self.inventory("inventory-2.json"))
+        self.assertEqual(report["changes"], 1)
+        change = report["external_changes"][0]
+        self.assertEqual(change["asset_id"], self.asset_id(self.shared))
+        self.assertEqual(change["type"], "content_changed")
+        self.assertEqual(change["path"], str(self.shared))
+        self.assertEqual(change["before"]["sha256"], hashlib.sha256(b"# shared\n").hexdigest())
+        self.assertEqual(change["after"]["sha256"], hashlib.sha256(b"# shared v2\n").hexdigest())
+        self.assertTrue(change["detected_at"].endswith("+00:00"))
+
+    def test_symlink_retarget_reported(self):
+        self.claude_link.unlink()
+        link(self.shared_other, self.claude_link)
+        report = self.drift_report(inventory=self.inventory("inventory-2.json"))
+        self.assertEqual(report["changes"], 1)
+        change = report["external_changes"][0]
+        self.assertEqual(change["asset_id"], self.asset_id(self.shared))
+        self.assertEqual(change["type"], "symlink_target_changed")
+        self.assertEqual(change["path"], str(self.claude_link))
+        self.assertEqual(change["before"], {"symlink_target": str(self.shared), "resolved_path": str(self.shared)})
+        self.assertEqual(
+            change["after"], {"symlink_target": str(self.shared_other), "resolved_path": str(self.shared_other)}
+        )
+
+    def test_deleted_symlink_reported(self):
+        self.codex_link.unlink()
+        report = self.drift_report(inventory=self.inventory("inventory-2.json"))
+        self.assertEqual(report["changes"], 1)
+        change = report["external_changes"][0]
+        self.assertEqual(change["type"], "missing")
+        self.assertEqual(change["asset_id"], self.asset_id(self.shared))
+        self.assertEqual(change["path"], str(self.codex_link))
+        self.assertIsNone(change["after"])
+
+    def test_unreadable_asset_reported(self):
+        if os.geteuid() == 0:
+            self.skipTest("以 root 运行无法用 chmod 构造权限错误")
+        self.addCleanup(os.chmod, self.settings, 0o600)
+        os.chmod(self.settings, 0o000)
+        report = self.drift_report(inventory=self.inventory("inventory-2.json"))
+        self.assertEqual(report["changes"], 1)
+        change = report["external_changes"][0]
+        self.assertEqual(change["type"], "unreadable")
+        self.assertEqual(change["asset_id"], self.asset_id(self.settings))
+        self.assertEqual(change["path"], str(self.settings))
+        self.assertEqual(change["after"]["access_error"], "PermissionError")
+        self.assertFalse(change["after"]["broken_link"])
+
+    def test_unregistered_changes_are_not_drift(self):
+        write(self.shared_other, "# other v2\n")
+        write(self.project / ".claude/rules/new.md", "# new rule\n")
+        write(self.project / ".mcp.json", json.dumps({"mcpServers": {}}))
+        report = self.drift_report(inventory=self.inventory("inventory-2.json"))
+        self.assertEqual(report["changes"], 0)
+        self.assertEqual(report["external_changes"], [])
+
+    def test_drift_writes_report_without_touching_registry(self):
+        before = self.reg.read_text(encoding="utf-8")
+        write(self.shared, "# shared v2\n")
+        self.inv = self.inventory("inventory-2.json")
+        out = self.out_dir / "drift.json"
+        result = self.drift("--out", str(out))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+        report = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(report["changes"], 1)
+        self.assertEqual(report["inventory_sha256"], sha256(self.inv))
+        self.assertEqual(self.reg.read_text(encoding="utf-8"), before)
+        # 同一份新盘点再跑一次，结果一致：drift 不消费也不更新基线。
+        self.assertEqual(self.drift_report()["changes"], 1)
+
+    def test_drift_without_registry_fails(self):
+        missing = self.out_dir / "no-such-registry.json"
+        result = self.drift(registry=missing, inventory=self.inventory("inventory-2.json"))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(str(missing), result.stderr)
 
 
 if __name__ == "__main__":

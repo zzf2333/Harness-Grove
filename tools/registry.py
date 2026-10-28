@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""PHE 资产登记表：adopt 把盘点条目登记为 Active(imported, unverified)（标准库，单文件）。
+"""PHE 资产登记表：adopt 登记盘点条目，drift 只读比对基线（标准库，单文件）。
 
 登记表只记路径、Hash、软链目标和状态，不记文件内容，也不记 settings 的值。
+ExternalChange 只报告，不自动接受、覆盖或写回登记表。
 """
 
 import argparse
@@ -133,6 +134,85 @@ def adopt(inventory_path: Path, registry_path: Path, paths: list[str], groups: l
     return 1 if refusals else 0
 
 
+def change(asset: dict, change_type: str, path: str, before: dict | None, after: dict | None, at: str) -> dict:
+    return {
+        "asset_id": asset["asset_id"],
+        "type": change_type,
+        "path": path,
+        "before": before,
+        "after": after,
+        "detected_at": at,
+    }
+
+
+def path_state(record: dict) -> dict:
+    return {"symlink_target": record["symlink_target"], "resolved_path": record["resolved_path"]}
+
+
+def asset_changes(asset: dict, latest: dict[str, dict], at: str) -> list[dict]:
+    """按 observed path 比对：先看缺失和不可读，再看软链目标，最后看内容。
+
+    内容属于真实文件，所以每个资产最多报一条 content_changed；软链目标变了的 path
+    不再参与内容比对，否则换链会同时报成内容变化。
+    """
+    baseline = asset["baseline"]
+    resolved_path = asset["resolved_path"]
+    changes = []
+    content_records = []
+    for path in sorted(baseline["paths"]):
+        known = {"symlink_target": baseline["paths"][path], "resolved_path": resolved_path}
+        record = latest.get(path)
+        if record is None:
+            changes.append(change(asset, "missing", path, known, None, at))
+            continue
+        if record.get("access_error") or record["broken_link"]:
+            after = path_state(record) | {
+                "access_error": record.get("access_error"),
+                "broken_link": record["broken_link"],
+            }
+            changes.append(change(asset, "unreadable", path, known, after, at))
+            continue
+        if record["symlink_target"] != baseline["paths"][path] or record["resolved_path"] != resolved_path:
+            changes.append(change(asset, "symlink_target_changed", path, known, path_state(record), at))
+            continue
+        content_records.append(record)
+    for record in content_records:
+        if record["sha256"] != baseline["sha256"]:
+            before = {"sha256": baseline["sha256"], "size": baseline["size"], "mtime": baseline["mtime"]}
+            after = {"sha256": record["sha256"], "size": record["size"], "mtime": record["mtime"]}
+            changes.append(change(asset, "content_changed", resolved_path, before, after, at))
+            break
+    return changes
+
+
+def drift(inventory_path: Path, registry_path: Path, out: Path | None) -> int:
+    inventory_bytes = inventory_path.read_bytes()
+    data = json.loads(inventory_bytes)
+    registry = read_registry(registry_path)
+    at = utc_now()
+    latest: dict[str, dict] = {}
+    for record in data["records"]:
+        # 同一 path 可能被多个 agent 各记一条，读的是同一个文件，结果一致，取第一条。
+        latest.setdefault(record["path"], record)
+    changes = []
+    for asset in registry["assets"]:
+        changes.extend(asset_changes(asset, latest, at))
+    report = {
+        "detected_at": at,
+        "inventory": str(inventory_path),
+        "inventory_sha256": hashlib.sha256(inventory_bytes).hexdigest(),
+        "changes": len(changes),
+        "external_changes": changes,
+    }
+    text = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+    if out is None:
+        print(text, end="")
+    else:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="PHE registry")
     commands = ap.add_subparsers(dest="cmd", required=True)
@@ -143,11 +223,19 @@ def main():
     adopt_parser.add_argument("--path", action="append", default=[], help="按盘点记录的 path 选择")
     adopt_parser.add_argument("--group", action="append", default=[], help="按盘点 groups 的 resolved_path 选择整组")
 
+    drift_parser = commands.add_parser("drift", help="对比新盘点与登记基线，只报告 ExternalChange")
+    drift_parser.add_argument("--inventory", type=Path, required=True)
+    drift_parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
+    drift_parser.add_argument("--out", type=Path)
+
     args = ap.parse_args()
-    if not (args.path or args.group):
+    if args.cmd == "adopt" and not (args.path or args.group):
         ap.error("adopt 至少需要一个 --path 或 --group")
     try:
-        code = adopt(args.inventory, args.registry, args.path, args.group)
+        if args.cmd == "adopt":
+            code = adopt(args.inventory, args.registry, args.path, args.group)
+        else:
+            code = drift(args.inventory, args.registry, args.out)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         ap.exit(1, f"registry: {exc}\n")
     sys.exit(code)

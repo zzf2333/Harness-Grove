@@ -1,6 +1,6 @@
 # M1 计划：首次导入与资产库
 
-**状态：** 进行中（2026-10-28）。切片 A 完成（reviewer 第 3 轮 PASS）：本机盘点 56 条、7 个共享分组，其中 6 组指向 `~/AI/temper/config/`。M0 结果见 [M0_PLAN](M0_PLAN.md)。
+**状态：** 进行中（2026-10-28）。切片 A 完成（reviewer 第 3 轮 PASS）：本机盘点 56 条、7 个共享分组，其中 6 组指向 `~/AI/temper/config/`。切片 B、C 已实现，待审查。M0 结果见 [M0_PLAN](M0_PLAN.md)。
 **上位文档：** [PHE_SPEC](PHE_SPEC.md) 的「第一次运行：先盘点，再接管」「统一的 Harness 资产库」「里程碑与 Gate」。
 
 M1 的 Gate 是：首次接管不改变配置含义；发布不覆盖带外修改。前三个切片只读用户配置、只写 PHE 仓库；只有切片 D 会改用户配置，必须另获批准。
@@ -18,7 +18,7 @@ M1 的 Gate 是：首次接管不改变配置含义；发布不覆盖带外修�
 |---|---|---|---|
 | A | `tools/inventory.py`：静态盘点，产出 ObservedAsset JSON，全部 `unmanaged`、`load_chain: unverified` | 否 | fixture 单测；本机真实只读运行，抽查与 `ls -la`、`shasum` 一致 |
 | B | `adopt`：登记进 PHE 仓库的 registry JSON | 否 | 单测；adopt 后再次盘点无差异 |
-| C | 漂移检测：新盘点对比基线，产出 `ExternalChange` | 否 | fixture 中改内容、换软链目标、删文件三种都能报出 |
+| C | 漂移检测：新盘点对比基线，产出 `ExternalChange` | 否 | fixture 中改内容、换软链目标、删文件、变不可读四种都能报出 |
 | D | Release、Binding、软链/渲染部署、回滚 | **是，需用户批准** | 待定；先决定资产源 |
 
 ## 盘点约束（切片 A）
@@ -37,7 +37,7 @@ M1 的 Gate 是：首次接管不改变配置含义；发布不覆盖带外修�
 
 ## 登记与漂移（切片 B、C）
 
-- 登记表写在被 Git 忽略的 `registry/`，只记路径、Hash、软链目标和状态，不记文件内容。
+- 登记表写在被 Git 忽略的 `registry/`（默认 `registry/assets.json`），只记路径、Hash、软链目标和状态，不记文件内容。
 - `ExternalChange` 只针对已登记的条目：内容变化、软链目标变化、文件删除或变得不可读。未登记的新文件不算漂移。
 
 ## 不做
