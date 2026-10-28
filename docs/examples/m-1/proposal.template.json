@@ -1,0 +1,367 @@
+{
+  "spec_version": "0.4",
+  "protocol_id": "m-1-claude-calibration-v1",
+  "experiment_id": "spike-001",
+  "status": "draft",
+  "purpose": "calibrate_evaluator_not_authorize_production_retirement",
+  "host_agent": "any_capable_agent",
+  "paths": {
+    "phe_repo_abs": null,
+    "target_repo_abs": null,
+    "artifact_root_relative_to_phe_repo": "experiments/spike-001",
+    "temp_root_abs": null
+  },
+  "target": {
+    "agent": "claude-code",
+    "cli_mode": "print_json",
+    "cli_version": null,
+    "executable_sha256": null,
+    "provider": null,
+    "model_id": null,
+    "backend_revision": "unknown",
+    "model_settings_sha256": null,
+    "model_alias_allowed": false,
+    "model_fallback_allowed": false,
+    "harness_loading_profile": "native_claude_md_isolated_environment",
+    "subagents_enabled": false,
+    "resume_enabled": false,
+    "bare_mode_enabled": false,
+    "auth_reference": null,
+    "argv_sha256": null
+  },
+  "task": {
+    "provenance": "historical_reconstructed",
+    "task_id": null,
+    "original_request_sha256": null,
+    "start_snapshot_sha256": null,
+    "start_commit": null,
+    "dependency_snapshot_sha256": null,
+    "oracle_sha256": null,
+    "known_good_patch_sha256": null,
+    "snapshot_rebuild_checks": 3,
+    "oracle_negative_checks": 3,
+    "oracle_positive_checks": 3,
+    "independent_task_groups": 1,
+    "calibration_oracle_checks_per_case": 3,
+    "calibration_oracle_cases": [
+      "missing_receipt",
+      "wrong_receipt",
+      "correct_receipt"
+    ]
+  },
+  "rules": {
+    "real_rule": {
+      "id": null,
+      "content_sha256": null,
+      "safety_critical": false
+    },
+    "required_control": {
+      "origin": "synthetic",
+      "mechanism": "write_uninferable_receipt",
+      "nonce_bits": 128,
+      "receipt_path": ".phe-calibration-receipt",
+      "text_sha256": null,
+      "nonce_sha256": null,
+      "scope_of_necessity": "calibration_contract_only"
+    },
+    "redundant_control": {
+      "origin": "synthetic",
+      "mechanism": "duplicate_existing_irrelevant_sentence",
+      "text_sha256": null,
+      "duplicated_source_sha256": null,
+      "excludes_real_rule_and_required_control": true
+    }
+  },
+  "harness": {
+    "baseline_definition": "H_star = original_snapshot + required_control + redundant_control",
+    "original_snapshot_sha256": null,
+    "calibrated_baseline_sha256": null,
+    "effective_load_chain_sha256": null,
+    "variants": {
+      "A1": {
+        "remove": [],
+        "snapshot_sha256": null
+      },
+      "A2": {
+        "remove": [],
+        "snapshot_sha256": null
+      },
+      "B_real": {
+        "remove": [
+          "real_rule"
+        ],
+        "snapshot_sha256": null
+      },
+      "B_required": {
+        "remove": [
+          "required_control"
+        ],
+        "snapshot_sha256": null
+      },
+      "B_redundant": {
+        "remove": [
+          "redundant_control"
+        ],
+        "snapshot_sha256": null
+      }
+    },
+    "removed_content_retrievable_from_worker_git_history": false,
+    "experiment_artifacts_visible_to_target": false
+  },
+  "metrics": {
+    "test_pass_v1": {
+      "calculator": "external_task_oracle_v1",
+      "type": "binary"
+    },
+    "calibration_contract_pass_v1": {
+      "calculator": "task_and_receipt_v1",
+      "formula": "test_pass_v1 AND exact_receipt_match",
+      "type": "binary"
+    },
+    "total_tokens_v1": {
+      "calculator": "claude_result_modelUsage_v1",
+      "source": "final_result.modelUsage",
+      "formula": "sum(inputTokens + outputTokens + cacheReadInputTokens + cacheCreationInputTokens)",
+      "sum_scope": "all_modelUsage_entries_once_per_fresh_cli_invocation",
+      "missing_policy": "unknown_and_pivot",
+      "billing_equivalent": false
+    },
+    "wall_time_v1": {
+      "calculator": "monotonic_process_duration_v1",
+      "unit": "seconds"
+    },
+    "estimated_cost_usd_v1": {
+      "calculator": "claude_result_total_cost_usd_v1",
+      "source": "final_result.total_cost_usd",
+      "actual_bill": false,
+      "missing_policy": "unknown_and_pivot"
+    }
+  },
+  "experiment": {
+    "method": "fresh_execution_rule_ablation",
+    "groups": {
+      "A1": 5,
+      "A2": 5,
+      "B_real": 5,
+      "B_required": 5,
+      "B_redundant": 5
+    },
+    "schedule_seed": 20261028,
+    "schedule_is_authoritative": true,
+    "schedule": [
+      {
+        "slot": 1,
+        "block": 1,
+        "group": "A2"
+      },
+      {
+        "slot": 2,
+        "block": 1,
+        "group": "B_required"
+      },
+      {
+        "slot": 3,
+        "block": 1,
+        "group": "B_real"
+      },
+      {
+        "slot": 4,
+        "block": 1,
+        "group": "A1"
+      },
+      {
+        "slot": 5,
+        "block": 1,
+        "group": "B_redundant"
+      },
+      {
+        "slot": 6,
+        "block": 2,
+        "group": "A2"
+      },
+      {
+        "slot": 7,
+        "block": 2,
+        "group": "B_redundant"
+      },
+      {
+        "slot": 8,
+        "block": 2,
+        "group": "B_real"
+      },
+      {
+        "slot": 9,
+        "block": 2,
+        "group": "B_required"
+      },
+      {
+        "slot": 10,
+        "block": 2,
+        "group": "A1"
+      },
+      {
+        "slot": 11,
+        "block": 3,
+        "group": "B_redundant"
+      },
+      {
+        "slot": 12,
+        "block": 3,
+        "group": "B_required"
+      },
+      {
+        "slot": 13,
+        "block": 3,
+        "group": "A2"
+      },
+      {
+        "slot": 14,
+        "block": 3,
+        "group": "A1"
+      },
+      {
+        "slot": 15,
+        "block": 3,
+        "group": "B_real"
+      },
+      {
+        "slot": 16,
+        "block": 4,
+        "group": "B_required"
+      },
+      {
+        "slot": 17,
+        "block": 4,
+        "group": "A1"
+      },
+      {
+        "slot": 18,
+        "block": 4,
+        "group": "B_real"
+      },
+      {
+        "slot": 19,
+        "block": 4,
+        "group": "A2"
+      },
+      {
+        "slot": 20,
+        "block": 4,
+        "group": "B_redundant"
+      },
+      {
+        "slot": 21,
+        "block": 5,
+        "group": "B_real"
+      },
+      {
+        "slot": 22,
+        "block": 5,
+        "group": "A2"
+      },
+      {
+        "slot": 23,
+        "block": 5,
+        "group": "B_required"
+      },
+      {
+        "slot": 24,
+        "block": 5,
+        "group": "A1"
+      },
+      {
+        "slot": 25,
+        "block": 5,
+        "group": "B_redundant"
+      }
+    ],
+    "concurrency": 1,
+    "automatic_restarts": 0,
+    "extra_model_smoke_runs": 0,
+    "positive_oracle_rebuild_tests_use_model": false,
+    "budget": {
+      "max_target_invocations": 25,
+      "max_turns_per_invocation": 20,
+      "max_process_seconds_per_invocation": 180,
+      "process_kill_grace_seconds": 3,
+      "max_oracle_seconds_per_invocation": 30,
+      "max_experiment_wall_seconds": 5400,
+      "stop_on_reported_tokens_per_invocation_above": 100000,
+      "stop_on_reported_tokens_total_above": 1000000,
+      "max_estimated_cost_usd_per_invocation": 0.5,
+      "max_estimated_cost_usd_total": 12.5,
+      "monetary_cap_is_exact": false,
+      "token_cap_is_exact": false,
+      "cost_and_token_enforcement": "stop_admission_after_observation_or_cli_limit",
+      "on_exhaustion": "pivot_with_inconclusive_evaluation"
+    },
+    "failed_task_with_complete_telemetry_is_valid_run": true,
+    "infrastructure_failure_is_missing_run": true
+  },
+  "gates": {
+    "go_requires": {
+      "task_provenance": "historical_reconstructed",
+      "snapshot_rebuild_passes": 3,
+      "oracle_negative_failures": 3,
+      "oracle_positive_passes": 3,
+      "expected_valid_completed_runs": 25,
+      "required_telemetry_complete_runs": 25,
+      "baseline_task_min_passes_each": 4,
+      "baseline_contract_min_passes_each": 4,
+      "aa_task_max_pass_count_gap": 1,
+      "aa_contract_max_pass_count_gap": 1,
+      "aa_token_median_max_relative_gap": 0.25,
+      "aa_pooled_tokens_max_relative_mad": 0.3,
+      "required_control_min_contract_drop_vs_weaker_baseline": 3,
+      "redundant_task_min_passes": 4,
+      "redundant_contract_min_passes": 4,
+      "redundant_max_count_gap_to_each_baseline": 1,
+      "production_mutations": 0,
+      "environment_drift_events": 0,
+      "oracle_integrity_violations": 0,
+      "safety_violations": 0,
+      "calibration_oracle_checks_passed_per_case": 3,
+      "cross_group_information_leaks": 0
+    },
+    "decision_order": [
+      "stop_claim_if_integrity_or_isolation_broken_or_budget_cannot_be_enforced",
+      "pivot_if_missing_prerequisites_incomplete_data_budget_exhausted_or_any_gate_failed",
+      "go_only_if_all_pre_registered_gates_pass"
+    ],
+    "go_authorizes": [
+      "M0_minimal_evaluator"
+    ],
+    "go_never_authorizes": [
+      "production_retirement",
+      "automatic_reasoner_expansion"
+    ]
+  },
+  "real_rule_signal": {
+    "eligible_only_when_probe_go": true,
+    "regression_min_task_pass_count_drop_vs_weaker_baseline": 2,
+    "follow_up_min_task_passes": "max(A1_test_pass_count, A2_test_pass_count)",
+    "follow_up_min_contract_passes": "max(A1_contract_pass_count, A2_contract_pass_count)",
+    "min_token_saving_fraction": 0.15,
+    "saving_must_exceed": "max(aa_token_median_relative_gap, 2 * aa_pooled_tokens_relative_mad)",
+    "min_blocks_with_token_saving": 4,
+    "max_blocks_with_task_quality_drop_vs_both_baselines": 0,
+    "max_blocks_with_contract_drop_vs_both_baselines": 0,
+    "outputs": [
+      "regression_signal",
+      "follow_up_candidate",
+      "inconclusive"
+    ],
+    "production_retire_allowed": false
+  },
+  "freeze": {
+    "required_before_first_target_invocation": true,
+    "hash_algorithm": "sha256_exact_proposal_json_bytes",
+    "hash_sidecar": "proposal.sha256",
+    "approval_file": "approval.json",
+    "approval_binds_proposal_hash": true,
+    "approval_user_supplied": true,
+    "unresolved_nulls_forbidden_when_frozen": true,
+    "changes_require_new_experiment_id_and_new_approval": true,
+    "post_results_changes_are_exploratory": true
+  }
+}
