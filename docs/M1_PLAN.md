@@ -51,7 +51,7 @@ M1 的 Gate 是：首次接管不改变配置含义；发布不覆盖带外修�
 ## 切片 D1 演练（2026-10-28，提交 40405e3）
 
 - 实现经三组审查：主体 3 轮、多 Agent 部署放行规则 3 轮，均 PASS。测试 114 项 OK。
-- 演练脚本 `experiments/m1-d1-rehearsal/rehearse.sh`（被 Git 忽略），输出 `run-*.log` 在同目录。真实 temper 只用 `cp -RL` 读取；沙箱 15 条链接，没有一条指回真实 temper。
+- 演练脚本 `tools/m1/rehearse_d1.sh`，可复跑；输出日志写到被 Git 忽略的 `experiments/m1-d1-rehearsal/run-*.log`（含本机路径，不入库）。真实 temper 只用 `cp -RL` 读取；沙箱 15 条链接，没有一条指回真实 temper。
 - 结果：8 个资产登记、导入、发布为 `r0001`；claude、codex、pi 依次部署都成功，15/15 条链接指向发布；改写发布文件后部署中止（退出 1），链接不变；三次 rollback 后对基线 drift 为 0，bindings 为空；`--home` 指向真实 home 时退出 2。
 - 真实环境：演练前后 temper 文件与四个 Agent 目录软链的 Hash 一致。
 - 不保证：加载链未探测（沙箱里没有 Agent 读这些文件）；检查与写入之间的并发替换（TOCTOU）；同时改写发布文件和 manifest 的 sha256。
