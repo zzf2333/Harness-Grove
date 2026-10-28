@@ -13,6 +13,7 @@ Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 运�
 |---|---|---|
 | [docs/PHE_SPEC.md](docs/PHE_SPEC.md) | 产品边界、用户流程、架构、术语与状态、生命周期、资产库、安全、里程碑 | 想了解项目做什么、长期怎么设计 |
 | [skill/harness-evolve/SKILL.md](skill/harness-evolve/SKILL.md) | 可移植 Agent Skill：起草 → 冻结 → 用户批准 → `run` → `judge` 的操作顺序与硬规则 | 准备在宿主 Agent 里跑一次规则消融评测时 |
+| [docs/M2_PLAN.md](docs/M2_PLAN.md) | M2 历史采集、证据分组、跨 Host 续作的切片与隐私约束 | 做 M2 |
 | [docs/M1_D_DESIGN.md](docs/M1_D_DESIGN.md) | 切片 D1 的沙箱设计：守卫、目录、命令、验收 | 实现或审查切片 D |
 | [docs/M1_PLAN.md](docs/M1_PLAN.md) | M1 的完成条件、切片、盘点约束、待决定的资产源 | 推进或审查 M1 |
 | [docs/M0_PLAN.md](docs/M0_PLAN.md) | M0 的完成条件、切片、门槛 v2、选任务要求 | 推进或审查 M0 |
