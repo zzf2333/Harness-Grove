@@ -1,6 +1,6 @@
 # M2 计划：历史采集、证据分组与跨 Host 续作
 
-**状态：** 进行中（2026-10-28）。切片 A0、A 完成（reviewer 3 轮 PASS，本机最近 7 天只读采集抽查指针一致）；切片 B 已实现，待审查；C 未开始。上位文档：[PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」；开发约束沿用 [M1_PLAN](M1_PLAN.md)「原则：开发与使用分离」。
+**状态：** 进行中（2026-10-28）。切片 A0、A 完成（reviewer 3 轮 PASS，本机最近 7 天只读采集抽查指针一致）；切片 B 完成（reviewer 3 轮 PASS，本机 7 天数据 923 条 → 376 组）；切片 C 进行中。上位文档：[PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」；开发约束沿用 [M1_PLAN](M1_PLAN.md)「原则：开发与使用分离」。
 
 M2 的 Gate：缺失的环境信息明确标出；两个不同 Host 能继续同一个提案；实验 Target 按需逐个适配。
 
@@ -19,7 +19,7 @@ M2 的 Gate：缺失的环境信息明确标出；两个不同 Host 能继续同
 | A0 | 只读探测 Claude Code、Codex、Pi 的会话目录与 JSONL 结构，写成数据表（注明"本机观察，未按官方文档核实"）；参考 temper 的 `temper-weekly` Skill 里已有的格式知识 | 文档 + 每个 Host 一个手写合成 fixture |
 | A | `tools/history.py collect`：流式读 JSONL，产出 Episode JSON | 合成 fixture 单测；本机真实只读跑一次最近 7 天，抽查指针能定位回原文 |
 | B | `group`：按会话、项目、同会话同类信号做确定性结构分组（`correlation_group`）。"是不是同一件事"的语义判断不写进工具，留给 Host | 同会话三次纠正 → 1 组；跨会话同项目分开但标 `same_project` |
-| C | proposal 增加 `host_log`（哪个 Host 做了哪步），SKILL.md 补"续作"一节 | 单测校验字段；两个真实 Host 续作同一提案需用户另行批准（消耗额度） |
+| C | `experiments/<id>/host_log.jsonl` 记录哪个 Host 做了哪步（`phe.py log`），`phe.py status` 由已有文件只读推导阶段；SKILL.md 补"续作"一节。host_log 不放进 proposal.json：proposal 冻结后绑定 sha256，续作记录放在哈希之外 | 合成实验目录单测；log 后 proposal.sha256 仍匹配；两个真实 Host 续作同一提案需用户另行批准（消耗额度） |
 
 ## Episode（切片 A 的输出）
 
