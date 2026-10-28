@@ -232,6 +232,19 @@ class MalformedRecordTests(TempRootCase):
         self.assertIn("line 2", source["missing_reason"])
         self.assertNotIn("unexpected", json.dumps(source, ensure_ascii=False), "missing_reason 不得带原文")
 
+    def test_out_of_range_numeric_timestamp_does_not_abort_with_since(self):
+        lines = [
+            user_record("2026-10-28T01:00:00Z", "不对，FIRST-SENTINEL"),
+            '{"type":"user","timestamp":1e100,"message":{"content":"不对"}}',
+            user_record("2026-10-28T01:00:02Z", "不是这样，SECOND-SENTINEL"),
+        ]
+        self.source.parent.mkdir(parents=True)
+        self.source.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        result = self.collect("claude", "--since", "2026-10-01")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # 越界时间戳无法证明落在窗口内，不计入；前后的正常行照常采集。
+        self.assertEqual([episode["line"] for episode in self.read()["episodes"]], [1, 3])
+
 
 class UnsupportedSchemaTests(TempRootCase):
     """整份文件都认不出本 Host 的已知记录类型时，在 source 上标出来，不静默跳过。"""

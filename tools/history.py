@@ -78,7 +78,11 @@ def excerpt(text):
 
 def parse_ts(value):
     if isinstance(value, (int, float)):
-        return datetime.fromtimestamp(value / 1000 if value > 1e11 else value, tz=timezone.utc)
+        # 越界或 NaN 的数值时间戳和无法解析的字符串同样处理：当作没有可用时间戳，不中断整份文件。
+        try:
+            return datetime.fromtimestamp(value / 1000 if value > 1e11 else value, tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
     if not isinstance(value, str):
         return None
     try:
