@@ -7,15 +7,14 @@ import hashlib
 import json
 import os
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
 import time
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import phe_sandbox
 from phe_hostlog import log as host_log
 from phe_hostlog import status as host_status
 from phe_judge import (  # noqa: F401
@@ -26,7 +25,15 @@ from phe_judge import (  # noqa: F401
     valid,
     validate_schedule,
 )
-from phe_sandbox import git_collect, git_env
+
+# 按源码字节加载沙箱模块：import 可能执行内容不同但 timestamp/size 匹配的 pyc。
+PHE_SANDBOX_PATH = Path(__file__).resolve().parent / "phe_sandbox.py"
+PHE_SANDBOX_SRC = PHE_SANDBOX_PATH.read_bytes()
+phe_sandbox = types.ModuleType("phe_sandbox")
+sys.modules["phe_sandbox"] = phe_sandbox
+exec(compile(PHE_SANDBOX_SRC, str(PHE_SANDBOX_PATH), "exec"), phe_sandbox.__dict__)  # noqa: S102
+PHE_SANDBOX_SHA256 = hashlib.sha256(PHE_SANDBOX_SRC).hexdigest()
+git_collect, git_env = phe_sandbox.git_collect, phe_sandbox.git_env
 
 HOME = Path.home()
 USER_FILES = [
@@ -52,36 +59,14 @@ def argv_digest(argv) -> str:
 
 
 def runner_file_hashes() -> dict[str, str | None]:
-    """实际加载的 runner 模块 Hash；新 sandbox 实验冻结它们，校验的是这里加载的副本。"""
+    """实际加载的 runner 模块 Hash；新 sandbox 实验冻结它们，校验的是这里加载的副本。
+
+    `phe_sandbox.py` 取自已执行的源码字节，不是可能被绕过执行的 `.py` 文件或 `__pycache__`。
+    """
     return {
         "phe.py": sha256_file(Path(__file__).resolve()),
-        "phe_sandbox.py": sha256_file(Path(phe_sandbox.__file__).resolve()),
+        "phe_sandbox.py": PHE_SANDBOX_SHA256,
     }
-
-
-def run_with_timeout(argv, cwd, env, timeout_s, grace_s=3):
-    start = time.monotonic()
-    proc = subprocess.Popen(
-        argv,
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
-        close_fds=True,
-    )
-    timed_out = False
-    try:
-        out, err = proc.communicate(timeout=timeout_s)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        os.killpg(proc.pid, signal.SIGTERM)
-        try:
-            out, err = proc.communicate(timeout=grace_s)
-        except subprocess.TimeoutExpired:
-            os.killpg(proc.pid, signal.SIGKILL)
-            out, err = proc.communicate()
-    return proc.returncode, out, err, time.monotonic() - start, timed_out
 
 
 def build_workdir(base: Path, harness: Path) -> Path:
@@ -102,8 +87,14 @@ def oracle(work: Path, cfg: dict, art: Path, receipt_required=True, sandbox=None
     subprocess.run(["cp", "-Rc", str(work), str(check)], check=True)
     # 可信测试覆盖 Agent 改过的同名文件；oracle_tests 支持跨包的多个文件。
     tests = cfg.get("oracle_tests") or [{"src": cfg["oracle_test_src"], "dest": cfg["oracle_test_dest"]}]
-    for t in tests:
-        shutil.copyfile(t["src"], check / t["dest"])
+    try:
+        for t in tests:
+            shutil.copyfile(t["src"], phe_sandbox.oracle_dest(check, t["dest"]))
+    except ValueError as exc:
+        # 准备阶段被拒也要留证据：原因落盘后再交给 run 记 stop，不静默中断。
+        shutil.rmtree(check_root, ignore_errors=True)
+        (art / "oracle-prep-error.txt").write_text(str(exc))
+        raise
     # 验收器可能执行 Target 改过的项目代码/测试，和 Target 用同一写限制；policy 同样放 art。
     tmp = check_root / "tmp"
     tmp.mkdir()
@@ -113,7 +104,7 @@ def oracle(work: Path, cfg: dict, art: Path, receipt_required=True, sandbox=None
     env = os.environ.copy()
     if sandbox is not None:
         env["TMPDIR"] = str(tmp)
-    rc, out, err, dur, to = run_with_timeout(
+    rc, out, err, dur, to = phe_sandbox.run_with_timeout(
         wrapped,
         check / cfg["oracle_cwd"],
         env,
@@ -225,7 +216,7 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
                 art.parent.rmdir()
             shutil.rmtree(slot_root, ignore_errors=True)
             raise
-    rc, out, err, dur, to = run_with_timeout(
+    rc, out, err, dur, to = phe_sandbox.run_with_timeout(
         wrapped, work, env, budget["max_process_seconds_per_invocation"], budget["process_kill_grace_seconds"]
     )
     (art / "stdout.json").write_bytes(out)

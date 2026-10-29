@@ -107,10 +107,9 @@ print(json.dumps({"modelUsage": {"stub": {"inputTokens": 100}}, "total_cost_usd"
 
 # Target 写一段会被外置验收执行的项目代码，越界写必须被拒。
 ORACLE_TARGET = """\
-import json, sys
+import json
 from pathlib import Path
 
-denied = Path(sys.argv[1])
 Path("agent.py").write_text(
     "import sys\\n"
     "from pathlib import Path\\n"
@@ -302,12 +301,13 @@ class ConfinementTests(RunFixture):
 
     def test_oracle_runs_target_modified_code_under_the_same_write_limits(self):
         self.common_config()
-        denied = self.denied_dir()
-        self.cfg["oracle_argv"] = [sys.executable, "-I", "agent.py", str(denied)]
-        records = self.run_with_stub(ORACLE_TARGET, str(denied))
+        target = self.denied_dir() / "oracle-wrote.txt"
+        self.cfg["oracle_argv"] = [sys.executable, "-I", "agent.py", str(target)]
+        records = self.run_with_stub(ORACLE_TARGET)
         self.assertEqual([r["exit_code"] for r in records], [0, 0, 0])
         self.assertTrue(all(r["test_pass"] for r in records))
-        self.assertFalse((denied / "oracle-wrote.txt").exists())
+        # 目的文件不存在，且验收过程的输出记录了写入被拒；否则“拒绝写入”只是目录报错。
+        self.assertFalse(target.exists())
         text = (self.exp / "artifacts" / "slot-01" / "oracle.txt").read_text()
         self.assertIn("DENIED False", text)
         self.assertTrue((self.exp / "artifacts" / "slot-01" / phe_sandbox.ORACLE_POLICY).exists())

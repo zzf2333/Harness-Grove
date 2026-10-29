@@ -331,7 +331,7 @@ class RunTests(unittest.TestCase):
             "process_kill_grace_seconds": 1,
             "nonce_sha256": hashlib.sha256(b"correct").hexdigest(),
         }
-        with patch.object(phe, "run_with_timeout", return_value=(0, b"", b"", 0, False)):
+        with patch.object(phe.phe_sandbox, "run_with_timeout", return_value=(0, b"", b"", 0, False)):
             for receipt in (None, "wrong", "correct"):
                 if receipt is not None:
                     (work / ".phe-calibration-receipt").write_text(receipt)

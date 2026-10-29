@@ -1,6 +1,12 @@
 """沙箱配置与 runner 模块的冻结绑定：篡改必须记 invalid_run 且不启动 Target。"""
 
+import hashlib
+import importlib.util
 import json
+import marshal
+import shutil
+import struct
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -12,6 +18,7 @@ from sandbox_fixture import RunFixture, sandbox_section
 
 phe = test_phe.phe
 phe_sandbox = phe.phe_sandbox
+TOOLS = Path(__file__).resolve().parents[1] / "tools"
 
 
 class BindingTests(RunFixture):
@@ -108,6 +115,49 @@ class BindingTests(RunFixture):
         self.assertFalse((self.exp / "stop.json").exists())
         self.assertFalse((self.exp / "artifacts").exists())
         self.assertFalse((self.exp / "runs.jsonl").exists())
+
+
+class SourceLoadingTests(unittest.TestCase):
+    """沙箱模块按源码字节加载：mtime/size 匹配的恶意 pyc 不会执行，Hash 绑定实际执行的源码。"""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory(prefix="phe-source-")
+        self.addCleanup(temp.cleanup)
+        self.tools = Path(temp.name) / "tools"
+        self.tools.mkdir()
+        for name in ("phe.py", "phe_sandbox.py", "phe_hostlog.py", "phe_judge.py"):
+            shutil.copyfile(TOOLS / name, self.tools / name)
+        source = self.tools / "phe_sandbox.py"
+        stat = source.stat()
+        cache = Path(importlib.util.cache_from_source(str(source)))
+        cache.parent.mkdir(exist_ok=True)
+        # pyc 头：magic + 标志位（0 = timestamp 校验）+ mtime + size，后两项与源码完全一致。
+        cache.write_bytes(
+            importlib.util.MAGIC_NUMBER
+            + struct.pack("<III", 0, int(stat.st_mtime), stat.st_size)
+            + marshal.dumps(compile("MARKER = 'cached'\n", str(source), "exec"))
+        )
+        self.source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    def probe(self, code: str) -> str:
+        done = subprocess.run([sys.executable, "-c", code], cwd=self.tools, capture_output=True, text=True, check=False)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return done.stdout
+
+    def test_matching_pyc_is_not_executed_and_the_digest_binds_the_source(self):
+        # 前提：这个缓存确实有效——普通 import 执行它，而 __file__ 仍指向 .py。
+        cached = self.probe("import phe_sandbox; print(phe_sandbox.__file__); print(phe_sandbox.MARKER)")
+        path, marker = cached.splitlines()
+        self.assertTrue(path.endswith("phe_sandbox.py"), path)
+        self.assertEqual(marker, "cached")
+        loaded = self.probe(
+            "import phe; print(phe.PHE_SANDBOX_SHA256)"
+            "; print(getattr(phe.phe_sandbox, 'MARKER', 'source')); print(phe.phe_sandbox.TARGET_POLICY)"
+        )
+        self.assertEqual(loaded.splitlines(), [self.source_sha256, "source", "policy-target.sb"])
+
+    def test_production_hash_binds_the_loaded_source_bytes(self):
+        self.assertEqual(phe.runner_file_hashes()["phe_sandbox.py"], phe.sha256_file(TOOLS / "phe_sandbox.py"))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,8 @@
-"""执行层写入隔离：用 macOS 内置 /usr/bin/sandbox-exec 包裹 Target、外置验收和 Git 采集（标准库）。
+"""执行层：沙箱包裹、写入边界和带超时的子进程执行（标准库）。
+
+`write_policy`/`wrap`/`verify` 用 macOS 内置 /usr/bin/sandbox-exec 约束 Target、外置验收和
+Git 采集。`oracle_dest` 核对可信测试覆盖的目的路径落在验收副本内；覆盖发生在沙箱外，所以
+不论是否声明 `sandbox` 都生效。`run_with_timeout` 跑命令，超时后杀整个进程组。
 
 保证（config 声明了 `sandbox` 时）：Target、它启动的子进程、外置验收器（可能执行 Target 改过的
 项目代码/测试）以及 runner 的后续 Git 采集都受同一套规则约束；只能写本 slot 的工作目录、runner
@@ -13,8 +17,10 @@
 import hashlib
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 MECHANISM = "macos-sandbox-exec"
@@ -96,6 +102,18 @@ def wrap(settings: dict | None, policy: Path | None) -> list[str]:
     return [str(settings["executable"]), "-f", str(policy)]
 
 
+def oracle_dest(check: Path, dest: str) -> Path:
+    """可信测试覆盖的目的路径必须落在验收副本内：Target 可能把文件或祖先目录留成外链。
+
+    按真实路径核对，绝对路径、`..` 和链接都按实际写入位置判断，字符串前缀不算数。
+    """
+    root = Path(os.path.realpath(check))
+    target = Path(os.path.realpath(check / dest))
+    if target == root or not target.is_relative_to(root):
+        raise ValueError(f"oracle 目的路径逃出验收副本：{dest} -> {target}")
+    return target
+
+
 GIT_SAFE_OPTIONS = ("--no-optional-locks", "-c", "core.fsmonitor=false")
 
 
@@ -168,3 +186,29 @@ def wrote(exe: Path, policy: Path, path: Path, nested: bool, timeout_s: float) -
         check=False,
     )
     return done.returncode == 0 and path.exists()
+
+
+def run_with_timeout(argv, cwd, env, timeout_s, grace_s=3):
+    """跑一条命令并收集输出；超时先 SIGTERM，宽限后 SIGKILL 整个进程组。"""
+    start = time.monotonic()
+    proc = subprocess.Popen(
+        argv,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+        close_fds=True,
+    )
+    timed_out = False
+    try:
+        out, err = proc.communicate(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        os.killpg(proc.pid, signal.SIGTERM)
+        try:
+            out, err = proc.communicate(timeout=grace_s)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            out, err = proc.communicate()
+    return proc.returncode, out, err, time.monotonic() - start, timed_out
