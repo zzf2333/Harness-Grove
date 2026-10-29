@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import phe_sandbox
 from phe_hostlog import log as host_log
 from phe_hostlog import status as host_status
 from phe_judge import (  # noqa: F401
@@ -129,7 +130,7 @@ def usage_from(result: dict) -> dict:
     }
 
 
-def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=True):
+def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=True, sandbox=None):
     art = exp / "artifacts" / f"slot-{item['slot']:02d}"
     art.mkdir(parents=True, exist_ok=True)
     harness = Path(cfg["harness"][item["group"]])
@@ -165,8 +166,10 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
         "user_files_before": user_fingerprint(),
     }
     (art / "argv.json").write_text(json.dumps(argv, ensure_ascii=False, indent=2))
+    # 声明的沙箱按 slot 生效：profile 写进本 slot 的 artifacts，Target 及其子进程都受它约束。
+    prefix = phe_sandbox.wrap(sandbox, work, art)
     rc, out, err, dur, to = run_with_timeout(
-        argv, work, env, budget["max_process_seconds_per_invocation"], budget["process_kill_grace_seconds"]
+        prefix + argv, work, env, budget["max_process_seconds_per_invocation"], budget["process_kill_grace_seconds"]
     )
     (art / "stdout.json").write_bytes(out)
     (art / "stderr.txt").write_bytes(err)
@@ -260,9 +263,19 @@ def record_problem(r, budget):
     return None
 
 
-def run(exp: Path):
+def active_seconds(rs) -> float:
+    """已完成 slot 的实际执行时长（Target 加外置验收）。
+
+    墙钟预算按这个累计，而不是每次 run 重新计时：续跑（含暂停后续跑）不能把已经用掉的
+    时间丢掉，两次调用之间的人工等待也不计入。字段取自 runs.jsonl 现有记录，不新增状态文件。
+    """
+    return sum((r.get("wall_time_v1") or 0) + (r.get("oracle_seconds") or 0) for r in rs)
+
+
+def run(exp: Path, pause_after_new_slots: int | None = None):
     p, cfg = load(exp)
     validate_schedule(p)
+    sandbox = phe_sandbox.load_settings(cfg)
     budget = p["experiment"]["budget"]
     slot_wall = (
         budget["max_process_seconds_per_invocation"]
@@ -282,7 +295,13 @@ def run(exp: Path):
         ]
     )
     done = {r["slot"] for r in rs}
+    # 哨兵只在本轮真的会启动 Target 时跑；不可用就 fail closed（load_settings/verify 抛错）。
+    if not stop and sandbox is not None and done != {item["slot"] for item in p["experiment"]["schedule"]}:
+        phe_sandbox.verify(sandbox)
     start = time.monotonic()
+    prior_seconds = active_seconds(rs)
+    new_slots = 0
+    paused = False
     for item in p["experiment"]["schedule"]:
         if stop:
             break
@@ -297,7 +316,8 @@ def run(exp: Path):
             stop = "invalid_run:" + problem
             break
         spent = sum(r.get("estimated_cost_usd_v1") or 0 for r in rs)
-        if time.monotonic() - start + slot_wall > budget["max_experiment_wall_seconds"]:
+        elapsed = prior_seconds + time.monotonic() - start
+        if elapsed + slot_wall > budget["max_experiment_wall_seconds"]:
             stop = "pivot:wall_budget_exhausted"
             break
         if spent + budget["max_estimated_cost_usd_per_invocation"] > budget["max_estimated_cost_usd_total"]:
@@ -307,9 +327,13 @@ def run(exp: Path):
         if art.exists():
             stop = "pivot:runner_crashed_no_record"
             break
+        # 暂停排在其他准入检查之后：完成 N 个新 slot 后就不再启动，但任何停止条件先记账。
+        if pause_after_new_slots is not None and new_slots >= pause_after_new_slots:
+            paused = True
+            break
         before = len(rs)
         try:
-            run_slot(exp, cfg, item, budget, receipt_required="required_control" in p["rules"])
+            run_slot(exp, cfg, item, budget, receipt_required="required_control" in p["rules"], sandbox=sandbox)
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             print(f"slot {item['slot']} runner failed: {exc}", file=sys.stderr)
             stop = crash_stop(p, cfg, exp, proposal_digest)
@@ -318,6 +342,7 @@ def run(exp: Path):
         if len(rs) != before + 1:
             stop = crash_stop(p, cfg, exp, proposal_digest)
             break
+        new_slots += 1
         r = rs[-1]
         print(f"slot {r['slot']} {r['group']} complete", flush=True)
         stop = record_problem(r, budget)
@@ -327,6 +352,14 @@ def run(exp: Path):
             problem = integrity_problem(p, cfg, exp)
             if problem:
                 stop = "invalid_run:" + problem
+    if paused:
+        # 主动暂停不是停止事件：新 slot 的完整记录和验收结果已落盘，不写 stop.json、不改记录，
+        # 下一轮 run 按原 schedule 跳已完成。
+        print(
+            f"paused: 本次调用完成 {new_slots} 个新 slot，未启动下一个 Target；未写 stop.json，按原 schedule 续跑",
+            flush=True,
+        )
+        return
     (exp / "stop.json").write_text(json.dumps({"stop_reason": stop}, ensure_ascii=False))
     print("stop_reason:", stop)
 
@@ -339,10 +372,28 @@ def judge(exp: Path, out: Path | None = None):
     print(text)
 
 
+def positive_int(text: str) -> int:
+    """命令行用的正整数：0 或负数没有意义，直接报参数错误。"""
+    try:
+        value = int(text)
+    except ValueError:
+        value = 0
+    if value <= 0:
+        raise argparse.ArgumentTypeError(f"需要正整数：{text!r}")
+    return value
+
+
 def main():
     ap = argparse.ArgumentParser(description="PHE")
     commands = ap.add_subparsers(dest="cmd", required=True)
-    commands.add_parser("run").add_argument("experiment_dir", type=Path)
+    run_parser = commands.add_parser("run")
+    run_parser.add_argument("experiment_dir", type=Path)
+    run_parser.add_argument(
+        "--pause-after-new-slots",
+        type=positive_int,
+        metavar="N",
+        help="本次调用完成 N 个新 slot 后、启动下一个 Target 前主动暂停；不写 stop.json，按原 schedule 续跑",
+    )
     judge_parser = commands.add_parser("judge")
     judge_parser.add_argument("experiment_dir", type=Path)
     judge_parser.add_argument("--out", type=Path)
@@ -355,7 +406,7 @@ def main():
     a = ap.parse_args()
     try:
         if a.cmd == "run":
-            run(a.experiment_dir.resolve())
+            run(a.experiment_dir.resolve(), a.pause_after_new_slots)
         elif a.cmd == "judge":
             judge(a.experiment_dir.resolve(), a.out)
         elif a.cmd == "log":
