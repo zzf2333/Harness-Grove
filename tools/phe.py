@@ -143,14 +143,17 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
         env["TMPDIR"] = str(tmp)
     wrapped = phe_sandbox.wrap(sandbox, policy) + argv
 
+    target_record = {
+        "target_agent": agent,
+        "target_model_id": target["model_id"],
+        "target_argv_custom": custom,
+    }
     record = {
         "experiment_id": cfg["experiment_id"],
         "slot": item["slot"],
         "group": item["group"],
         "harness_sha256": sha256_file(harness),
-        "target_agent": agent,
-        "target_model_id": target["model_id"],
-        "target_argv_custom": custom,
+        **target_record,
         # Claude 默认命令沿用旧口径（跳过 claude -p <prompt>）；自定义命令和 Codex 记录完整 argv。
         "argv_sha256": phe_target.argv_sha256(argv, agent, custom),
         "argv_sha256_scope": "full_argv" if custom or agent == "codex" else "argv_without_claude_p_and_prompt",
@@ -166,9 +169,7 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
         "wrapped_argv": wrapped,
         "policy": str(policy) if policy_sha else None,
         "policy_sha256": policy_sha,
-        "target_agent": agent,
-        "target_model_id": target["model_id"],
-        "target_argv_custom": custom,
+        **target_record,
     }
     (art / "argv.json").write_text(json.dumps(launch, ensure_ascii=False, indent=2))
     # 哨兵在 Target 启动前用本 slot 实际 policy 和完整允许清单实测；只写 runner 自有 /tmp 目录。
@@ -257,14 +258,15 @@ def integrity_problem(p, cfg, exp) -> str | None:
     for path, digest in p["task"].get("oracle_files_sha256", {}).items():
         if sha256_file(Path(path)) != digest:
             return "oracle_hash_changed"
-    # 新 Codex 实验必须绑定实际加载的 runner 模块；旧 Claude sandbox 实验保留两文件口径。
-    agent = phe_target.select(p, cfg)["agent"]
+    # 要求只看冻结 proposal 的原始 agent：适配器本身尚未校验，不能决定是否核对。
+    raw_target = p.get("target")
+    agent = raw_target.get("agent") if isinstance(raw_target, dict) else None
     if agent == "codex" or cfg.get("sandbox") is not None:
+        expected = runner_file_hashes()
         frozen = p.get("runner", {}).get("runner_files_sha256")
-        expected, legacy = runner_file_hashes(), {"phe.py", "phe_sandbox.py"}
-        if not isinstance(frozen, dict) or set(frozen) not in (legacy, set(expected)):
-            return "sandbox_runner_hash_missing"
-        if agent == "codex" and set(frozen) != set(expected):
+        # Codex 必须绑定完整三项；旧 Claude sandbox 实验两项或三项都兼容。
+        shapes = [set(expected)] if agent == "codex" else [{"phe.py", "phe_sandbox.py"}, set(expected)]
+        if not isinstance(frozen, dict) or set(frozen) not in shapes:
             return "sandbox_runner_hash_missing"
         if any(frozen[name] != expected[name] for name in frozen):
             return "sandbox_runner_hash_changed"
@@ -295,10 +297,9 @@ def record_problem(r, budget):
 
 
 def active_seconds(rs) -> float:
-    """已完成 slot 的实际执行时长（Target 加外置验收）。
+    """已完成 slot 的实际执行时长（Target 加外置验收）；墙钟预算按它累计，续跑不丢已用时间。
 
-    墙钟预算按这个累计，而不是每次 run 重新计时：续跑（含暂停后续跑）不能把已经用掉的
-    时间丢掉，两次调用之间的人工等待也不计入。字段取自 runs.jsonl 现有记录，不新增状态文件。
+    字段取自 runs.jsonl 现有记录，两次调用之间的人工等待不计入。
     """
     return sum((r.get("wall_time_v1") or 0) + (r.get("oracle_seconds") or 0) for r in rs)
 
@@ -307,7 +308,6 @@ def run(exp: Path, pause_after_new_slots: int | None = None):
     p, cfg = load(exp)
     validate_schedule(p)
     budget = p["experiment"]["budget"]
-    target = phe_target.select(p, cfg)
     slot_wall = (
         budget["max_process_seconds_per_invocation"]
         + budget["process_kill_grace_seconds"]
@@ -326,6 +326,8 @@ def run(exp: Path, pause_after_new_slots: int | None = None):
         ]
     )
     done = {r["slot"] for r in rs}
+    # 目标解析排在完整性判定和停止记账之后：被改写的声明要记 invalid_run，不能被提前抛错盖掉。
+    target = phe_target.select(p, cfg) if not stop else None
     # 完整性优先：配置被改写时先记 invalid_run，不用损坏的 sandbox 段提前抛错。
     sandbox = phe_sandbox.load_settings(cfg) if not stop else None
     start = time.monotonic()
@@ -394,8 +396,7 @@ def run(exp: Path, pause_after_new_slots: int | None = None):
             if problem:
                 stop = "invalid_run:" + problem
     if paused:
-        # 主动暂停不是停止事件：新 slot 的完整记录和验收结果已落盘，不写 stop.json、不改记录，
-        # 下一轮 run 按原 schedule 跳已完成。
+        # 主动暂停不是停止事件：记录已落盘，不写 stop.json，下一轮 run 按原 schedule 跳已完成。
         print(
             f"paused: 本次调用完成 {new_slots} 个新 slot，未启动下一个 Target；未写 stop.json，按原 schedule 续跑",
             flush=True,
@@ -414,7 +415,6 @@ def judge(exp: Path, out: Path | None = None):
 
 
 def positive_int(text: str) -> int:
-    """命令行用的正整数：0 或负数没有意义，直接报参数错误。"""
     try:
         value = int(text)
     except ValueError:

@@ -40,7 +40,10 @@ def argv_digest(argv) -> str:
 
 
 def select(proposal: dict, cfg: dict) -> dict:
-    """从 proposal.target.agent 选 Target；config.target_agent 只用于声明同一选择。"""
+    """从 proposal.target.agent 选 Target；config.target_agent 只用于声明同一选择。
+
+    Codex 只用规范 argv：config.target_argv 不能覆盖它，冻结的 model_id 也不能被换掉。
+    """
     target = proposal.get("target") or {}
     if not isinstance(target, dict):
         raise TypeError("proposal.target 必须是对象")
@@ -55,6 +58,8 @@ def select(proposal: dict, cfg: dict) -> dict:
     model_id = target.get("model_id")
     if agent == "codex" and (not isinstance(model_id, str) or not model_id.strip()):
         raise ValueError("Codex Target 需要 proposal.target.model_id 为已冻结的非空字符串")
+    if agent == "codex" and cfg.get("target_argv"):
+        raise ValueError("Codex Target 不接受 config.target_argv 覆盖；本地验证在测试层替换 subprocess")
     return {"agent": agent, "model_id": model_id}
 
 
@@ -103,7 +108,10 @@ def user_fingerprint(agent: str, home: Path | None = None) -> dict:
 
 
 def parse_codex(stdout: bytes, exit_code: int, timed_out: bool = False) -> dict:
-    """解析 `codex exec --json` 的逐行 JSONL；坏行不补零，失败语义不被后续 completed 覆盖。"""
+    """解析 `codex exec --json` 的逐行 JSONL；坏行不补零，失败语义不被后续 completed 覆盖。
+
+    最后一个 `turn.started` 没有被 completed/failed 闭合时，流在 turn 内结束，视为不完整。
+    """
     state = {
         "thread_id": None,
         "turn_status": "missing",
@@ -121,6 +129,7 @@ def parse_codex(stdout: bytes, exit_code: int, timed_out: bool = False) -> dict:
     }
     completed_seen = False
     failure_seen = False
+    open_turn = None
 
     def fail(message: str) -> None:
         if state["parse_error"] is None:
@@ -146,7 +155,9 @@ def parse_codex(stdout: bytes, exit_code: int, timed_out: bool = False) -> dict:
                 state["thread_id"] = event["thread_id"]
         elif kind == "turn.started":
             state["num_turns"] += 1
+            open_turn = lineno
         elif kind == "turn.completed":
+            open_turn = None
             usage = usage_from_event(event.get("usage"))
             if usage is None:
                 fail(f"line {lineno}: turn.completed.usage 缺失或非法")
@@ -161,6 +172,7 @@ def parse_codex(stdout: bytes, exit_code: int, timed_out: bool = False) -> dict:
                 state["usage"] = usage
                 state["tokens"] = usage["input_tokens"] + usage["output_tokens"]
         elif kind == "turn.failed":
+            open_turn = None
             failure_seen = True
             message = error_message(event.get("error"))
             if message is None:
@@ -179,6 +191,8 @@ def parse_codex(stdout: bytes, exit_code: int, timed_out: bool = False) -> dict:
         # 未知事件类型按契约容忍，不改变终态。
     if not completed_seen and not failure_seen:
         fail("missing turn.completed/turn.failed terminal event")
+    if open_turn is not None:
+        fail(f"line {open_turn}: turn.started 之后没有 turn.completed/turn.failed，流在 turn 内结束")
     if state["parse_error"] is not None:
         state["usage"] = state["tokens"] = None
     if state["errors"]:

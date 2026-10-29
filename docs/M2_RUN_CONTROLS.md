@@ -1,6 +1,6 @@
 # 真实实验的执行控制：主动暂停与 Target 写隔离
 
-**状态（2026-10-29）：** 本轮只给 `tools/phe.py run` 加两项执行控制，没有启动模型、没有真实 CLI 会话、没有新的实验冻结。第 2 轮审查后收窄了执行层隔离：沙箱程序固定、写目录只由 runner 创建、Git 采集与 oracle 同策略包裹、runner 模块 Hash 纳入冻结、完整性判定先于 sandbox 解析。第 3 轮审查后补两处执行层缺陷：oracle 准备阶段按真实路径核对目的文件、沙箱模块改从源码字节加载；oracle 越界写回归改用文件目标。第 4 节补 Codex Target 最小接口（目标选择、默认 argv、JSONL 解析、费用缺口和指纹），只用本地假 Target 验证，没有启动真实 Codex。`experiments/m2-real-001` 保持冻结字节不变；它的 `proposal.runner.runner_sha256` 记的是改动前的 `tools/phe.py`，所以要用新 runner 执行必须换新实验 ID 重新冻结批准。
+**状态（2026-10-29）：** 本轮只给 `tools/phe.py run` 加两项执行控制，没有启动模型、没有真实 CLI 会话、没有新的实验冻结。第 2 轮审查后收窄了执行层隔离：沙箱程序固定、写目录只由 runner 创建、Git 采集与 oracle 同策略包裹、runner 模块 Hash 纳入冻结、完整性判定先于 sandbox 解析。第 3 轮审查后补两处执行层缺陷：oracle 准备阶段按真实路径核对目的文件、沙箱模块改从源码字节加载；oracle 越界写回归改用文件目标。第 4 节补 Codex Target 最小接口（目标选择、默认 argv、JSONL 解析、费用缺口和指纹）；第 1 轮审查后收窄：Hash 要求由冻结 proposal 决定、Codex 拒绝 argv 覆盖、完整性先于目标解析、未闭合 turn 视为截断。只用测试层替换 subprocess 的合成输出验证，没有启动真实 Codex。`experiments/m2-real-001` 保持冻结字节不变；它的 `proposal.runner.runner_sha256` 记的是改动前的 `tools/phe.py`，所以要用新 runner 执行必须换新实验 ID 重新冻结批准。
 
 上位来源：[M-1_PROTOCOL](M-1_PROTOCOL.md)「预算」「判定」、[M2_HOST_ACCEPTANCE](M2_HOST_ACCEPTANCE.md)「执行层隔离核对」、[SKILL](../skill/harness-evolve/SKILL.md) §5/§8。本文只描述 runner 的实际行为与边界，不改协议里的预算公式和门槛。
 
@@ -53,23 +53,23 @@ python3 -I tools/phe.py run <实验目录>                              # 续跑
 - **启动记录：** `argv.json` 记包装前的 `argv`、实际执行的 `wrapped_argv`、policy 路径与 SHA-256，以及 `target_agent`、`target_model_id`、`target_argv_custom`；`runs.jsonl` 记 `target_agent`、`argv_sha256`/`argv_sha256_scope`、`wrapped_argv_sha256`、`policy_sha256`、`git_policy_sha256`、`oracle_wrapped_argv_sha256`、`oracle_policy_sha256`。stdout/stderr 用管道由 runner 收集，Target 不持有证据文件的 fd。
 - **fail closed：** 声明了 `sandbox` 就必须可用。机制不支持、`/usr/bin/sandbox-exec` 不存在、出现不支持的键或哨兵不通过时，`run` 以退出码 1 拒绝启动，不写 `stop.json`、不启动任何 Target。
 - **Hash 绑定：** `sandbox` 段在 `config.json` 里，SHA-256 冻结在 `proposal.runner.config_sha256`。新实验还必须把实际加载的 `tools/phe.py`、`tools/phe_sandbox.py` 和 `tools/phe_target.py` 的 SHA-256 冻结到 `proposal.runner.runner_files_sha256`（用 `phe.runner_file_hashes()` 生成：`python3 -c 'import sys; sys.path.insert(0, "tools"); import phe, json; print(json.dumps(phe.runner_file_hashes()))'`；旧 Claude sandbox 实验只冻结前两项仍然兼容，新 Codex 实验必须三项齐全）；`run` 校验当前加载的模块副本，缺失或不一致记 `invalid_run:sandbox_runner_hash_missing` / `invalid_run:sandbox_runner_hash_changed`，在哨兵和 Target 之前停止。其中 `phe_sandbox.py` 和 `phe_target.py` 的 Hash 取自已执行的源码字节：普通 `import` 可能执行 `__pycache__` 里 timestamp/size 匹配但内容不同的 pyc，此时 `.py` 的 Hash 不代表实际跑的代码；`phe.py` 以脚本方式执行（`python3 tools/phe.py`），Hash 取当前文件字节。没有 `sandbox` 的旧 Claude 实验不要求这个字段。
-- **完整性优先：** 续跑和每次启动 slot 前先核对 proposal/config/harness/oracle/runner 模块 Hash；配置被改写时先记 `invalid_run:config_hash_changed`，不会因为损坏的 `sandbox` 段提前抛错而漏掉 `stop.json`。
+- **完整性优先：** 续跑和每次启动 slot 前先核对 proposal/config/harness/oracle/runner 模块 Hash；配置被改写时先记 `invalid_run:config_hash_changed`，不会因为损坏的 `sandbox` 段提前抛错而漏掉 `stop.json`。目标解析同样排在完整性判定和停止记账之后：冻结后改写 `config.target_agent` 也写 `invalid_run:config_hash_changed`，并覆盖已有的 pivot。
 
 不保证：外置验收器和 Git 采集同样受写限制，但它们仍能读实验目录和用户文件，profile 不是保密措施；`/dev/null` 和 `/dev/fd/*` 的写入放行（普通重定向，不是状态写入）；读取范围不受限，网络按 `network` 透传；这是 macOS 专用机制，其他平台声明了就拒绝启动。验收器和 Git 的依赖缓存默认在允许清单外：真实测试套件或工具若需要写 HOME/系统缓存会失败，失败留在 artifacts 或 stderr 里，必须人工按协议处理，不自动放宽。真实 CLI 在写受限下的完整行为本次未测；Git helper 的禁用只在本机 Git 2.56 上实测。`phe.py` 的 Hash 按文件字节算：以 `import phe` 方式调用（而不是按脚本执行）时，本项不保证 pyc 与源码一致。
 
 ## 4. Codex Target 接口（只到接口，不是真实会话验证）
 
-**状态（2026-10-29）：** `run` 可以按 `proposal.target.agent` 选择 Codex，默认命令、JSONL 解析、费用缺口和指纹已接入；只用本地假 Target 的输出验证，没有启动真实 `codex exec`，没有联网或调用模型。用户 `installation_id` 写入仍是真实会话的阻塞项，实际会话隔离、费用和加载链未验证。
+**状态（2026-10-29）：** `run` 可以按 `proposal.target.agent` 选择 Codex，默认命令、JSONL 解析、费用缺口和指纹已接入；只用测试层替换 subprocess 边界的合成输出验证，没有启动真实 `codex exec`，没有联网或调用模型。用户 `installation_id` 写入仍是真实会话的阻塞项，实际会话隔离、费用和加载链未验证。
 
-- **目标选择：** `proposal.target.agent` 为 `claude-code`（缺省，兼容旧提案）或 `codex`。`config.target_agent` 只是同一选择的显式声明；与 proposal 不一致时 `run` 在启动任何 Target 前拒绝。`config.target_argv` 仍可替代默认命令，`argv.json` 记录完整实际 argv；Claude 默认命令的 `argv_sha256` 继续沿用旧口径（跳过 `claude -p <prompt>`），自定义命令和 Codex 默认命令记录完整 argv。
+- **目标选择：** `proposal.target.agent` 为 `claude-code`（缺省，兼容旧提案）或 `codex`。`config.target_agent` 只是同一选择的显式声明；与 proposal 不一致时 `run` 在启动任何 Target 前拒绝。`config.target_argv` 只对 Claude 默认命令生效，供不调用模型的本地验证；Codex 拒绝这个覆盖（启动前报错），正式调用只用规范 argv，冻结的 `model_id` 因此不会被换掉。本地验证 Codex 契约时在测试层替换 `phe_sandbox.run_with_timeout`，不新增产品配置入口，也不把合成输出当真实 Codex 会话。`argv.json` 记录完整实际 argv；Claude 默认命令的 `argv_sha256` 继续沿用旧口径（跳过 `claude -p <prompt>`），自定义命令和 Codex 默认命令记录完整 argv。
 - **Codex 默认命令：** `codex exec --json --ephemeral --ignore-user-config -s workspace-write -C <slot/repo> -m <proposal.target.model_id> -o <runner 输出目录>/last-message.txt <prompt>`。不添加权限绕过、`--add-dir`、`--max-turns` 或其他未在冻结规格里的参数；`-m` 读取冻结的 `proposal.target.model_id`，没有默认模型。
 - **JSONL 用量：** 只按事件 `type` 解析 `thread.started`、`turn.started`、`turn.completed`、`turn.failed`、`item.*`、`error`。`turn.completed.usage` 是 thread 累计值，只取最后一次，不逐 turn 相加；`TOK` 只等于 `input_tokens + output_tokens`，`cached_input_tokens`、`reasoning_output_tokens`、`cache_write_input_tokens` 不重复计。未知事件容忍。
-- **不合格输入：** 没有终态、坏行/截断/非对象 JSON、usage 缺失、字段类型非法或负数都明确不合格，不补零；全 0 usage 可能是上游缺 telemetry 的默认值，与真实零用量不可区分，也不当作有效测量。`turn.failed`、`error`、非零退出和超时保留 `is_error` / `error_message`，后续 `turn.completed` 不覆盖失败语义。原始 stdout/stderr 保存在 `artifacts/slot-NN/`。
+- **不合格输入：** 没有终态、坏行/截断/非对象 JSON、usage 缺失、字段类型非法或负数都明确不合格，不补零；最后 `turn.started` 没有被 `turn.completed`/`turn.failed` 闭合时（例如 `completed → 新 turn.started → EOF`），整条流算不完整：清空有效用量、记 `parse_error`、`is_error=true`，已出现的失败标记保留；全 0 usage 可能是上游缺 telemetry 的默认值，与真实零用量不可区分，也不当作有效测量。`turn.failed`、`error`、非零退出和超时保留 `is_error` / `error_message`，后续 `turn.completed` 不覆盖失败语义。原始 stdout/stderr 保存在 `artifacts/slot-NN/`。
 - **回合数：** `num_turns` 只计可观察的 `turn.started` 事件，`num_turns_basis=codex_turn_started_events`；它不等同 Claude 内部回合，也不是 max-turns 预算控制。
 - **最终消息：** 最后一个 `item.completed` 的 `agent_message.text` 存入 `final_message`；不把 Codex JSONL 改写成 Claude JSON。
 - **费用：** `estimated_cost_usd_v1` 恒为 `None`（`cost_basis=not_available_codex_exec_json_has_no_cost`），现有 `record_problem` / `judge.valid` 继续判 `pivot:telemetry_missing`。不新增估算、价目表或协议字段。
 - **指纹：** Codex 只 Hash `~/.codex/AGENTS.md` 和 `~/.codex/config.toml`；不读取 `auth.json`。文件不存在时记 `None`，不报错。Claude 仍用原来的三个文件。
-- **冻结绑定：** `runner_file_hashes()` 现在包含 `phe.py`、`phe_sandbox.py`、`phe_target.py`，三个都按实际执行的源码字节计算。新 Codex 实验必须冻结完整三项；旧 Claude sandbox 实验仍接受两项 Hash 的形状，但 runner 字节改动后旧 Hash 会按 changed 拒绝，续跑前需重新冻结。没有 `sandbox` 的旧 Claude 实验不要求 runner Hash。缺失或不一致分别记 `invalid_run:sandbox_runner_hash_missing` / `invalid_run:sandbox_runner_hash_changed`，在 Target 启动前停止。
+- **冻结绑定：** `runner_file_hashes()` 现在包含 `phe.py`、`phe_sandbox.py`、`phe_target.py`，三个都按实际执行的源码字节计算。Hash 要求只看冻结 proposal 的原始 `target.agent`，不经过尚未校验的 Target 适配器：`codex` 实验即使没有 `sandbox` 和 `config.target_agent` 也强制核对完整三项，适配器漂移不能降级成免校验。旧 Claude sandbox 实验仍接受两项或三项 Hash 的形状，但 runner 字节改动后旧 Hash 会按 changed 拒绝，续跑前需重新冻结。没有 `sandbox` 的旧 Claude 实验不要求 runner Hash。缺失或不一致分别记 `invalid_run:sandbox_runner_hash_missing` / `invalid_run:sandbox_runner_hash_changed`，在 Target 启动前停止。
 
 **契约来源：** 事件形状和用量关系按上游 tag `rust-v0.163.0` 的 `exec/src/exec_events.rs`、`exec/src/event_processor_with_jsonl_output.rs`、`protocol/src/protocol.rs` 和 `codex-api/src/sse/responses.rs` 核对；本机 `codex-cli 0.163.0` 只是版本号一致，不是二进制 commit 级证明。
 
@@ -78,7 +78,7 @@ python3 -I tools/phe.py run <实验目录>                              # 续跑
 ## 5. 本轮未验证
 
 - 没有启动任何模型、真实 Claude Code/Codex 会话或 `claude -p`；隔离与暂停只在合成夹具和本地桩程序上验证。
-- Codex 接口只用本地 Python 假 Target 输出按源码契约手写的 JSONL；不是真实 `codex exec` E2E，不证明 `installation_id` 写入、会话隔离或加载链能通过。
+- Codex 接口的合成 JSONL 按源码契约手写，在测试层替换 subprocess 边界注入；runner 仍按规范 argv 调用，但没有任何本地可执行入口。这不是真实 `codex exec` E2E，不证明 `installation_id` 写入、会话隔离或加载链能通过。
 - 没有真实 Codex 费用来源；全 0 usage 与缺 telemetry 不可区分，`estimated_cost_usd_v1` 始终为 `None`，所以真实 Codex 运行会停在 `pivot:telemetry_missing`。没有 max-turns 预算控制。
 - Claude Code 保持历史兼容，但本次运行不以它为目标；旧实验的冻结字节和两文件 runner Hash 口径未改。
 - oracle 目的路径核对用本地 symlink 夹具实测（外链文件、外链祖先、绝对路径、`..`）；真实 Target 会不会构造这类外链未测。恶意 pyc 用临时副本实测（mtime/size 匹配、内容不同），未覆盖其他缓存失效或绕过路径。

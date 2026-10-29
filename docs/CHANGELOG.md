@@ -2,12 +2,12 @@
 
 ## 2026-10-29 · Codex Target 最小接口
 
-- `phe.py run` 按 `proposal.target.agent` 选择 `claude-code`（旧默认）或 `codex`；`config.target_agent` 只声明同一选择，冲突时启动前拒绝。
+- `phe.py run` 按 `proposal.target.agent` 选择 `claude-code`（旧默认）或 `codex`；`config.target_agent` 只声明同一选择，冲突时启动前拒绝；Codex 拒绝 `config.target_argv` 覆盖，正式调用只用规范 argv。
 - Codex 默认命令使用 `codex exec --json --ephemeral --ignore-user-config -s workspace-write -C <work> -m <冻结 model_id> -o <output>/last-message.txt <prompt>`，不添加权限绕过或 max-turns 参数。
-- 新增 `tools/phe_target.py`：Codex JSONL 解析只取最后一次 `turn.completed` 的 thread 累计 usage，TOK 只算 input+output；坏行、缺 usage、负数和全 0 不补零，失败/致命 error/非零退出保留 error 语义；`final_message` 保留 agent_message 文本。
+- 新增 `tools/phe_target.py`：Codex JSONL 解析只取最后一次 `turn.completed` 的 thread 累计 usage，TOK 只算 input+output；坏行、缺 usage、负数和全 0 不补零，失败/致命 error/非零退出保留 error 语义；最后一个 `turn.started` 未被终态闭合时按不完整流处理，清空用量并记 `parse_error`；`final_message` 保留 agent_message 文本。
 - Codex 费用保持 `None`，继续走 `pivot:telemetry_missing`；没有新增估算、价目表或协议字段，也没有 max-turns 预算控制。
-- Codex 指纹只覆盖 `~/.codex/AGENTS.md` 和 `config.toml`，不读 auth；runner 模块 Hash 增加 `phe_target.py`，新 Codex 实验要求完整三项，旧 Claude sandbox 实验仍接受两项形状（runner 字节改动后需重新冻结）。
-- 只用本地假 Target 输出官方形状 JSONL 验证，没有启动真实 Codex 会话；`installation_id` 写入、实际会话隔离、加载链和费用仍未验证。
+- Codex 指纹只覆盖 `~/.codex/AGENTS.md` 和 `config.toml`，不读 auth；runner 模块 Hash 增加 `phe_target.py`；Hash 要求取自冻结 proposal 的原始 `target.agent`（不经过 Target 适配器），Codex 实验要求完整三项，旧 Claude sandbox 实验仍接受两项或三项形状（runner 字节改动后需重新冻结）。完整性判定和停止记账排在目标解析之前。
+- 只用测试层替换 subprocess 边界的合成 JSONL 验证，没有启动真实 Codex 会话；`installation_id` 写入、实际会话隔离、加载链和费用仍未验证。
 
 ## 2026-10-28 · M2 代码阶段收尾
 

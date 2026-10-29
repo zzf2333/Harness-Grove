@@ -44,6 +44,14 @@ class SelectTests(unittest.TestCase):
             with self.subTest(model=model), self.assertRaisesRegex(ValueError, "model_id"):
                 phe_target.select({"target": {"agent": "codex", "model_id": model}}, {})
 
+    def test_codex_refuses_target_argv_override(self):
+        p = {"target": {"agent": "codex", "model_id": "frozen-model-x"}}
+        with self.assertRaisesRegex(ValueError, "target_argv"):
+            phe_target.select(p, {"target_argv": ["claude", "-p", "other"]})
+
+    def test_claude_keeps_target_argv_override(self):
+        self.assertEqual(phe_target.select({"target": {}}, {"target_argv": ["stub"]})["agent"], "claude-code")
+
 
 class ArgvTests(unittest.TestCase):
     def test_codex_default_argv_has_no_bypass_or_budget_flags(self):
@@ -287,6 +295,25 @@ class ParseTests(unittest.TestCase):
             )
         )
         self.assertEqual(parsed["command_exits"], [{"command": "false", "exit_code": 1, "status": "failed"}])
+
+    def test_trailing_open_turn_is_incomplete_not_success(self):
+        # 完整 JSON 行也可能在下一个 turn 开始后结束：最后 turn 未闭合就是被截断的流。
+        parsed = self.parse(jsonl(event("turn.started"), completed(USAGE), event("turn.started")))
+        self.assertIsNone(parsed["usage"])
+        self.assertIsNone(parsed["tokens"])
+        self.assertIn("turn.started", parsed["parse_error"])
+        self.assertTrue(parsed["is_error"])
+        self.assertEqual(parsed["num_turns"], 2)
+
+    def test_trailing_open_turn_keeps_seen_failure(self):
+        parsed = self.parse(
+            jsonl(event("turn.started"), event("turn.failed", error={"message": "boom"}), event("turn.started"))
+        )
+        self.assertEqual(parsed["turn_status"], "failed")
+        self.assertEqual(parsed["error_message"], "boom")
+        self.assertIsNotNone(parsed["parse_error"])
+        self.assertIsNone(parsed["usage"])
+        self.assertTrue(parsed["is_error"])
 
     def test_num_turns_counts_only_observable_turn_started(self):
         parsed = self.parse(jsonl(event("turn.started"), event("turn.started"), completed(USAGE)))

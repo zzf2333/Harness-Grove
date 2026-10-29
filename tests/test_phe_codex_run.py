@@ -1,7 +1,8 @@
-"""真实 runner 入口 + 本地假 Target：Codex JSONL 的成功/失败/截断与冻结绑定。
+"""真实 runner 入口 + 测试层替换 subprocess 边界：Codex JSONL 语义与冻结绑定。
 
-假 Target 只打印按源码契约手写的 JSONL，不联网、不调用模型；这些用例不是真实 Codex
-会话，也不证明 `codex exec` 在当前隔离下能跑完。
+Codex 路径不接受 `config.target_argv` 覆盖，也没有本地可执行入口；这里在测试层替换
+`phe_sandbox.run_with_timeout`，runner 仍按规范 argv 调用，oracle 仍真实执行。合成 JSONL
+不是真实 `codex exec` 会话证据。
 """
 
 import json
@@ -12,9 +13,10 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import test_phe
-from codex_fixture import USAGE, ZERO_USAGE, completed, event, message
+from codex_fixture import USAGE, ZERO_USAGE, completed, event, jsonl, message
 
 phe = test_phe.phe
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,7 +48,6 @@ class RunTests(unittest.TestCase):
                 "experiment_id": "synthetic-codex",
                 "experiment_dir": str(self.exp),
                 "prompt": "do the task",
-                "target_agent": "codex",
                 "env": {},
                 "oracle_test_src": str(trusted),
                 "oracle_test_dest": "oracle.txt",
@@ -72,17 +73,21 @@ class RunTests(unittest.TestCase):
         (self.exp / "proposal.sha256").write_text(digest)
         (self.exp / "approval.json").write_text(json.dumps({"proposal_sha256": digest}))
 
-    def run_fake(self, body: str, exit_code: int = 0) -> subprocess.CompletedProcess:
-        fake = self.exp / "target.py"
-        fake.write_text(body + f"\nraise SystemExit({exit_code})\n")
-        self.cfg["target_argv"] = [sys.executable, "-I", str(fake)]
+    def run_fake(self, stdout: bytes, exit_code: int = 0) -> list[list[str]]:
+        """跑真实 runner 入口；Codex 调用返回合成输出，oracle 仍真实执行。"""
         self.freeze()
-        return subprocess.run(
-            [sys.executable, "-I", str(ROOT / "tools/phe.py"), "run", str(self.exp)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        real = phe.phe_sandbox.run_with_timeout
+        calls: list[list[str]] = []
+
+        def fake(argv, cwd, env, timeout_s, grace_s=3):
+            if argv[-1] == self.cfg["prompt"]:
+                calls.append(list(argv))
+                return exit_code, stdout, b"", 0.1, False
+            return real(argv, cwd, env, timeout_s, grace_s)
+
+        with patch.object(phe.phe_sandbox, "run_with_timeout", side_effect=fake):
+            phe.run(self.exp)
+        return calls
 
     def one_record(self) -> dict:
         records = phe.records(self.exp)
@@ -90,21 +95,19 @@ class RunTests(unittest.TestCase):
         return records[0]
 
     def test_success_tokens_cost_none_and_explicit_pivot(self):
-        body = "\n".join(
-            [
-                "import json",
-                f"print(json.dumps({event('thread.started', thread_id='t1')!r}))",
-                f"print(json.dumps({event('turn.started')!r}))",
-                f"print(json.dumps({message('done')!r}))",
-                f"print(json.dumps({completed(USAGE)!r}))",
-            ]
+        stdout = jsonl(
+            event("thread.started", thread_id="t1"),
+            event("turn.started"),
+            message("done"),
+            completed(USAGE),
         )
-        completed_run = self.run_fake(body)
-        self.assertEqual(completed_run.returncode, 0, completed_run.stderr)
+        calls = self.run_fake(stdout)
+        self.assertEqual(len(calls), 1)
         record = self.one_record()
         self.assertEqual(record[phe.TOK], 110)
         self.assertIsNone(record["estimated_cost_usd_v1"])
         self.assertEqual(record["target_agent"], "codex")
+        self.assertEqual(record["target_model_id"], "frozen-model-x")
         self.assertEqual(record["turn_status"], "completed")
         self.assertEqual(record["final_message"], "done")
         self.assertEqual(record["num_turns"], 1)
@@ -116,22 +119,31 @@ class RunTests(unittest.TestCase):
         art = self.exp / "artifacts/slot-01"
         self.assertIn(b"turn.completed", (art / "stdout.json").read_bytes())
         self.assertTrue((art / "stderr.txt").exists())
+        # 正式调用只用规范 argv：冻结模型经 -m 传入，输出目录由 runner 指定，提示词在最后。
+        argv = calls[0]
+        self.assertEqual(argv[:2], ["codex", "exec"])
+        self.assertEqual(argv[argv.index("-m") + 1], "frozen-model-x")
+        self.assertEqual(argv[argv.index("-o") + 1], str(Path(record["target_output"]) / "last-message.txt"))
+        self.assertEqual(argv[-1], self.cfg["prompt"])
+        self.assertFalse(record["target_argv_custom"])
+        self.assertEqual(record["argv_sha256"], phe.argv_digest(argv))
+        self.assertEqual(record["argv_sha256_scope"], "full_argv")
         launch = json.loads((art / "argv.json").read_text())
         self.assertEqual(launch["target_agent"], "codex")
-        self.assertTrue(launch["target_argv_custom"])
-        self.assertEqual(launch["argv"], self.cfg["target_argv"])
-        self.assertEqual(record["argv_sha256"], phe.argv_digest(self.cfg["target_argv"]))
+        self.assertEqual(launch["target_model_id"], "frozen-model-x")
+        self.assertFalse(launch["target_argv_custom"])
+        self.assertEqual(launch["argv"], argv)
+
+    def test_matching_declaration_is_accepted(self):
+        self.cfg["target_agent"] = "codex"
+        self.freeze()
+        calls = self.run_fake(jsonl(event("turn.started"), completed(USAGE)))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(self.one_record()["target_agent"], "codex")
 
     def test_failure_preserves_error_and_missing_usage(self):
-        body = "\n".join(
-            [
-                "import json",
-                f"print(json.dumps({event('turn.started')!r}))",
-                f"print(json.dumps({event('turn.failed', error={'message': 'boom'})!r}))",
-            ]
-        )
-        completed_run = self.run_fake(body, exit_code=1)
-        self.assertEqual(completed_run.returncode, 0, completed_run.stderr)
+        stdout = jsonl(event("turn.started"), event("turn.failed", error={"message": "boom"}))
+        self.run_fake(stdout, exit_code=1)
         record = self.one_record()
         self.assertEqual(record["turn_status"], "failed")
         self.assertTrue(record["is_error"])
@@ -140,88 +152,92 @@ class RunTests(unittest.TestCase):
         self.assertEqual(phe.stop_reason(self.exp), "pivot:telemetry_missing")
 
     def test_truncated_json_is_invalid_and_not_zero_filled(self):
-        body = "\n".join(
-            [
-                "import json",
-                f"print(json.dumps({event('turn.started')!r}))",
-                f"print(json.dumps({completed(USAGE)!r}))",
-                "print('{\"type\":')",
-            ]
-        )
-        completed_run = self.run_fake(body)
-        self.assertEqual(completed_run.returncode, 0, completed_run.stderr)
+        stdout = jsonl(event("turn.started"), completed(USAGE)) + b'{"type":'
+        self.run_fake(stdout)
         record = self.one_record()
         self.assertIsNone(record[phe.TOK])
         self.assertIsNotNone(record["parse_error"])
         self.assertTrue(record["is_error"])
         self.assertEqual(phe.stop_reason(self.exp), "pivot:telemetry_missing")
 
+    def test_trailing_open_turn_after_completed_is_incomplete(self):
+        stdout = jsonl(event("turn.started"), completed(USAGE), event("turn.started"))
+        self.run_fake(stdout)
+        record = self.one_record()
+        self.assertIsNone(record[phe.TOK])
+        self.assertIsNone(record["usage"])
+        self.assertIsNotNone(record["parse_error"])
+        self.assertTrue(record["is_error"])
+        self.assertEqual(record["num_turns"], 2)
+        self.assertEqual(phe.stop_reason(self.exp), "pivot:telemetry_missing")
+
     def test_missing_usage_is_invalid(self):
-        body = "\n".join(
-            [
-                "import json",
-                f"print(json.dumps({event('turn.started')!r}))",
-                f"print(json.dumps({completed()!r}))",
-            ]
-        )
-        completed_run = self.run_fake(body)
-        self.assertEqual(completed_run.returncode, 0, completed_run.stderr)
+        self.run_fake(jsonl(event("turn.started"), completed()))
         record = self.one_record()
         self.assertIsNone(record[phe.TOK])
         self.assertIn("usage", record["parse_error"])
         self.assertEqual(phe.stop_reason(self.exp), "pivot:telemetry_missing")
 
     def test_all_zero_usage_is_not_accepted(self):
-        body = "\n".join(
-            [
-                "import json",
-                f"print(json.dumps({event('turn.started')!r}))",
-                f"print(json.dumps({completed(ZERO_USAGE)!r}))",
-            ]
-        )
-        completed_run = self.run_fake(body)
-        self.assertEqual(completed_run.returncode, 0, completed_run.stderr)
+        self.run_fake(jsonl(event("turn.started"), completed(ZERO_USAGE)))
         record = self.one_record()
         self.assertIsNone(record[phe.TOK])
         self.assertTrue(record["usage_all_zero"])
         self.assertEqual(phe.stop_reason(self.exp), "pivot:telemetry_missing")
 
     def test_nonzero_exit_keeps_error_with_complete_telemetry(self):
-        body = "\n".join(
-            [
-                "import json",
-                f"print(json.dumps({event('turn.started')!r}))",
-                f"print(json.dumps({completed(USAGE)!r}))",
-            ]
-        )
-        completed_run = self.run_fake(body, exit_code=1)
-        self.assertEqual(completed_run.returncode, 0, completed_run.stderr)
+        self.run_fake(jsonl(event("turn.started"), completed(USAGE)), exit_code=1)
         record = self.one_record()
         self.assertTrue(record["is_error"])
         self.assertEqual(record[phe.TOK], 110)
         self.assertEqual(phe.stop_reason(self.exp), "pivot:telemetry_missing")
 
-    def test_config_target_agent_conflict_refuses_before_target(self):
-        fake = self.exp / "target.py"
-        fake.write_text("print('never')")
-        self.cfg["target_argv"] = [sys.executable, "-I", str(fake)]
-        self.cfg["target_agent"] = "claude-code"
+    def test_codex_refuses_target_argv_override(self):
+        self.cfg["target_argv"] = [sys.executable, "-I", "-c", "print('never')"]
         self.freeze()
-        completed_run = subprocess.run(
+        with patch.object(phe.phe_sandbox, "run_with_timeout") as runner:
+            with self.assertRaisesRegex(ValueError, "target_argv"):
+                phe.run(self.exp)
+            runner.assert_not_called()
+        self.assertFalse((self.exp / "stop.json").exists())
+        self.assertFalse((self.exp / "artifacts").exists())
+
+    def test_cli_refuses_codex_target_argv_override(self):
+        self.cfg["target_argv"] = [sys.executable, "-I", "-c", "print('never')"]
+        self.freeze()
+        done = subprocess.run(
             [sys.executable, "-I", str(ROOT / "tools/phe.py"), "run", str(self.exp)],
             capture_output=True,
             text=True,
             check=False,
         )
-        self.assertEqual(completed_run.returncode, 1)
-        self.assertIn("冲突", completed_run.stderr)
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("target_argv", done.stderr)
+        self.assertNotIn("Traceback", done.stderr)
+        self.assertFalse((self.exp / "stop.json").exists())
+
+    def test_freshly_frozen_conflicting_declaration_refuses_before_target(self):
+        self.cfg["target_agent"] = "claude-code"
+        self.freeze()
+        with patch.object(phe, "run_slot") as target, self.assertRaisesRegex(ValueError, "冲突"):
+            phe.run(self.exp)
+        target.assert_not_called()
         self.assertFalse((self.exp / "stop.json").exists())
         self.assertFalse((self.exp / "artifacts").exists())
 
-    def test_codex_experiment_requires_full_runner_hash_freeze(self):
-        fake = self.exp / "target.py"
-        fake.write_text("print('never')")
-        self.cfg["target_argv"] = [sys.executable, "-I", str(fake)]
+    def test_tampered_declaration_records_config_hash_changed_over_pivot(self):
+        self.freeze()
+        (self.exp / "stop.json").write_text(json.dumps({"stop_reason": "pivot:telemetry_missing"}))
+        # 冻结后只改 config.target_agent：完整性事故优先，不能被声明解析的异常提前中断。
+        self.cfg["target_agent"] = "claude-code"
+        (self.exp / "config.json").write_text(json.dumps(self.cfg))
+        with patch.object(phe, "run_slot") as target:
+            phe.run(self.exp)
+            target.assert_not_called()
+        self.assertEqual(phe.stop_reason(self.exp), "invalid_run:config_hash_changed")
+        self.assertFalse((self.exp / "artifacts").exists())
+
+    def test_codex_without_declaration_requires_full_runner_hash_freeze(self):
         hashes = phe.runner_file_hashes()
         legacy = {"phe.py": hashes["phe.py"], "phe_sandbox.py": hashes["phe_sandbox.py"]}
         for name, runner_hashes, omit in (
@@ -231,14 +247,22 @@ class RunTests(unittest.TestCase):
             with self.subTest(case=name):
                 self.freeze(runner_hashes=runner_hashes, omit_runner_hashes=omit)
                 (self.exp / "stop.json").unlink(missing_ok=True)
-                subprocess.run(
-                    [sys.executable, "-I", str(ROOT / "tools/phe.py"), "run", str(self.exp)],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
+                with patch.object(phe.phe_sandbox, "run_with_timeout") as runner:
+                    phe.run(self.exp)
+                    runner.assert_not_called()
                 self.assertEqual(phe.stop_reason(self.exp), "invalid_run:sandbox_runner_hash_missing")
                 self.assertFalse((self.exp / "artifacts").exists())
+
+    def test_runner_hash_requirement_ignores_drifting_selector(self):
+        hashes = phe.runner_file_hashes()
+        legacy = {"phe.py": hashes["phe.py"], "phe_sandbox.py": hashes["phe_sandbox.py"]}
+        self.freeze(runner_hashes=legacy)
+        p, cfg = phe.load(self.exp)
+        self.assertNotIn("target_agent", cfg)
+        self.assertNotIn("sandbox", cfg)
+        # 冻结 proposal 写的是 Codex：适配器漂移成 Claude 也不能降级成免校验。
+        with patch.object(phe.phe_target, "select", return_value={"agent": "claude-code", "model_id": None}):
+            self.assertEqual(phe.integrity_problem(p, cfg, self.exp), "sandbox_runner_hash_missing")
 
     def test_runner_hashes_include_the_codex_module(self):
         hashes = phe.runner_file_hashes()
