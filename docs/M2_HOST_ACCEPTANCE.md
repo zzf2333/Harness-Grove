@@ -118,7 +118,7 @@ M2 的 Gate 是"两个不同 Host 能继续同一个提案"。本文把这件事
 ## 报告
 
 - 合成演练：`python3 -I tools/m2/rehearse_host_handoff.py`，报告写到被 Git 忽略的 `experiments/m2-host-acceptance/<run-id>/report.md`；`<run-id>` 带唯一后缀，报告目录排他创建，不覆盖旧证据。
-- 成功才清理合成仓库；任一断言失败、未预期异常或报告保存失败时脚本非零退出并**保留现场**，路径写到脚本 stderr 和报告里，核对后手动删除。
+- 成功才清理合成仓库；任一断言失败、未预期异常、Ctrl-C（`KeyboardInterrupt`）或报告保存失败时脚本非零退出并**保留现场**，报告标记中断或失败，路径写到脚本 stderr 和报告里，核对后手动删除。
 - 报告内容：commit、`git status --porcelain` 与 `git diff` 的 SHA-256、脚本 SHA-256、范围限定（合成文件交接，不是正式冻结校验）、合成提案字节与 Hash、每条命令和退出码、断言清单、逐场景 pass/fail、未测边界。
 - 真实执行后另建 `<run-id>`，沿用同一张场景表，只写命令、退出码、`status` 输出和文件清单。**不写会话原文、不贴私人路径、不复制实验内容。**
 

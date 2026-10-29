@@ -123,6 +123,33 @@ class FailureKeepsEvidenceTests(RehearsalRun):
         self.assertIn(str(self.sandbox), err)
 
 
+class KeyboardInterruptTests(RehearsalRun):
+    def test_keyboard_interrupt_after_real_cli_keeps_evidence_and_writes_failure_report(self):
+        """真实 CLI 写下 proposal 和 host_log 后按 Ctrl-C：报告判失败，产物和现场仍可读。"""
+        real_phe = rehearsal.Rehearsal.phe
+
+        def interrupt_after_draft(run, *argv):
+            """真实 `log ... --step draft` 落盘后抛 KeyboardInterrupt（继承 BaseException）。"""
+            proc = real_phe(run, *argv)
+            if argv[:1] == ("log",) and "draft" in argv:
+                raise KeyboardInterrupt
+            return proc
+
+        code, err = self.run_main(phe=interrupt_after_draft)
+
+        self.assertNotEqual(code, 0)
+        text = self.report_text()
+        self.assertIn("中断", text)
+        self.assertIn("KeyboardInterrupt", text)
+        self.assertIn("--step draft", text, "中断前已执行的命令必须留在报告里")
+        exp = self.sandbox / "repo/experiments/synthetic-handoff"
+        self.assertEqual((exp / "proposal.json").read_bytes(), rehearsal.PROPOSAL_BYTES)
+        entries = [json.loads(line) for line in (exp / "host_log.jsonl").read_text().split("\n") if line.strip()]
+        self.assertEqual(entries[-1]["step"], "draft")
+        self.assertTrue(self.sandbox.exists(), "中断时必须保留合成仓库现场")
+        self.assertIn(str(self.sandbox), err)
+
+
 class ReportPersistenceTests(RehearsalRun):
     def test_success_writes_report_then_removes_sandbox(self):
         code, err = self.run_main()

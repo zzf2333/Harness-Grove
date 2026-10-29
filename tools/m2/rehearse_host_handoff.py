@@ -332,6 +332,12 @@ def render_report(run: Rehearsal, run_id: str, sandbox: Path, head: str, status:
     return "\n".join(lines)
 
 
+def abort_reason(exc: BaseException, sandbox: Path) -> str:
+    """中断摘要：类型名加消息（Ctrl-C 通常没有消息），本机路径换成占位符。"""
+    reason = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+    return reason.replace(str(sandbox), "$SANDBOX")
+
+
 def main() -> int:
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     head = git("rev-parse", "HEAD").stdout.decode().strip() or "unknown"
@@ -351,9 +357,9 @@ def main() -> int:
         scenario_log_ahead(run)
         scenario_no_approval(run)
         scenario_no_unauthorized_artifacts(run)
-    except Exception as exc:  # noqa: BLE001 - 任何未预期异常都要转成失败记录，不能丢现场
-        # 异常转明确失败记录：已执行的命令、退出码、输出和部分断言都还在 run 里，先落盘再决定清理。
-        run.aborted = f"{type(exc).__name__}: {exc}".replace(str(sandbox), "$SANDBOX")
+    except (Exception, KeyboardInterrupt) as exc:  # noqa: BLE001 - 未预期异常和 Ctrl-C 都要转成失败记录，不能丢现场
+        # 异常和 Ctrl-C 都转明确失败记录：已执行的命令、退出码、输出和部分断言都还在 run 里，先落盘再决定清理。
+        run.aborted = abort_reason(exc, sandbox)
         if run.scenarios:
             run.scenarios[-1]["status"] = "fail"
             run.scenarios[-1]["notes"].append("场景中断，断言不完整")
