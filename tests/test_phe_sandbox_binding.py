@@ -125,7 +125,7 @@ class SourceLoadingTests(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         self.tools = Path(temp.name) / "tools"
         self.tools.mkdir()
-        for name in ("phe.py", "phe_sandbox.py", "phe_hostlog.py", "phe_judge.py"):
+        for name in ("phe.py", "phe_sandbox.py", "phe_target.py", "phe_hostlog.py", "phe_judge.py"):
             shutil.copyfile(TOOLS / name, self.tools / name)
         source = self.tools / "phe_sandbox.py"
         stat = source.stat()

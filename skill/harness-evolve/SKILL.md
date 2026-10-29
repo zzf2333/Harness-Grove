@@ -35,7 +35,7 @@ description: 在用户现有的 Agent（Codex / Claude Code / Pi）里用本仓�
 - `gates.version` 缺省按 v1；新 proposal 用 `v2`。v2 的 `N_cost = max(N_gap, 2·N_mad, |1 − T[B_redundant]/T[A]|)`，没有冗余组时退回 v1 公式。`follow_up_candidate` 的节约必须超过 `N_cost`。
 - `proposal.rules` 不含 `required_control` 时 `contract_pass = test_pass`；含该规则时仍要求回执完全匹配，回执原始字段始终记录。
 - 没有必要的控制组时，对应门槛输出 `not_applicable`，不假装通过。
-- 执行参数放 `config.json`：各组 harness 路径、`prompt`、`claude_args`、`settings`、`env`、验收器参数、`nonce_sha256`。把 `config.json` 的 SHA-256 写进 `proposal.runner.config_sha256`。
+- 执行参数放 `config.json`：各组 harness 路径、`prompt`、`claude_args`、`settings`、`env`、验收器参数、`nonce_sha256`。把 `config.json` 的 SHA-256 写进 `proposal.runner.config_sha256`。Target 由 `proposal.target.agent` 选择；Codex 的默认命令、JSONL 用量和费用缺口见 [M2_RUN_CONTROLS](../docs/M2_RUN_CONTROLS.md) §4，`config.target_agent` 只用于声明同一选择，不能与 proposal 冲突。
 
 ## 3. 冻结
 

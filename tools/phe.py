@@ -26,46 +26,29 @@ from phe_judge import (  # noqa: F401
     validate_schedule,
 )
 
-# 按源码字节加载沙箱模块：import 可能执行内容不同但 timestamp/size 匹配的 pyc。
-PHE_SANDBOX_PATH = Path(__file__).resolve().parent / "phe_sandbox.py"
-PHE_SANDBOX_SRC = PHE_SANDBOX_PATH.read_bytes()
-phe_sandbox = types.ModuleType("phe_sandbox")
-sys.modules["phe_sandbox"] = phe_sandbox
-exec(compile(PHE_SANDBOX_SRC, str(PHE_SANDBOX_PATH), "exec"), phe_sandbox.__dict__)  # noqa: S102
-PHE_SANDBOX_SHA256 = hashlib.sha256(PHE_SANDBOX_SRC).hexdigest()
+
+# 按源码字节加载执行模块：import 可能执行内容不同但 timestamp/size 匹配的 pyc。
+def load_source_module(name: str):
+    path = Path(__file__).resolve().parent / f"{name}.py"
+    source = path.read_bytes()
+    module = types.ModuleType(name)
+    sys.modules[name] = module
+    exec(compile(source, str(path), "exec"), module.__dict__)  # noqa: S102
+    return module, hashlib.sha256(source).hexdigest()
+
+
+phe_sandbox, PHE_SANDBOX_SHA256 = load_source_module("phe_sandbox")
+phe_target, PHE_TARGET_SHA256 = load_source_module("phe_target")
 git_collect, git_env = phe_sandbox.git_collect, phe_sandbox.git_env
-
-HOME = Path.home()
-USER_FILES = [
-    HOME / ".claude/CLAUDE.md",
-    HOME / ".claude/RTK.md",
-    HOME / ".claude/settings.json",
-]
-
-
-def sha256_file(path: Path) -> str | None:
-    try:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
-    except FileNotFoundError:
-        return None
-
-
-def user_fingerprint() -> dict:
-    return {str(p): sha256_file(p.resolve()) for p in USER_FILES}
-
-
-def argv_digest(argv) -> str:
-    return hashlib.sha256(json.dumps(argv).encode()).hexdigest()
+sha256_file, argv_digest = phe_target.sha256_file, phe_target.argv_digest
 
 
 def runner_file_hashes() -> dict[str, str | None]:
-    """实际加载的 runner 模块 Hash；新 sandbox 实验冻结它们，校验的是这里加载的副本。
-
-    `phe_sandbox.py` 取自已执行的源码字节，不是可能被绕过执行的 `.py` 文件或 `__pycache__`。
-    """
+    """实际加载的 runner 模块 Hash；沙箱和 Target 模块都取自已执行的源码字节，不是 `.py` 或 pyc。"""
     return {
         "phe.py": sha256_file(Path(__file__).resolve()),
         "phe_sandbox.py": PHE_SANDBOX_SHA256,
+        "phe_target.py": PHE_TARGET_SHA256,
     }
 
 
@@ -133,26 +116,9 @@ def oracle(work: Path, cfg: dict, art: Path, receipt_required=True, sandbox=None
     }
 
 
-def usage_from(result: dict) -> dict:
-    mu = result.get("modelUsage") or {}
-    total = 0
-    for v in mu.values():
-        total += sum(
-            v.get(k, 0) for k in ("inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
-        )
-    return {
-        "model_usage": mu,
-        TOK: total if mu else None,
-        "estimated_cost_usd_v1": result.get("total_cost_usd"),
-        "num_turns": result.get("num_turns"),
-        "subtype": result.get("subtype"),
-        "is_error": result.get("is_error"),
-        "duration_ms": result.get("duration_ms"),
-        "duration_api_ms": result.get("duration_api_ms"),
-    }
-
-
-def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=True, sandbox=None):
+def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=True, sandbox=None, target=None):
+    target = target or {"agent": "claude-code", "model_id": None}
+    agent = target["agent"]
     art = exp / "artifacts" / f"slot-{item['slot']:02d}"
     art.mkdir(parents=True, exist_ok=True)
     harness = Path(cfg["harness"][item["group"]])
@@ -164,16 +130,8 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
     target_output.mkdir()
     # 启动前记下任务起点；Agent 可能在临时仓库里提交甚至改写历史，diff 一律对比这个 SHA。
     root = git_collect(work, ["rev-parse", "HEAD"]).strip()
-    argv = cfg.get("target_argv") or [
-        "claude",
-        "-p",
-        cfg["prompt"],
-        *cfg["claude_args"],
-        "--settings",
-        json.dumps(cfg["settings"]),
-        "--debug-file",
-        str(target_output / "debug.log"),
-    ]
+    custom = bool(cfg.get("target_argv"))
+    argv = cfg.get("target_argv") or phe_target.default_argv(target, cfg, work, target_output)
     env = os.environ.copy()
     env.update(cfg["env"])
     for k in cfg.get("env_unset", []):
@@ -190,20 +148,27 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
         "slot": item["slot"],
         "group": item["group"],
         "harness_sha256": sha256_file(harness),
-        # 默认命令沿用旧口径（跳过 claude -p <prompt>）；自定义 target_argv 记录完整命令。
-        "argv_sha256": hashlib.sha256(json.dumps(argv if cfg.get("target_argv") else argv[3:]).encode()).hexdigest(),
+        "target_agent": agent,
+        "target_model_id": target["model_id"],
+        "target_argv_custom": custom,
+        # Claude 默认命令沿用旧口径（跳过 claude -p <prompt>）；自定义命令和 Codex 记录完整 argv。
+        "argv_sha256": phe_target.argv_sha256(argv, agent, custom),
+        "argv_sha256_scope": "full_argv" if custom or agent == "codex" else "argv_without_claude_p_and_prompt",
         "wrapped_argv_sha256": argv_digest(wrapped),
         "policy_sha256": policy_sha,
         "workdir": str(work),
         "target_output": str(target_output),
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "user_files_before": user_fingerprint(),
+        "user_files_before": phe_target.user_fingerprint(agent),
     }
     launch = {
         "argv": argv,
         "wrapped_argv": wrapped,
         "policy": str(policy) if policy_sha else None,
         "policy_sha256": policy_sha,
+        "target_agent": agent,
+        "target_model_id": target["model_id"],
+        "target_argv_custom": custom,
     }
     (art / "argv.json").write_text(json.dumps(launch, ensure_ascii=False, indent=2))
     # 哨兵在 Target 启动前用本 slot 实际 policy 和完整允许清单实测；只写 runner 自有 /tmp 目录。
@@ -222,11 +187,16 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
     (art / "stdout.json").write_bytes(out)
     (art / "stderr.txt").write_bytes(err)
     record.update({"exit_code": rc, "wall_time_v1": round(dur, 2), "process_timed_out": to})
-    try:
-        result = json.loads(out)
-        record.update(usage_from(result))
-    except json.JSONDecodeError:
-        record["result_parse_error"] = True
+    if agent == "codex":
+        parsed = phe_target.parse_codex(out, rc, to)
+        record.update(phe_target.codex_record(parsed))
+        record[TOK] = parsed["tokens"]
+    else:
+        try:
+            result = json.loads(out)
+            record.update(phe_target.claude_usage_record(result, TOK))
+        except json.JSONDecodeError:
+            record["result_parse_error"] = True
 
     # 后续 Git 采集同策略包裹：Target 可写 .git/config，不能被其中配置的 helper 带出限制。
     git_policy = art / phe_sandbox.GIT_POLICY
@@ -246,7 +216,7 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
     o = oracle(work, oracle_cfg, art, receipt_required, sandbox=sandbox)
     (art / "oracle.txt").write_text(o.pop("_oracle_output"))
     record.update(o)
-    record["user_files_after"] = user_fingerprint()
+    record["user_files_after"] = phe_target.user_fingerprint(agent)
     record["user_files_unchanged"] = record["user_files_before"] == record["user_files_after"]
 
     with open(exp / "runs.jsonl", "a") as f:
@@ -287,12 +257,16 @@ def integrity_problem(p, cfg, exp) -> str | None:
     for path, digest in p["task"].get("oracle_files_sha256", {}).items():
         if sha256_file(Path(path)) != digest:
             return "oracle_hash_changed"
-    # 新 sandbox 实验必须绑定实际加载的 runner 模块；无 sandbox 的旧实验不要求。
-    if cfg.get("sandbox") is not None:
+    # 新 Codex 实验必须绑定实际加载的 runner 模块；旧 Claude sandbox 实验保留两文件口径。
+    agent = phe_target.select(p, cfg)["agent"]
+    if agent == "codex" or cfg.get("sandbox") is not None:
         frozen = p.get("runner", {}).get("runner_files_sha256")
-        if not isinstance(frozen, dict) or set(frozen) != {"phe.py", "phe_sandbox.py"}:
+        expected, legacy = runner_file_hashes(), {"phe.py", "phe_sandbox.py"}
+        if not isinstance(frozen, dict) or set(frozen) not in (legacy, set(expected)):
             return "sandbox_runner_hash_missing"
-        if frozen != runner_file_hashes():
+        if agent == "codex" and set(frozen) != set(expected):
+            return "sandbox_runner_hash_missing"
+        if any(frozen[name] != expected[name] for name in frozen):
             return "sandbox_runner_hash_changed"
     return None
 
@@ -333,6 +307,7 @@ def run(exp: Path, pause_after_new_slots: int | None = None):
     p, cfg = load(exp)
     validate_schedule(p)
     budget = p["experiment"]["budget"]
+    target = phe_target.select(p, cfg)
     slot_wall = (
         budget["max_process_seconds_per_invocation"]
         + budget["process_kill_grace_seconds"]
@@ -388,7 +363,15 @@ def run(exp: Path, pause_after_new_slots: int | None = None):
             break
         before = len(rs)
         try:
-            run_slot(exp, cfg, item, budget, receipt_required="required_control" in p["rules"], sandbox=sandbox)
+            run_slot(
+                exp,
+                cfg,
+                item,
+                budget,
+                receipt_required="required_control" in p["rules"],
+                sandbox=sandbox,
+                target=target,
+            )
         except phe_sandbox.SandboxError:
             # 隔离不可用/不生效是 fail closed 的前置拒绝，不记成 slot 失败或 pivot。
             raise
