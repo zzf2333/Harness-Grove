@@ -1,6 +1,6 @@
 # M2 跨 Host 验收：准备、提示词与批准边界
 
-**状态：** 准备完成（2026-10-29，第 1 轮审查修复后重跑）。合成演练 4/4 场景通过；真实双 Host 执行 **未开始**，需用户单独批准（消耗订阅额度）。上位文档：[M2_PLAN](M2_PLAN.md)、[PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」、[M-1_PROTOCOL](M-1_PROTOCOL.md)「实验目录与报告」、[SKILL](../skill/harness-evolve/SKILL.md) §8「续作」。
+**状态：** 准备完成（2026-10-29，第 3 轮独立审查 PASS，候选提交 `3642484`）。合成演练 4/4 场景通过，205 项测试通过；真实双 Host 执行 **未开始**，需用户单独批准（消耗订阅额度）。上位文档：[M2_PLAN](M2_PLAN.md)、[PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」、[M-1_PROTOCOL](M-1_PROTOCOL.md)「实验目录与报告」、[SKILL](../skill/harness-evolve/SKILL.md) §8「续作」。
 
 M2 的 Gate 是"两个不同 Host 能继续同一个提案"。本文把这件事拆成两半：不花额度的 CLI 演练（已完成），和花额度的真实 Host 执行（待批准）。
 
