@@ -8,15 +8,21 @@
 边界：不调用 `run` / `judge`，不写 `approval.json`、`runs.jsonl`、`result.json`，
 不发模型请求，不碰用户配置目录。它验证的是 CLI 的阶段推导，不是真实 Host 会话；
 真实双 Host 执行消耗订阅额度，需用户另行批准（见 docs/M2_HOST_ACCEPTANCE.md）。
+
+合成提案的必填字段可以留 null，所以本演练只验证合成文件交接和哈希侧文件
+（`proposal.json` 原始字节 → `proposal.sha256` 绑定），不是 SKILL §2/§3 的正式冻结校验。
+失败或中断时保留合成仓库现场；报告落盘成功才算交付。
 """
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -47,15 +53,31 @@ def git(*argv: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(REPO), *argv], capture_output=True, check=False)
 
 
+def reserve_run_dir(root: Path, stamp: str) -> tuple[str, Path]:
+    """排他创建一个新报告目录：同一秒的第二次运行加随机后缀，不覆盖旧证据。"""
+    root.mkdir(parents=True, exist_ok=True)
+    for attempt in range(8):
+        run_id = stamp if attempt == 0 else f"{stamp}-{os.urandom(3).hex()}"
+        path = root / run_id
+        try:
+            path.mkdir()
+        except FileExistsError:
+            continue
+        return run_id, path
+    raise OSError(f"无法为 {stamp} 分配新的报告目录：{root}")
+
+
 class Rehearsal:
     """收集命令、断言和场景状态，最后一起写报告。"""
 
-    def __init__(self, sandbox: Path, run_dir: Path):
+    def __init__(self, sandbox: Path, run_dir: Path | None = None):
         self.sandbox = sandbox
         self.run_dir = run_dir
         self.calls = []
         self.scenarios = []
         self.problems = []
+        # 未预期异常的摘要；非 None 时报告记为中断，不能称通过。
+        self.aborted: str | None = None
 
     def phe(self, *argv) -> subprocess.CompletedProcess:
         cmd = [sys.executable, "-I", str(self.sandbox / "tools/phe.py"), *map(str, argv)]
@@ -226,17 +248,23 @@ def render_argv(argv: list, sandbox: Path) -> str:
 
 def render_report(run: Rehearsal, run_id: str, sandbox: Path, head: str, status: str, diff_sha: str) -> str:
     passed = [s for s in run.scenarios if s["status"] == "pass"]
-    failed = [s for s in run.scenarios if s["status"] == "fail"]
+    failed_scenarios = [s for s in run.scenarios if s["status"] == "fail"]
+    failed = bool(run.problems) or run.aborted is not None
     sandbox_note = (
-        f"- 合成仓库：`$TMPDIR/{sandbox.name}/repo`，演练结束后删除；"
-        f"`tools/*.py`、`docs/M-1_PROTOCOL.md`、`skill/harness-evolve/SKILL.md` 由本仓库复制，"
+        f"- 合成仓库：`$TMPDIR/{sandbox.name}/repo`，"
+        f"{'演练结束后删除' if not failed else '本次失败或中断，现场保留（绝对路径见脚本 stderr），核对后手动删除'}；"
+        "`tools/*.py`、`docs/M-1_PROTOCOL.md`、`skill/harness-evolve/SKILL.md` 由本仓库复制，"
         "`phe_hostlog.REPO_ROOT` 由 `__file__` 推导为合成仓库根。"
     )
-    verdict = (
-        f"合成演练 {len(passed)}/{len(run.scenarios)} 场景通过。真实双 Host 场景 not-tested：需用户单独批准。"
-        if not failed
-        else f"合成演练有 {len(failed)} 个场景失败，见「断言明细」。真实双 Host 场景 not-tested。"
-    )
+    if run.aborted is not None:
+        verdict = (
+            f"合成演练中断（{run.aborted}）：只保存了已执行的命令、输出和部分断言，其余场景未执行。"
+            "真实双 Host 场景 not-tested。"
+        )
+    elif failed_scenarios:
+        verdict = f"合成演练有 {len(failed_scenarios)} 个场景失败，见「断言明细」。真实双 Host 场景 not-tested。"
+    else:
+        verdict = f"合成演练 {len(passed)}/{len(run.scenarios)} 场景通过。真实双 Host 场景 not-tested：需用户单独批准。"
     lines = [
         f"# M2 跨 Host 续作演练报告：{run_id}",
         "",
@@ -245,6 +273,11 @@ def render_report(run: Rehearsal, run_id: str, sandbox: Path, head: str, status:
         "## 目标、版本与环境",
         "",
         "- 演练对象：`tools/phe.py log` / `status` 的续作阶段推导（M2 切片 C）。",
+        (
+            "- 范围：只验证合成文件交接和哈希侧文件（`proposal.json` 原始字节 → `proposal.sha256` 绑定）。"
+            "合成提案允许必填字段为 `null`，不是可执行提案；SKILL §2/§3 的必填项与 `schedule` 自检未测，"
+            "本报告不冒充正式冻结校验或完整 Skill 流程。"
+        ),
         f"- 代码版本：commit `{head}`，工作树 {status}，`git diff` 的 SHA-256 `{diff_sha}`。",
         f"- 演练脚本：`tools/m2/rehearse_host_handoff.py`，SHA-256 `{sha256(Path(__file__).read_bytes())}`。",
         f"- 解释器：Python `{sys.version.split()[0]}`，命令里的 `python3` 按 PATH 解析。",
@@ -260,6 +293,8 @@ def render_report(run: Rehearsal, run_id: str, sandbox: Path, head: str, status:
         failed_checks = [c["message"] for c in item["checks"] if not c["ok"]]
         observed = failed_checks[0] if failed_checks else "全部断言成立"
         lines.append(f"| {item['id']}：{item['title']} | {item['expect']} | {observed} | {item['status']} |")
+    if run.aborted is not None:
+        lines += ["", f"**中断：** {run.aborted}。其余场景未执行；已执行的命令、退出码、输出和部分断言见下。"]
     lines += ["", "## 断言明细", ""]
     for item in run.scenarios:
         lines.append(f"### {item['id']}：{item['title']}")
@@ -284,6 +319,7 @@ def render_report(run: Rehearsal, run_id: str, sandbox: Path, head: str, status:
         "- 无批准时 `run` 是否被拒绝：**not-tested**。演练不调用 `run` / `judge`，也不写 `approval.json`。",
         "- 会话隔离与配置加载：**not-tested**。真实会话会加载工作目录和用户级配置，隔离办法尚未验证。",
         "- Skill 发现：**not-tested**。演练没有启动 Host 会话，`skill/harness-evolve` 是否被加载未验证。",
+        "- 正式冻结校验：**not-tested**。合成提案允许 `null`，SKILL §2/§3 的必填项和 `schedule` 自检没有验证。",
         "- 报告与输入都是合成数据；真实实验的提案、日志和会话内容不写进本文件。",
         "",
         "## 复现",
@@ -297,7 +333,7 @@ def render_report(run: Rehearsal, run_id: str, sandbox: Path, head: str, status:
 
 
 def main() -> int:
-    run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     head = git("rev-parse", "HEAD").stdout.decode().strip() or "unknown"
     porcelain = git("status", "--porcelain").stdout.decode().strip()
     diff_sha = sha256(git("diff").stdout)
@@ -308,23 +344,40 @@ def main() -> int:
         else f"dirty（{len(porcelain.splitlines())} 项，`git status --porcelain` 的 SHA-256 `{porcelain_sha}`）"
     )
     sandbox = Path(tempfile.mkdtemp(prefix="phe-m2-handoff-"))
-    run = Rehearsal(sandbox / "repo", REPORT_ROOT / run_id)
+    run = Rehearsal(sandbox / "repo")
     try:
         copy_repo(run.sandbox)
         scenario_normal_handoff(run)
         scenario_log_ahead(run)
         scenario_no_approval(run)
         scenario_no_unauthorized_artifacts(run)
-    finally:
-        shutil.rmtree(sandbox, ignore_errors=True)
-    run.run_dir.mkdir(parents=True, exist_ok=True)
-    (run.run_dir / "report.md").write_text(render_report(run, run_id, sandbox, head, status, diff_sha))
+    except Exception as exc:  # noqa: BLE001 - 任何未预期异常都要转成失败记录，不能丢现场
+        # 异常转明确失败记录：已执行的命令、退出码、输出和部分断言都还在 run 里，先落盘再决定清理。
+        run.aborted = f"{type(exc).__name__}: {exc}".replace(str(sandbox), "$SANDBOX")
+        if run.scenarios:
+            run.scenarios[-1]["status"] = "fail"
+            run.scenarios[-1]["notes"].append("场景中断，断言不完整")
+        print(traceback.format_exc(), file=sys.stderr)
+    failed = bool(run.problems) or run.aborted is not None
+    try:
+        run_id, run.run_dir = reserve_run_dir(REPORT_ROOT, stamp)
+        report_path = run.run_dir / "report.md"
+        report_path.write_text(render_report(run, run_id, sandbox, head, status, diff_sha))
+    except OSError as exc:
+        print(f"报告保存失败（{exc}）；现场保留：{sandbox}", file=sys.stderr)
+        return 1
     for item in run.scenarios:
         print(f"{item['status']}: {item['id']} - {item['title']}")
-    print(f"report: {run.run_dir / 'report.md'}")
-    if run.problems:
-        print("失败：", *run.problems, sep="\n  ", file=sys.stderr)
+    print(f"report: {report_path}")
+    if failed:
+        print(f"失败：现场保留在 {sandbox}，报告 {report_path}", file=sys.stderr)
+        if run.aborted:
+            print(f"中断：{run.aborted}", file=sys.stderr)
+        for problem in run.problems:
+            print(f"  {problem}", file=sys.stderr)
         return 1
+    # 报告已成功落盘且全部场景通过，才清理合成仓库。
+    shutil.rmtree(sandbox, ignore_errors=True)
     return 0
 
 
