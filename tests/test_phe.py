@@ -314,7 +314,7 @@ class RunTests(unittest.TestCase):
             "oracle_timeout_s": 30,
             "process_kill_grace_seconds": 1,
         }
-        self.assertTrue(phe.oracle(work, cfg, receipt_required=False)["test_pass"])
+        self.assertTrue(phe.oracle(work, cfg, self.exp / "art", receipt_required=False)["test_pass"])
         self.assertEqual((work / "a/x.test.ts").read_text(), "agent edited")
 
     def test_receipt_contract_depends_on_required_rule(self):
@@ -337,7 +337,7 @@ class RunTests(unittest.TestCase):
                     (work / ".phe-calibration-receipt").write_text(receipt)
                 for required in (True, False):
                     with self.subTest(receipt=receipt, required=required):
-                        result = phe.oracle(work, cfg, receipt_required=required)
+                        result = phe.oracle(work, cfg, self.exp / "art", receipt_required=required)
                         self.assertEqual(result["contract_pass"], not required or receipt == "correct")
                         self.assertEqual(result["receipt_present"], receipt is not None)
                         self.assertEqual(result["receipt_match"], receipt == "correct")

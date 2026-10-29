@@ -1,6 +1,6 @@
 # 真实实验的执行控制：主动暂停与 Target 写隔离
 
-**状态（2026-10-29）：** 本轮只给 `tools/phe.py run` 加两项执行控制，没有启动模型、没有真实 CLI 会话、没有新的实验冻结。`experiments/m2-real-001` 保持冻结字节不变；它的 `proposal.runner.runner_sha256` 记的是改动前的 `tools/phe.py`，所以要用新 runner 执行必须换新实验 ID 重新冻结批准。
+**状态（2026-10-29）：** 本轮只给 `tools/phe.py run` 加两项执行控制，没有启动模型、没有真实 CLI 会话、没有新的实验冻结。第 2 轮审查后收窄了执行层隔离：沙箱程序固定、写目录只由 runner 创建、Git 采集与 oracle 同策略包裹、runner 模块 Hash 纳入冻结、完整性判定先于 sandbox 解析。`experiments/m2-real-001` 保持冻结字节不变；它的 `proposal.runner.runner_sha256` 记的是改动前的 `tools/phe.py`，所以要用新 runner 执行必须换新实验 ID 重新冻结批准。
 
 上位来源：[M-1_PROTOCOL](M-1_PROTOCOL.md)「预算」「判定」、[M2_HOST_ACCEPTANCE](M2_HOST_ACCEPTANCE.md)「执行层隔离核对」、[SKILL](../skill/harness-evolve/SKILL.md) §5/§8。本文只描述 runner 的实际行为与边界，不改协议里的预算公式和门槛。
 
@@ -33,33 +33,31 @@ python3 -I tools/phe.py run <实验目录>                              # 续跑
 
 不保证：`wall_time_v1` 和 `oracle_seconds` 之外的 runner 自身开销（复制工作区、Git 初始化）没有单独记录，续跑时这部分不会重复计入。首次调用（已完成记录为 0）的口径与改动前完全一致。
 
-## 3. Target 写隔离：`config.json` 的 `sandbox`
+## 3. 执行层写隔离：`config.json` 的 `sandbox`
 
 ```json
 {
   "sandbox": {
     "mechanism": "macos-sandbox-exec",
-    "executable": "/usr/bin/sandbox-exec",
-    "network": "allow",
-    "write_roots": ["/tmp/phe-m2-002-tmp"]
+    "network": "allow"
   }
 }
 ```
 
-`mechanism` 只支持 macOS 内置 `/usr/bin/sandbox-exec`；`executable` 可省（默认就是它）；`network` 取 `allow`（默认）或 `deny`；`write_roots` 是额外显式允许写入的绝对目录，必须已存在、不能是真实 home 或它的祖先/子目录。
+`mechanism` 只支持 macOS 内置 `/usr/bin/sandbox-exec`，程序路径固定；`network` 取 `allow`（默认）或 `deny`。`sandbox` 段只接受这两个键：出现 `executable`、`write_roots` 或任何其他键时 `run` 明确拒绝启动，不静默忽略。
 
-- **执行层包裹：** Target 命令前面加上 `sandbox-exec -f <profile>`，profile 由 `config.json` 和本 slot 的路径生成，存放在 `artifacts/slot-NN/sandbox.sb`，作为该 slot 实际生效规则的原样证据。子进程继承同一 profile（实测：沙箱子进程写未允许目录同样 `Operation not permitted`）。
-- **可写范围：** 本 slot 的工作目录、本 slot 的 artifacts 目录、`write_roots`。其他位置一律拒绝写入，包括 `~/.claude`、`~/.claude.json`、`~/.codex`、`~/.pi`、`~/.agents`、temper 和系统临时目录。
-- **读与网络：** 读不限制（登录凭据仍可读，便于复用现有登录），网络按 `network` 透传。没有换 HOME、没有 `--bare`、没有新 key。
-- **fail closed：** 声明了 `sandbox` 就必须可用。机制不支持、程序不存在、写根不合法时 `run` 直接以退出码 1 拒绝启动，不写 `stop.json`、不启动任何 Target——与"批准未绑定"同一类前置拒绝，不会静默按无隔离方式执行。
-- **哨兵：** 每次 `run` 在启动第一个 Target 之前，在 `/tmp` 的独立目录里用同一套 profile 实测四件事：允许目录可写、未允许目录不可写、子进程写允许目录可写、子进程写未允许目录不可写。任一不符合预期就拒绝启动。
-- **Hash 绑定：** 整个 `sandbox` 段在 `config.json` 里，`config.json` 的 SHA-256 冻结在 `proposal.runner.config_sha256`。改动隔离参数就是改 config Hash，`run` 会记 `invalid_run:config_hash_changed`，只能换新实验 ID 重冻。
-- **必须显式给出的临时目录：** Target 或它的测试工具若需要写系统临时目录（`$TMPDIR`、包管理器缓存），必须把该目录列进 `write_roots`，否则写入被拒、该 slot 按实际失败记录。不做自动放宽。
+- **包裹范围：** 同一机制覆盖三类进程：Target 及其子进程；外置验收器（它可能执行 Target 改过的项目代码和测试，不能因为脚本可信就在外层运行）；Target 返回后的 Git 采集（`diff`、`status`）。Git 采集另外禁用 external diff、textconv、fsmonitor，并使用只含固定项的干净环境（不继承 `GIT_*`、不读用户/系统 Git 配置）。
+- **可写范围（由 runner 创建，不能配置）：** 每个 slot 的 `repo/` 工作目录、`tmp/` 专用临时目录（Target 的 `TMPDIR` 指向它）、`output/` 输出子目录（默认 `--debug-file` 落在这里，视为不可信输出）。policy 文件、stdout/stderr、diff、oracle 输出和启动记录都写在 `artifacts/slot-NN/`，Target 不可写——仓库级 Git 配置和验收结果都不能被 Target 伪造。整个 `/tmp`、artifacts、实验目录和用户目录都不在允许清单里。
+- **哨兵：** 每个 slot 启动 Target 之前，用本 slot 实际写下的 `artifacts/slot-NN/policy-target.sb` 和完整允许清单（三个目录）实测：三个允许目录可写、同一策略下子进程也只能写这些目录、`/tmp` 下自建的未允许目录不可写（子进程同规则）。哨兵只写这些 runner 自有临时目录；任一不符合预期就拒绝启动。
+- **启动记录：** `argv.json` 记包装前的 `argv`、实际执行的 `wrapped_argv`、policy 路径与 SHA-256；`runs.jsonl` 记 `wrapped_argv_sha256`、`policy_sha256`、`git_policy_sha256`、`oracle_wrapped_argv_sha256`、`oracle_policy_sha256`。stdout/stderr 用管道由 runner 收集，Target 不持有证据文件的 fd。
+- **fail closed：** 声明了 `sandbox` 就必须可用。机制不支持、`/usr/bin/sandbox-exec` 不存在、出现不支持的键或哨兵不通过时，`run` 以退出码 1 拒绝启动，不写 `stop.json`、不启动任何 Target。
+- **Hash 绑定：** `sandbox` 段在 `config.json` 里，SHA-256 冻结在 `proposal.runner.config_sha256`。新 sandbox 实验还必须把实际加载的 `tools/phe.py` 和 `tools/phe_sandbox.py` 的 SHA-256 冻结到 `proposal.runner.runner_files_sha256`（键为两个文件名，用 `phe.runner_file_hashes()` 生成：`python3 -c 'import sys; sys.path.insert(0, "tools"); import phe, json; print(json.dumps(phe.runner_file_hashes()))'`）；`run` 校验当前加载的模块副本，缺失或不一致记 `invalid_run:sandbox_runner_hash_missing` / `invalid_run:sandbox_runner_hash_changed`，在哨兵和 Target 之前停止。没有 `sandbox` 的旧实验不要求这个字段。
+- **完整性优先：** 续跑和每次启动 slot 前先核对 proposal/config/harness/oracle/runner 模块 Hash；配置被改写时先记 `invalid_run:config_hash_changed`，不会因为损坏的 `sandbox` 段提前抛错而漏掉 `stop.json`。
 
-不保证：外置验收器不在沙箱里（它是可信代码，在工作区副本上跑）；`/dev/null` 和 `/dev/fd/*` 的写入放行（普通重定向，不是状态写入）；读取范围不受限，profile 不是保密措施；这是 macOS 专用机制，其他平台没有实现，声明了就拒绝启动。真实 CLI 在写受限下的完整行为本次未测——如果 CLI 自身的 cache/state 写入被拒，后果是该 slot 失败或报错留在 artifacts 里，必须人工按协议停止，不自动放宽、不补跑。
+不保证：外置验收器和 Git 采集同样受写限制，但它们仍能读实验目录和用户文件，profile 不是保密措施；`/dev/null` 和 `/dev/fd/*` 的写入放行（普通重定向，不是状态写入）；读取范围不受限，网络按 `network` 透传；这是 macOS 专用机制，其他平台声明了就拒绝启动。验收器和 Git 的依赖缓存默认在允许清单外：真实测试套件或工具若需要写 HOME/系统缓存会失败，失败留在 artifacts 或 stderr 里，必须人工按协议处理，不自动放宽。真实 CLI 在写受限下的完整行为本次未测；Git helper 的禁用只在本机 Git 2.56 上实测。
 
 ## 4. 本轮未验证
 
 - 没有启动任何模型、真实 Claude Code/Codex 会话或 `claude -p`；隔离与暂停只在合成夹具和本地桩程序上验证。
 - 没有对 `experiments/m2-real-001` 执行 `run`/`judge`，没有写 `approval.json`、`result.json`、`report.md`。
-- 真实实验用新 runner 执行前需要：换新实验 ID 重新冻结（含 `sandbox` 段与 `write_roots` 的具体目录），重新取得用户批准。
+- 真实实验用新 runner 执行前需要：换新实验 ID 重新冻结（含 `sandbox` 段、`runner_files_sha256` 和具体 slot 目录），重新取得用户批准。

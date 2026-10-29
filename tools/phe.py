@@ -2,6 +2,7 @@
 """冻结 proposal 驱动的评测入口（标准库）。"""
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -25,6 +26,7 @@ from phe_judge import (  # noqa: F401
     valid,
     validate_schedule,
 )
+from phe_sandbox import git_collect, git_env
 
 HOME = Path.home()
 USER_FILES = [
@@ -45,10 +47,28 @@ def user_fingerprint() -> dict:
     return {str(p): sha256_file(p.resolve()) for p in USER_FILES}
 
 
+def argv_digest(argv) -> str:
+    return hashlib.sha256(json.dumps(argv).encode()).hexdigest()
+
+
+def runner_file_hashes() -> dict[str, str | None]:
+    """实际加载的 runner 模块 Hash；新 sandbox 实验冻结它们，校验的是这里加载的副本。"""
+    return {
+        "phe.py": sha256_file(Path(__file__).resolve()),
+        "phe_sandbox.py": sha256_file(Path(phe_sandbox.__file__).resolve()),
+    }
+
+
 def run_with_timeout(argv, cwd, env, timeout_s, grace_s=3):
     start = time.monotonic()
     proc = subprocess.Popen(
-        argv, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
+        argv,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+        close_fds=True,
     )
     timed_out = False
     try:
@@ -70,13 +90,13 @@ def build_workdir(base: Path, harness: Path) -> Path:
     shutil.rmtree(work / ".git")
     shutil.copyfile(harness, work / "AGENTS.md")
     git = ["git", "-c", "user.name=phe", "-c", "user.email=phe@local"]
-    subprocess.run(["git", "init", "-q"], cwd=work, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=work, check=True)
-    subprocess.run(git + ["commit", "-qm", "task start"], cwd=work, check=True)
+    subprocess.run(["git", "init", "-q"], cwd=work, env=git_env(), check=True)
+    subprocess.run(["git", "add", "-A"], cwd=work, env=git_env(), check=True)
+    subprocess.run(git + ["commit", "-qm", "task start"], cwd=work, env=git_env(), check=True)
     return work
 
 
-def oracle(work: Path, cfg: dict, receipt_required=True) -> dict:
+def oracle(work: Path, cfg: dict, art: Path, receipt_required=True, sandbox=None) -> dict:
     check_root = Path(tempfile.mkdtemp(prefix="phe-oracle-", dir="/tmp"))
     check = check_root / "repo"
     subprocess.run(["cp", "-Rc", str(work), str(check)], check=True)
@@ -84,10 +104,19 @@ def oracle(work: Path, cfg: dict, receipt_required=True) -> dict:
     tests = cfg.get("oracle_tests") or [{"src": cfg["oracle_test_src"], "dest": cfg["oracle_test_dest"]}]
     for t in tests:
         shutil.copyfile(t["src"], check / t["dest"])
+    # 验收器可能执行 Target 改过的项目代码/测试，和 Target 用同一写限制；policy 同样放 art。
+    tmp = check_root / "tmp"
+    tmp.mkdir()
+    policy = art / phe_sandbox.ORACLE_POLICY
+    policy_sha = phe_sandbox.write_policy(sandbox, policy, [check, tmp])
+    wrapped = phe_sandbox.wrap(sandbox, policy) + cfg["oracle_argv"]
+    env = os.environ.copy()
+    if sandbox is not None:
+        env["TMPDIR"] = str(tmp)
     rc, out, err, dur, to = run_with_timeout(
-        cfg["oracle_argv"],
+        wrapped,
         check / cfg["oracle_cwd"],
-        os.environ.copy(),
+        env,
         cfg["oracle_timeout_s"],
         cfg["process_kill_grace_seconds"],
     )
@@ -107,6 +136,8 @@ def oracle(work: Path, cfg: dict, receipt_required=True) -> dict:
         "receipt_present": receipt is not None,
         "receipt_match": receipt_match,
         "contract_pass": None if test_pass is None else (test_pass and (receipt_match or not receipt_required)),
+        "oracle_wrapped_argv_sha256": argv_digest(wrapped),
+        "oracle_policy_sha256": policy_sha,
         "_oracle_output": text,
     }
 
@@ -135,10 +166,13 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
     art.mkdir(parents=True, exist_ok=True)
     harness = Path(cfg["harness"][item["group"]])
     work = build_workdir(Path(cfg["base_dir"]), harness)
+    # 专用临时目录和 Target 输出子目录由 runner 创建；art 根只放 Target 不可伪造的 runner 证据。
+    slot_root = work.parent
+    tmp, target_output = slot_root / "tmp", slot_root / "output"
+    tmp.mkdir()
+    target_output.mkdir()
     # 启动前记下任务起点；Agent 可能在临时仓库里提交甚至改写历史，diff 一律对比这个 SHA。
-    root = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=work, capture_output=True, text=True, check=True
-    ).stdout.strip()
+    root = git_collect(work, ["rev-parse", "HEAD"]).strip()
     argv = cfg.get("target_argv") or [
         "claude",
         "-p",
@@ -147,12 +181,18 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
         "--settings",
         json.dumps(cfg["settings"]),
         "--debug-file",
-        str(art / "debug.log"),
+        str(target_output / "debug.log"),
     ]
     env = os.environ.copy()
     env.update(cfg["env"])
     for k in cfg.get("env_unset", []):
         env.pop(k, None)
+    # 本 slot 的 policy 写在 art（Target 不可写）；哨兵和 Target 用的是同一个文件。
+    policy = art / phe_sandbox.TARGET_POLICY
+    policy_sha = phe_sandbox.write_policy(sandbox, policy, [work, tmp, target_output])
+    if sandbox is not None:
+        env["TMPDIR"] = str(tmp)
+    wrapped = phe_sandbox.wrap(sandbox, policy) + argv
 
     record = {
         "experiment_id": cfg["experiment_id"],
@@ -161,15 +201,32 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
         "harness_sha256": sha256_file(harness),
         # 默认命令沿用旧口径（跳过 claude -p <prompt>）；自定义 target_argv 记录完整命令。
         "argv_sha256": hashlib.sha256(json.dumps(argv if cfg.get("target_argv") else argv[3:]).encode()).hexdigest(),
+        "wrapped_argv_sha256": argv_digest(wrapped),
+        "policy_sha256": policy_sha,
         "workdir": str(work),
+        "target_output": str(target_output),
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "user_files_before": user_fingerprint(),
     }
-    (art / "argv.json").write_text(json.dumps(argv, ensure_ascii=False, indent=2))
-    # 声明的沙箱按 slot 生效：profile 写进本 slot 的 artifacts，Target 及其子进程都受它约束。
-    prefix = phe_sandbox.wrap(sandbox, work, art)
+    launch = {
+        "argv": argv,
+        "wrapped_argv": wrapped,
+        "policy": str(policy) if policy_sha else None,
+        "policy_sha256": policy_sha,
+    }
+    (art / "argv.json").write_text(json.dumps(launch, ensure_ascii=False, indent=2))
+    # 哨兵在 Target 启动前用本 slot 实际 policy 和完整允许清单实测；只写 runner 自有 /tmp 目录。
+    if sandbox is not None:
+        try:
+            phe_sandbox.verify(sandbox, policy, [work, tmp, target_output])
+        except phe_sandbox.SandboxError:
+            shutil.rmtree(art, ignore_errors=True)
+            with contextlib.suppress(OSError):
+                art.parent.rmdir()
+            shutil.rmtree(slot_root, ignore_errors=True)
+            raise
     rc, out, err, dur, to = run_with_timeout(
-        prefix + argv, work, env, budget["max_process_seconds_per_invocation"], budget["process_kill_grace_seconds"]
+        wrapped, work, env, budget["max_process_seconds_per_invocation"], budget["process_kill_grace_seconds"]
     )
     (art / "stdout.json").write_bytes(out)
     (art / "stderr.txt").write_bytes(err)
@@ -180,12 +237,14 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
     except json.JSONDecodeError:
         record["result_parse_error"] = True
 
-    diff = subprocess.run(["git", "diff", root, "--stat"], cwd=work, capture_output=True, text=True, check=True).stdout
-    (art / "diff.patch").write_text(
-        subprocess.run(["git", "diff", root], cwd=work, capture_output=True, text=True, check=True).stdout
-    )
+    # 后续 Git 采集同策略包裹：Target 可写 .git/config，不能被其中配置的 helper 带出限制。
+    git_policy = art / phe_sandbox.GIT_POLICY
+    record["git_policy_sha256"] = phe_sandbox.write_policy(sandbox, git_policy, [tmp])
+    diff_args = ["diff", "--no-ext-diff", "--no-textconv"]
+    diff = git_collect(work, [*diff_args, root, "--stat"], sandbox, git_policy, tmp)
+    (art / "diff.patch").write_text(git_collect(work, [*diff_args, root], sandbox, git_policy, tmp))
     record["diff_stat"] = diff.strip().splitlines()[-1] if diff.strip() else ""
-    status = subprocess.run(["git", "status", "--short"], cwd=work, capture_output=True, text=True, check=True).stdout
+    status = git_collect(work, ["status", "--short"], sandbox, git_policy, tmp)
     record["untracked_or_changed"] = status.strip().splitlines()
 
     oracle_cfg = dict(
@@ -193,7 +252,7 @@ def run_slot(exp: Path, cfg: dict, item: dict, budget: dict, receipt_required=Tr
         oracle_timeout_s=budget["max_oracle_seconds_per_invocation"],
         process_kill_grace_seconds=budget["process_kill_grace_seconds"],
     )
-    o = oracle(work, oracle_cfg, receipt_required)
+    o = oracle(work, oracle_cfg, art, receipt_required, sandbox=sandbox)
     (art / "oracle.txt").write_text(o.pop("_oracle_output"))
     record.update(o)
     record["user_files_after"] = user_fingerprint()
@@ -237,6 +296,13 @@ def integrity_problem(p, cfg, exp) -> str | None:
     for path, digest in p["task"].get("oracle_files_sha256", {}).items():
         if sha256_file(Path(path)) != digest:
             return "oracle_hash_changed"
+    # 新 sandbox 实验必须绑定实际加载的 runner 模块；无 sandbox 的旧实验不要求。
+    if cfg.get("sandbox") is not None:
+        frozen = p.get("runner", {}).get("runner_files_sha256")
+        if not isinstance(frozen, dict) or set(frozen) != {"phe.py", "phe_sandbox.py"}:
+            return "sandbox_runner_hash_missing"
+        if frozen != runner_file_hashes():
+            return "sandbox_runner_hash_changed"
     return None
 
 
@@ -275,7 +341,6 @@ def active_seconds(rs) -> float:
 def run(exp: Path, pause_after_new_slots: int | None = None):
     p, cfg = load(exp)
     validate_schedule(p)
-    sandbox = phe_sandbox.load_settings(cfg)
     budget = p["experiment"]["budget"]
     slot_wall = (
         budget["max_process_seconds_per_invocation"]
@@ -295,9 +360,8 @@ def run(exp: Path, pause_after_new_slots: int | None = None):
         ]
     )
     done = {r["slot"] for r in rs}
-    # 哨兵只在本轮真的会启动 Target 时跑；不可用就 fail closed（load_settings/verify 抛错）。
-    if not stop and sandbox is not None and done != {item["slot"] for item in p["experiment"]["schedule"]}:
-        phe_sandbox.verify(sandbox)
+    # 完整性优先：配置被改写时先记 invalid_run，不用损坏的 sandbox 段提前抛错。
+    sandbox = phe_sandbox.load_settings(cfg) if not stop else None
     start = time.monotonic()
     prior_seconds = active_seconds(rs)
     new_slots = 0
@@ -334,6 +398,9 @@ def run(exp: Path, pause_after_new_slots: int | None = None):
         before = len(rs)
         try:
             run_slot(exp, cfg, item, budget, receipt_required="required_control" in p["rules"], sandbox=sandbox)
+        except phe_sandbox.SandboxError:
+            # 隔离不可用/不生效是 fail closed 的前置拒绝，不记成 slot 失败或 pivot。
+            raise
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             print(f"slot {item['slot']} runner failed: {exc}", file=sys.stderr)
             stop = crash_stop(p, cfg, exp, proposal_digest)
