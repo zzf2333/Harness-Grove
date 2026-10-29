@@ -20,8 +20,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(REPO / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 # CLI 与 importlib 测试都需要显式加载相邻模块；必须先禁用 bytecode 并设置路径。
-from host_acceptance_schema import REFERENCES, REQUIRED_FIELDS  # noqa: E402
-from phe_judge import validate_schedule  # noqa: E402
+from host_acceptance_schema import REFERENCES, REQUIRED_FIELDS
+from phe_judge import validate_schedule
 
 ID = "m2-host-synthetic"
 BROKEN = "def add(a, b):\n    return a - b\n"
@@ -341,7 +341,7 @@ def main():
             # 只接受系统临时目录；不把本工具变成任意输出根写入器。
             resolved = root.resolve()
             # 这里只核对根范围，实际输出仍由 generate 的排他 mkdir 创建。
-            temp_roots = (Path(tempfile.gettempdir()).resolve(), Path("/tmp").resolve())  # noqa: S108
+            temp_roots = (Path(tempfile.gettempdir()).resolve(), Path("/tmp").resolve())
             if not any(parent in resolved.parents for parent in temp_roots):
                 raise ValueError("root 必须是系统临时目录内不存在的子目录")
             proposal = generate(resolved, args.experiment_id)
