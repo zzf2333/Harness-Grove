@@ -13,9 +13,9 @@ M2 的 Gate 是"两个不同 Host 能继续同一个提案"。本文把这件事
 | 正常交接：Claude 起草 → 新 Codex 会话冻结 | `drafted` → `frozen`；提案原始字节和 `proposal.sha256` 不变；`status` 前后文件快照一致；没有未授权产物 | pass |
 | 日志声明超前：`log --step run`，但没有 `runs.jsonl` | 退出码 0；`stage` 以文件为准仍是 `frozen`；`inconsistent=true` | pass |
 | 无用户批准：`log --step approve`，但没有 `approval.json` | `stage` 停在 `frozen`；`inconsistent=true`；不写 `approval.json`，不调用 `run` | pass |
-| `status` 缺 `stage` 或 CLI 非零 → 失败报告 + 保留现场 | 合成仓库 + 故障注入回归 | pass（单测） |
-| 报告落盘失败 → 非零 + 保留现场 | 合成仓库 + 故障注入回归 | pass（单测） |
-| 同一秒两次运行不覆盖旧报告 | `reserve_run_dir` | pass（单测） |
+| `status` 缺 `stage` 或 `status` 非零（故障注入） | 非零退出；报告保存已执行命令和部分断言；保留现场 | pass（单测） |
+| 报告落盘失败（故障注入） | 非零退出；不清理现场 | pass（单测） |
+| 同一秒两次运行 | 新目录，不覆盖旧报告 | pass（单测） |
 | 全程 | 只有三个合成实验目录；没有 `approval.json` / `runs.jsonl` / `result.json` / `artifacts`；只调用 `log` 和 `status` | pass |
 
 它证明的是 CLI 的阶段推导、只读性和哈希绑定。**不证明** Agent 行为：真实 Host 会不会停下、会不会加载 Skill、会话是否隔离，都不在这里。
