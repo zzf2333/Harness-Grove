@@ -1,129 +1,136 @@
-# M2 跨 Host 验收：准备、提示词与批准边界
+# M2 跨 Host 验收准备、证据与批准边界
 
-**状态：** 准备完成（2026-10-29，第 3 轮独立审查 PASS，候选提交 `3642484`）。合成演练 4/4 场景通过，205 项测试通过；真实双 Host 执行 **未开始**，需用户单独批准（消耗订阅额度）。上位文档：[M2_PLAN](M2_PLAN.md)、[PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」、[M-1_PROTOCOL](M-1_PROTOCOL.md)「实验目录与报告」、[SKILL](../skill/harness-evolve/SKILL.md) §8「续作」。
+**状态（2026-10-29）：** 起点 `764d3b0`；已审查 CLI 演练 `3642484` 保留。本轮增加可核验的合成输入和隔离核对。结构检查通过，**真实正常交接未测，正式冻结前提仍 blocked**。没有启动模型或真实 Host 会话，没有调用 `run` / `judge`。真实执行仍需用户另批。
 
-M2 的 Gate 是"两个不同 Host 能继续同一个提案"。本文把这件事拆成两半：不花额度的 CLI 演练（已完成），和花额度的真实 Host 执行（待批准）。
+上位来源：[M2_PLAN](M2_PLAN.md)、[M-1_PROTOCOL](M-1_PROTOCOL.md)、[SKILL](../skill/harness-evolve/SKILL.md) §1–§3、§8。本文不修改这些契约。
 
-## 这次准备证明了什么
+## 保留的 CLI 演练及范围
 
-`tools/m2/rehearse_host_handoff.py` 在临时目录复制 `tools/` 与两份协议文档组成合成仓库，用**真实的** `tools/phe.py log` / `status` 走三个场景：
+`tools/m2/rehearse_host_handoff.py` 的已审查结果继续有效，本轮不重做整套验收或更改脚本：
 
-| 场景 | 期望 | 结果 |
-|---|---|---|
-| 正常交接：Claude 起草 → 新 Codex 会话冻结 | `drafted` → `frozen`；提案原始字节和 `proposal.sha256` 不变；`status` 前后文件快照一致；没有未授权产物 | pass |
-| 日志声明超前：`log --step run`，但没有 `runs.jsonl` | 退出码 0；`stage` 以文件为准仍是 `frozen`；`inconsistent=true` | pass |
-| 无用户批准：`log --step approve`，但没有 `approval.json` | `stage` 停在 `frozen`；`inconsistent=true`；不写 `approval.json`，不调用 `run` | pass |
-| `status` 缺 `stage` 或 `status` 非零（故障注入） | 非零退出；报告保存已执行命令和部分断言；保留现场 | pass（单测） |
-| 报告落盘失败（故障注入） | 非零退出；不清理现场 | pass（单测） |
-| 同一秒两次运行 | 新目录，不覆盖旧报告 | pass（单测） |
-| 全程 | 只有三个合成实验目录；没有 `approval.json` / `runs.jsonl` / `result.json` / `artifacts`；只调用 `log` 和 `status` | pass |
+| 场景 | 已有结果 |
+|---|---|
+| 合成文件起草 → 哈希侧文件交接 | `drafted` → `frozen`；proposal 字节与 Hash 绑定 |
+| 日志声称 `run`，没有运行文件 | `stage=frozen`、`inconsistent=true` |
+| 日志声称 `approve`，没有批准文件 | 仍 `frozen`、`inconsistent=true`，不生成批准 |
+| CLI 异常、报告落盘失败、Ctrl-C、同秒运行 | 保存部分报告、失败保留现场、目录排他创建（既有回归） |
 
-它证明的是 CLI 的阶段推导、只读性和哈希绑定。**不证明** Agent 行为：真实 Host 会不会停下、会不会加载 Skill、会话是否隔离，都不在这里。
+合成演练 4/4 场景通过、此前 205 项测试通过是历史证据，不是本轮新跑的结果。该夹具允许必填项为 `null`，只证明 `log` / `status` 的阶段推导、只读性与原始字节 Hash 绑定，**不是可执行提案或正式冻结校验，不证明 Host 行为**。原报告、测试和脚本不变。
 
-**范围限定：** 合成提案的必填字段可以留 `null`，所以本轮只验证**合成文件交接与哈希侧文件**（`proposal.json` 原始字节 → `proposal.sha256` 绑定），它**不是可执行提案**。SKILL §2/§3 的必填项、`schedule` 自检和 `config_sha256` 都没有验证，本轮也**不冒充正式冻结校验或完整 Skill 流程**。真实 Host 若因此无法按 Skill 执行，只能记为边界并报告，不伪造批准。
+## 执行层隔离核对
 
-另有故障注入回归 `tests/test_host_handoff_rehearsal.py`：`status` 返回缺 `stage` 的 JSON、`status` 退出码非 0、报告落盘失败、同一秒两次运行。它验证脚本非零退出、保存已执行命令和部分断言、保留现场，报告目录不覆盖旧证据。
+本机实测版本：Claude Code `2.1.312`，Codex `0.163.0`，macOS `27.0.1`，Python `3.15.0`。先静态读取安装二进制，字符串仅作线索。后在下述写限制和禁网 profile 中，各执行一次 `--help`，每条 20 秒超时；未改 HOME、账户或登录目录，未启动会话。未读取私人配置内容、未使用 `--bare` 或任何放开权限参数，未查 Pi 文档。
 
-## 未验证（真实执行时必须重新核对）
+| 项目 | 证据 | 已测 | 未测 / blocked |
+|---|---|---|---|
+| 外层 macOS `sandbox-exec` | 内置 `/usr/bin/sandbox-exec`；禁止全部写，仅放行临时 `allowed/` | 允许写 exit 0；临时兄弟目录写 exit 1；临时根外写 exit 1 | 没有把真实 Host 会话置于此 profile；真实会话兼容性未测 |
+| Claude `--restricted` | 实际 `--help`：默认移除 Bash/PowerShell 等执行工具与 WebFetch；忽略 user/project/local settings；文件工具局限工作目录；managed settings 与 `--settings` 仍适用 | 帮助命令 exit 0，无 stderr | 未测真实工具拒绝；工作目录仍可能大于实验目录；显式 `--tools` 可重新引入工具，不能据此宣称完全隔离 |
+| Claude `--tools` / `--disallowedTools` / `--strict-mcp-config` | 实际帮助列出工具集和 MCP 控制选项 | 帮助读取通过 | 若禁用 Bash 就无法原样执行 Skill 的 `phe.py status/log`；若保留 Bash，禁 `run/judge` 的命令限制与 shell 绕行未验证 |
+| Claude `--no-session-persistence` | 实际帮助：只在 `--print` 生效，不保存可恢复 session | 选项存在已核实 | 未证明关闭其他 debug/cache/telemetry/状态写入；不能称为全用户目录零写入 |
+| Claude Bash sandbox / `allowWrite` / `denyWrite` | 安装二进制字符串线索 | 未执行内部 sandbox | 字符串不是已支持/生效证据；不再逆向调查 |
+| Codex `--sandbox` / `--cd` / `--add-dir` | 实际帮助：sandbox 控制模型生成的 shell 命令；支持 `read-only`、`workspace-write`；`--cd` 指工作根 | 帮助 exit 0 | 子目录白名单、文件工具和真实会话生效未测；没有用全权限模式 |
+| Codex 无模型 `sandbox` 子命令 | 顶层实际帮助列为 `Run commands within a Codex-provided sandbox` | 仅发现入口 | 本轮仅各一次顶层帮助，未执行该子命令；已有外层 OS 探针不能替代 Codex 内部沙箱验证 |
+| Codex 启动自身写入 | 帮助 stderr：`could not create PATH aliases: Operation not permitted` | 外层写限制拒绝了帮助启动尝试；帮助仍 exit 0 | 具体目标与会话日志关闭机制未核实；不得放宽权限或换配置根绕过 |
+| Host 自身 session/log/cache | 本机只读列目录见 `~/.claude/projects`、`history.jsonl`、`file-history`、`paste-cache`；`~/.codex/sessions`、`history.jsonl`、`log` | 仅确认目录存在；未读内容 | 存在目录不能证明本次写入或“不可避免”；精确写入清单与全部关闭机制仍 blocked |
+| 禁止实验执行 | `phe.py` 有批准绑定检查，但那是应用校验 | 本轮没有调用 `run/judge` | 没有核验命令级拒绝；即使无批准会失败，也不能把它当 Host 执行隔离 |
 
-1. **会话隔离未验证。** 真实 Claude Code / Codex 会话会加载工作目录和用户级配置（`~/.claude`、`~/.codex` 等），本仓库没有验证过隔离手段。计划用 Git 工作树 + 提示词约束，这只是约束，不是强制权限。
-2. **提示词不是执行层拦截。** Host 若写 `approval.json`、`runs.jsonl`，或运行 `run` / `judge`，只能事后从文件清单、`status` 和 `git status` 发现，不能阻止。
-3. **Skill 发现未验证。** `skill/harness-evolve` 是否被两个 Host 自动加载、`docs/` 是否被读到，未测。
-4. **5 分钟够不够未测。** 超时就记失败，不重开、不延长。
-5. **`inconsistent` 依赖自觉记录。** 只有 Host 按 §8 运行 `log`，日志才会出现；漏记不会报错，只表现为日志落后于文件。
-6. **版本只核对过元数据。** 本机观察（2026-10-29）：`claude --version` → `2.1.312 (Claude Code)`，`codex --version` → `codex-cli 0.163.0`。只执行了 `--version`（无模型请求），执行前后 `~/.claude`、`~/.codex` 目录 mtime 未变；`--version` 是否写其他状态文件未核实。
-7. **写入前置靠 Host 自觉。** 演练只证明 CLI 能报出 `inconsistent` 和坏行 `notes`；Host 是否真的在写入前核对退出码、`stage`、`inconsistent` 和 `notes` 未测。不核对时会用新记录掩盖异常，只能事后从 `status` 和文件清单发现。
-8. **正式冻结校验未测。** 合成提案允许 `null`，SKILL §2/§3 的必填项、`schedule` 自检和 `config_sha256` 都没验证；本轮只验证文件交接与哈希绑定。
+**结论：** OS 可强制限制写位置及禁网；帮助探针已测。两个 Host 的真实会话、用户目录自身写入、只写实验目录、禁止实验命令的组合机制均没有验证通过。提示词与一次性目录是行为约束/事后检测，不是执行层隔离。当前不能给出可批准启动的隔离方案，也不因阻塞而放宽权限、换配置根或扩建沙箱框架。
 
-## 真实执行计划（待用户批准）
+### 无模型探针复现
 
-- **角色：** Host A = Claude Code，起草 `proposal.json`；Host B = **新的** Codex 会话，冻结同一份提案。B 不继承 A 的上下文，只读文件。
-- **位置：** `${PHE_REPO}/experiments/m2-host-handoff-<YYYYMMDD>/`（被 Git 忽略）。实验 ID 执行前确定；主控先 `test -e experiments/<id>` 确认未占用，再用 `mkdir experiments/<id>` **排他创建空目录**（已存在就换 ID，不覆盖）。目录必须先存在：`status` 对不存在的目录退出 2，拿不到 `stage=empty`。
-- **时长：** 每个会话最多 5 分钟墙钟。不自动重开；A 失败就不启动 B。
-- **额度：** 只用用户现有登录，不申请 API key、不换账户、不改登录目录。**一个会话不等于一次模型调用，也不是美元硬上限**：会话内部可能发生多次模型请求；5 分钟是墙钟上限，不是费用上限。订阅额度按实际请求计费，估算不是账单，失败和中断同样占用额度。
-- **停止点：** B 冻结后停止。不写 `approval.json`，不运行 `run` / `judge`，不伪造批准或结果。
-- **不改生产：** 不动 `tools/`、`docs/`、`skill/`，不写用户配置目录，不提交、不推送。
-- **执行前记录：** `git rev-parse HEAD`、`git status --porcelain`、实验 ID 未占用并已创建空目录、`python3 -I tools/phe.py status experiments/<id>` 退出码 0 且 `stage=empty`、`inconsistent=false`、`notes` 为空、用户配置目录的 mtime 快照（只读）。
-- **执行后核对：** `python3 -I tools/phe.py status experiments/<id>` 贴出 `stage` / `inconsistent`；`find experiments/<id> -type f` 应只有 `proposal.json`、`proposal.sha256`、`host_log.jsonl`；确认没有 `approval.json`、`runs.jsonl`、`result.json`、`report.md`、`config.json`、`artifacts/`；再对比用户配置目录 mtime。
+只对临时目录探测允许/禁止写入，不对生产目录做写探针。先用 `pwd -P` 解析 `/tmp` → `/private/tmp`；实测未解析时连允许路径也会被拒。
 
-## Host A 提示词（Claude Code，复制后把 `<id>` 换成实验 ID）
-
-```text
-你在 Harness Grove 仓库（PHE_REPO）里做 M2 跨 Host 续作验收的第一步：起草一份合成提案。只做这一步，5 分钟内结束。
-
-这是合成文件交接演练，不是正式冻结校验：合成提案的必填项留 null 是有意的，不要补字段，也不要声称通过了 Skill 的正式冻结检查。
-
-先运行 `python3 -I tools/phe.py status experiments/<id>`，逐项核对退出码 0、stage=empty、inconsistent=false、notes 为空。任一不符就停下报告：不要自己创建目录、不要写任何文件、不要追加日志。
-
-允许读：docs/M-1_PROTOCOL.md、docs/M2_HOST_ACCEPTANCE.md、skill/harness-evolve/SKILL.md、tools/phe.py、examples/m-1/proposal.template.json、experiments/<id>/。
-允许写：experiments/<id>/proposal.json；以及通过 `python3 -I tools/phe.py log ...` 追加的 host_log.jsonl。
-禁止：写 approval.json、proposal.sha256、runs.jsonl、result.json、report.md、config.json、stop.json；运行 `phe.py run` 或 `phe.py judge`；改 tools/、docs/、skill/ 或任何用户配置目录（~/.claude、~/.codex、~/.pi、~/.agents、~/.phe、~/AI/temper）；git commit 或 push；安装依赖。
-
-任务：
-1. 参照 examples/m-1/proposal.template.json 的结构，写一份合成提案 experiments/<id>/proposal.json：experiment_id 用 <id>，路径、模型、Hash、预算可以留 null（这是演练，不执行 run），并写明"合成提案，不执行"。
-2. 运行 `python3 -I tools/phe.py log experiments/<id> --host claude --step draft --note "起草合成提案"`。
-3. 再运行一次 `status`，然后停止：不要冻结，不要写 proposal.sha256，不要请求批准。
-
-最后输出：status 的 stage 和 inconsistent、你执行过的命令、你写入的文件清单。不要继续下一步。
+```sh
+ROOT=$(mktemp -d /tmp/phe-help-probe-XXXXXX)
+REAL=$(cd "$ROOT" && pwd -P)
+mkdir "$ROOT/allowed" "$ROOT/denied"
+printf '(version 1)\n(allow default)\n(deny network*)\n(deny file-write*)\n(allow file-write* (subpath "%s/allowed"))\n' "$REAL" > "$ROOT/policy.sb"
+/usr/bin/sandbox-exec -f "$ROOT/policy.sb" /bin/sh -c "printf ok > '$ROOT/allowed/x'"
+/usr/bin/sandbox-exec -f "$ROOT/policy.sb" /bin/sh -c "printf bad > '$ROOT/denied/x'"
+# 本轮由标准库 subprocess.run(timeout=20) 各执行一次；未启动会话：
+/usr/bin/sandbox-exec -f "$ROOT/policy.sb" claude --help
+/usr/bin/sandbox-exec -f "$ROOT/policy.sb" codex --help
 ```
 
-## Host B 提示词（新的 Codex 会话，复制后把 `<id>` 换成实验 ID）
+控制退出码依次 0、1；帮助依次 0、0。Codex 有上述 PATH aliases 拒写警告。网络被禁，因此帮助探针不产生模型请求。profile 只用于本轮探针，不能直接照搬为真实会话启动方案。
 
-```text
-你在 Harness Grove 仓库（PHE_REPO）里做 M2 跨 Host 续作验收的第二步：只冻结上一个 Host 起草的提案。不要问上一个会话做了什么，先自己看文件。5 分钟内结束。
+## 新的合成输入
 
-这是合成文件交接演练：只验证 proposal.json 原始字节与 proposal.sha256 的绑定，不执行 SKILL §2/§3 的必填项和 schedule 正式冻结校验。合成提案的 null 字段是有意的，不要补字段，也不要声称通过了正式冻结校验。
+`tools/m2/prepare_host_acceptance.py` 是单文件标准库工具（<20KB），从原模板派生，不改产品或 Skill。执行：
 
-先运行 `python3 -I tools/phe.py status experiments/<id>`，逐项核对：退出码 0、stage=drafted、inconsistent=false、notes 为空（没有坏行行号，也没有缺证据文件提示）。任一不符就停下报告：不要写 proposal.sha256、不要追加 `log freeze`、不要补文件、不要改日志——异常不能被新记录掩盖。
-
-允许读：experiments/<id>/、docs/M-1_PROTOCOL.md、docs/M2_HOST_ACCEPTANCE.md、skill/harness-evolve/SKILL.md、tools/phe.py。
-允许写：experiments/<id>/proposal.sha256；以及通过 `python3 -I tools/phe.py log ...` 追加的 host_log.jsonl。
-禁止：改 proposal.json；写 approval.json、runs.jsonl、result.json、report.md、config.json、stop.json；运行 `phe.py run` 或 `phe.py judge`；改 tools/、docs/、skill/ 或任何用户配置目录；git commit 或 push；安装依赖。
-
-任务：
-1. 对 experiments/<id>/proposal.json 的原始字节计算 SHA-256，把 Hash 写进 experiments/<id>/proposal.sha256。
-2. 运行 `python3 -I tools/phe.py log experiments/<id> --host codex --step freeze --note "按原始字节冻结"`。
-3. 再运行一次 `status`，确认 stage=frozen、inconsistent=false，然后停止。批准只能由用户本人做：不要写 approval.json，不要沿用"上一个 Host 已经批准过"的说法，不要运行 run。
-
-最后输出：status 的 stage 和 inconsistent、你算出的 Hash、你执行过的命令、你写入的文件清单。
+```sh
+python3 -I tools/m2/prepare_host_acceptance.py --experiment-id m2-host-synthetic
+# 或 --root <系统临时目录下不存在的子目录>
+python3 -I tools/m2/prepare_host_acceptance.py --check <corpus>/inputs/proposal.json
+python3 -m unittest tests.test_prepare_host_acceptance
 ```
 
-## 允许读写清单
+| 目录 | 内容 |
+|---|---|
+| `repo/` | 真实 `tools/*.py`、本脚本、原协议、原 Skill、原模板的副本；空 `experiments/<id>/` |
+| `target/` | 独立 Git 仓库；错误的 `calc.add`，实际提交 SHA；被测目标只读保留 |
+| `inputs/` | 手写请求、外置 oracle、从实际 Git diff 得到的可应用修复 patch、五组 harness、规则、nonce、config、proposal、引用表、正式前提阻塞表 |
+| `tmp/` | 为提案填写的临时运行根；本轮不运行实验 |
 
-| 项 | Host A（Claude Code，起草） | Host B（新 Codex 会话，冻结） |
+**可核验内容：** 错误起点被 oracle 拒绝，patch 可应用且修复后通过普通本地测试；A1/A2 字节相同，各 B 组只删指定规则；nonce 原始字节 Hash 与 config 一致；模板所有 `null` 被填为文件推导值或明确演练常量；直接复用 `phe_judge.validate_schedule`；逐项核对引用文件 Hash、起点快照、提交与已有侧文件绑定。生成器不写 `proposal.sha256`、批准、实验结果或测量数据，不追加 Host 日志，不执行 Target。CLI `--check` 返回 0 **只表示结构/引用通过**，输出始终 `formal_freeze_ready=false`，正式阻塞逐条输出。
+
+模型 `synthetic-not-a-model`、提供方 `synthetic-no-provider`、CLI `synthetic-not-a-cli`、1.0 USD、0.25/0.30 均是演练常量。Target 文件是明确拒绝执行的本地脚本，不冒充真实 CLI。任务来源明确 `handwritten_synthetic`；没有把手写任务伪称历史重建。配置文件保存在 `inputs/` 供绑定；Host 不得把它复制成可执行实验配置。
+
+## 正式前提的具体阻塞
+
+完整列表也在 `inputs/blockers.json` 和 proposal 的 `fixture.blockers`，不靠“字段非 null”抹去语义缺口。
+
+| 字段 / 前提 | 缺什么与本地无法确认的原因 | 阻塞步骤 |
 |---|---|---|
-| 读 | `docs/M-1_PROTOCOL.md`、`docs/M2_HOST_ACCEPTANCE.md`、`skill/harness-evolve/SKILL.md`、`tools/phe.py`、`examples/m-1/proposal.template.json`、`experiments/<id>/` | 同 A |
-| 写 | `experiments/<id>/proposal.json`；`host_log.jsonl`（只经 `phe.py log`） | `experiments/<id>/proposal.sha256`；`host_log.jsonl`（只经 `phe.py log`） |
-| 禁止 | 其余全部：`approval.json`、`runs.jsonl`、`result.json`、`report.md`、`config.json`、`stop.json`；`run` / `judge`；改工具、文档、Skill、用户配置目录；git 提交与推送；装依赖 | 同 A，另禁止改 `proposal.json` |
+| `task.provenance`、任务请求与人工确认修复 | 手写任务/实际 patch 可本地核验，但不是协议要求的历史任务与人工确认修复 | Skill §1 前置；协议前置检查 |
+| `target` 模型、提供方、CLI、设置、参数 Hash | 全为明确演练常量/合成文件；本轮不启动 Target，无法确认服务端完整模型与实际有效参数 | Skill §1 模型/权限确认、§2 |
+| `isolation_flags`、自动记忆、用户内容、有效加载链 | 帮助不能证明真实会话生效；未读取私人内容，也未执行加载链探测 | 协议隔离/前置；Skill §1 |
+| `budget.sizing_source`、时长/回合、单次/总费用 | `sizing.md` 明示未测；无 spike-000，演练常量不构成用户批准 | 协议预算；Skill §2 |
+| Token 噪声门槛与理由 | 0.25/0.30 是协议建议的演练常量，非用户确定的真实门槛 | Skill §2；协议门槛 |
 
-- `proposal.sha256` 只由 B 写，A 不写。
-- `approval.json` 两个 Host 都不写；只能由用户本人（或用户明确指示的主控会话）写，且 `proposal_sha256` 必须等于 `proposal.sha256`。
+因此 Host B 若真实遵守 Skill，必须在这些前提处停止。**这只能验收阻塞分支，不能替代真实正常冻结交接。** 未满足前提前不写 `proposal.sha256` 或 `log freeze`。不能宣称正式冻结通过，也不能单凭结构校验继续。
 
-## 场景与状态
+## 真实场景步骤与提示（待另批）
 
-| 场景 | 入口 | 状态 |
+后续额度边界：Claude Code 各 1 会话、全新 Codex 各 1 会话，每个最多 5 分钟墙钟；A 失败不启 B，不重开、不延长。一个会话可能包含多次模型请求；5 分钟不是费用硬上限，失败和中断也占额度。只用现有登录，不换账户/HOME/配置根。**当前隔离和正式前提仍 blocked，以下仅是准备，不能据此启动。**
+
+1. 主控保存真实仓库版本、生成器 Hash，生成 `<corpus>`，保留输出；比较空实验目录 `status`：退出 0、`stage=empty`、`inconsistent=false`、`notes=[]`。准备原 Skill 和协议，不让 Host 跳过读取。
+2. 隔离与正式前提解决并获另批后，A 起草，B 从文件续作。若使用本轮合成输入，按真实 Skill 停在已列阻塞，记录正常交接未测。
+3. 每次写入前核对 `status` 退出码/阶段/inconsistent/notes；异常停下，不补文件覆盖证据。每步 `log` 只记录简短声明，不写会话全文或私人路径。
+4. 所有前提确已满足时 B 才可按 Skill §3 计算原始字节 Hash、写侧文件、`log freeze`，然后停止于用户批准边界；永不生成 approval/测量/结果，不运行 `run/judge`。
+5. 主控事后对照清单与 Hash；`status=frozen` 本身只证明文件存在，不证明内容通过正式核验。正常冻结期望三文件；当前阻塞分支只能有 `proposal.json` 和 `host_log.jsonl`，没有侧文件。
+
+| 写入者 | 允许写入 | 只读 / 禁止 |
 |---|---|---|
-| 正常交接：A 起草 → B 冻结 | 合成仓库 + 真实 `phe.py` CLI | pass（演练） |
-| 日志声明超前 | 合成仓库 + 真实 `phe.py` CLI | pass（演练） |
-| 无用户批准 | 合成仓库 + 真实 `phe.py` CLI | pass（演练） |
-| 真实 Claude Code 起草 | 真实 Host 会话 | not-tested（需批准） |
-| 真实新 Codex 会话冻结 | 真实 Host 会话 | not-tested（需批准） |
-| Host 真的停在批准边界 | 真实 Host 会话 | not-tested |
-| 无批准时 `run` 被拒绝 | `phe.py run` | not-tested（演练按约定不调用 `run` / `judge`） |
-| Skill 自动发现与加载 | 真实 Host 会话 | not-tested |
-| 会话隔离 | 真实 Host 会话 | not-tested |
-| 写入前核对 `status` 退出码 / `stage` / `inconsistent` / `notes` | 真实 Host 会话 | not-tested |
-| 正式冻结校验（必填项、`schedule`、`config_sha256`） | 真实 Host / 真实提案 | not-tested |
+| 准备脚本 | 系统临时目录的新 `<corpus>/` | 生产路径、账户、用户配置、原仓库代码 |
+| A | `<exp>/proposal.json`；`host_log.jsonl` 仅经 `phe.py log draft` | inputs、target、工具/Skill/协议、侧文件、批准与结果 |
+| B | 前提全部满足才允许 `<exp>/proposal.sha256`；`host_log.jsonl` 仅经 `log freeze` | 修改 proposal、补字段、改 Hash 去接受差异、配置/批准/结果 |
+| 主控报告 | 被忽略的 `experiments/m2-host-acceptance/<run-id>/` | 会话原文、私人配置内容、真实实验数据 |
 
-## 报告
+Host 自身 session/log/cache 写入必须另行确认机制及允许范围，目前没有为这些路径授权；不得自行认定例外。每个 Host 都禁止 `run/judge`、安装依赖、提交/推送、改任何用户配置或 temper。允许清单是契约，当前不等于已验证的强制权限。
 
-- 合成演练：`python3 -I tools/m2/rehearse_host_handoff.py`，报告写到被 Git 忽略的 `experiments/m2-host-acceptance/<run-id>/report.md`；`<run-id>` 带唯一后缀，报告目录排他创建，不覆盖旧证据。
-- 成功才清理合成仓库；任一断言失败、未预期异常、Ctrl-C（`KeyboardInterrupt`）或报告保存失败时脚本非零退出并**保留现场**，报告标记中断或失败，路径写到脚本 stderr 和报告里，核对后手动删除。
-- 报告内容：commit、`git status --porcelain` 与 `git diff` 的 SHA-256、脚本 SHA-256、范围限定（合成文件交接，不是正式冻结校验）、合成提案字节与 Hash、每条命令和退出码、断言清单、逐场景 pass/fail、未测边界。
-- 真实执行后另建 `<run-id>`，沿用同一张场景表，只写命令、退出码、`status` 输出和文件清单。**不写会话原文、不贴私人路径、不复制实验内容。**
+### A 提示词
 
-## 边界
+```text
+你做 M2 续作验收第一步，5 分钟内停止。PHE_REPO=<corpus>/repo，TARGET_REPO=<corpus>/target，实验目录 <exp>；只读 <corpus>/inputs。
+先完整读 PHE_REPO/skill/harness-evolve/SKILL.md 和 docs/M-1_PROTOCOL.md。遵守 Skill §1/§2/§8；合成常量不是正式实验参数或预算批准。
+先 phe.py status <exp>，核对退出 0、stage=empty、inconsistent=false、notes=[]；否则停下且不写日志。
+按模板和 inputs 起草 proposal.json，不自行补造未知实际值。可复制 inputs/proposal.json 作为文件起草，但必须报告其 fixture.blockers；运行 prepare_host_acceptance.py --check <exp>/proposal.json 仅做结构与引用检查。
+起草完按 Skill §8 log --host claude --step draft，再 status，停止。只允许写 proposal.json 和通过 log 追加 host_log.jsonl；不得冻结、写 approval、跑 run/judge 或改其他路径。最后报告命令、状态、写入文件和逐项正式阻塞。
+```
 
-- 本文是准备与提示词，不是执行授权。真实双 Host 执行需用户单独批准。
-- 演练是 CLI 演练：证明 `log` / `status` 的阶段推导与只读性，不证明 Agent 行为；合成提案允许 `null`，其中的"冻结"只验证文件交接与哈希绑定，不是正式冻结校验。
-- 不写 `~/.claude`、`~/.codex`、`~/.pi`、`~/.agents`、`~/.phe`、`~/AI/temper`；不运行真实 Host。
+### B 提示词（新 Codex 会话）
+
+```text
+你从文件续作 M2，5 分钟内停止。PHE_REPO=<corpus>/repo，TARGET_REPO=<corpus>/target，实验目录 <exp>。
+先完整读原 Skill 和协议。按 Skill §8 先 status，核对退出 0、stage=drafted、inconsistent=false、notes=[]；异常停下，不补文件、不改日志。
+独立按 Skill §1/§2/§3 核对历史任务与人工确认修复、真实模型与权限、spike-000 预算、用户确定门槛、必填字段、schedule、config/harness/引用文件 Hash。prepare_host_acceptance.py --check 只提供结构检查，不代表正式前提成立。
+逐项核对 fixture.blockers。本轮输入的历史来源、真实 Target/加载链、spike-000 和门槛批准均未满足；必须停止，不写 proposal.sha256，不 log freeze。这是阻塞分支，正常交接未测。
+只有上级提供可核验材料使全部正式前提成立后，才按 Skill §3 对 proposal 原始字节生成侧文件、log --host codex --step freeze，再 status，停在用户批准边界。不得修改 proposal、编造缺值或沿用上个 Host 的批准；不写 approval，不运行 run/judge。最后报告状态、核验依据、具体阻塞和文件清单。
+```
+
+## 报告与未测项
+
+本轮报告：`experiments/m2-host-acceptance/20261029-host-acceptance-prep/report.md`（Git 忽略），含版本、帮助探针、命令退出、合成任务验证、检查结果与阻塞。原 CLI 报告继续保留。报告不含会话全文或私人内容。
+
+未测：真实两 Host 会话、正常冻结交接、Skill 自动发现、写入前核对是否被执行、批准边界停下、真实会话隔离及自身写入、正式提案冻结。授权仅涵盖本轮准备；后续启动、正式预算批准和任何实验执行均不在本轮范围。
