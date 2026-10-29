@@ -61,8 +61,9 @@ M1 的 Gate 是：首次接管不改变配置含义；发布不覆盖带外修�
 - 新增目录候选 `~/.pi/agent/agents/`（Pi 子代理定义）：按目录候选规则先记目录自身、再展开一层，kind 归 `instructions`（kind 枚举没有 agent，与 `.claude/agents` 一致）。
 - `~/.agents/skills`（用户级和项目级）原来记在 `codex` 名下，实际是跨工具共享目录：Codex 和 Pi 都读，Claude Code 不读。新增 agent 值 `shared`，这类记录另带 `readers: ["codex", "pi"]`；单一 Agent 的目录不记 `readers`（读取者就是 `agent` 本身）。不沿用相近的现有项，先扩 agent 取值集合。
 - 连锁改动：`deploy --agent` 因此接受 `shared`。实现本来没有 agent 枚举校验，按盘点记录里的 `agent` 值取路径，`bindings.json` 以 agent 名为键，所以这两处不需要改结构；只改 `tools/m1/rehearse_d1.sh`，给 claude、codex、pi、shared 各部署一次并逐次回滚。
-- 本机复跑（2026-10-28，`--home ~`，输出在被忽略的 `inventory/`）：55 条记录、7 个分组；其中 `~/.pi/agent/agents` 7 条（自身加 6 个 `.md`），`agent: shared` 7 条。同一台机器上旧实现今天得 48 条，差额是环境变化（切片 A 当日记 56 条）；本次新增 7 条全部来自 Pi 子代理目录。
+- 本机复跑（2026-10-28，`--home ~`，输出在被忽略的 `inventory/`）：55 条记录、7 个分组；其中 `~/.pi/agent/agents` 7 条（自身加 6 个 `.md`），`agent: shared` 7 条。此前 56 条还包含项目级扫描，与本次仅 `--home` 的范围不同，不能直接作为增减对比；本次新增 7 条来自 Pi 子代理目录。
 - 保证：`agent` 取值集合是 `claude`、`codex`、`pi`、`shared`；`shared` 记录一定带 `readers`，其他记录一定不带；deploy 只部署登记表 `observed` 里该 agent 值的路径。
+- 旧登记表的 `observed.agent=codex` 不会因重新盘点自动变成 `shared`；`adopt` 对已登记资产幂等，也不承担迁移。部署仍按旧 observed 执行，旧表迁移须另行设计和批准，本次不改已有登记表。
 - 不保证：`readers` 来自本机观察，未按官方文档核实，也不代表加载顺序或优先级；`shared` 只表示同一条路径被多个工具读到，不表示它们读到的语义一致。
 
 ## 不做
