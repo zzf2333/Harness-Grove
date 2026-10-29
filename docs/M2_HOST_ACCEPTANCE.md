@@ -56,7 +56,7 @@ printf '(version 1)\n(allow default)\n(deny network*)\n(deny file-write*)\n(allo
 
 ## 新的合成输入
 
-`tools/m2/prepare_host_acceptance.py` 是单文件标准库工具（<20KB），从原模板派生，不改产品或 Skill。执行：
+`tools/m2/prepare_host_acceptance.py` 是标准库工具，从原模板派生，不改产品或 Skill。固定字段与引用映射放相邻的 `host_acceptance_schema.py`，两文件各 <20KB；该 schema 只服务本合成夹具。执行：
 
 ```sh
 python3 -I tools/m2/prepare_host_acceptance.py --experiment-id m2-host-synthetic
@@ -67,12 +67,14 @@ python3 -m unittest tests.test_prepare_host_acceptance
 
 | 目录 | 内容 |
 |---|---|
-| `repo/` | 真实 `tools/*.py`、本脚本、原协议、原 Skill、原模板的副本；空 `experiments/<id>/` |
+| `repo/` | 真实 `tools/*.py`、准备脚本及相邻 schema、原协议、原 Skill、原模板的副本；空 `experiments/<id>/` |
 | `target/` | 独立 Git 仓库；错误的 `calc.add`，实际提交 SHA；被测目标只读保留 |
 | `inputs/` | 手写请求、外置 oracle、从实际 Git diff 得到的可应用修复 patch、五组 harness、规则、nonce、config、proposal、引用表、正式前提阻塞表 |
 | `tmp/` | 为提案填写的临时运行根；本轮不运行实验 |
 
-**可核验内容：** 错误起点被 oracle 拒绝，patch 可应用且修复后通过普通本地测试；A1/A2 字节相同，各 B 组只删指定规则；nonce 原始字节 Hash 与 config 一致；模板所有 `null` 被填为文件推导值或明确演练常量；直接复用 `phe_judge.validate_schedule`；逐项核对引用文件 Hash、起点快照、提交与已有侧文件绑定。生成器不写 `proposal.sha256`、批准、实验结果或测量数据，不追加 Host 日志，不执行 Target。CLI `--check` 返回 0 **只表示结构/引用通过**，输出始终 `formal_freeze_ready=false`，正式阻塞逐条输出。
+**可核验内容：** 错误起点被 oracle 拒绝，patch 可应用且修复后通过普通本地测试；A1/A2 字节相同，各 B 组只删指定规则；nonce 原始字节 Hash 与 config 一致；模板所有 `null` 被填为文件推导值或明确演练常量；直接复用 `phe_judge.validate_schedule`；按本夹具固定 schema 拒绝缺失必填字段（含 `target.model_id`），按固定映射逐项核对引用文件 Hash，拒绝引用表缺项、改映射或额外项；逐一核对 `task.oracle_files_sha256` 的实际文件 Hash 与精确集合；核对起点快照、提交与已有侧文件绑定。生成器不写 `proposal.sha256`、批准、实验结果或测量数据，不追加 Host 日志，不执行 Target。CLI `--check` 返回 0 **只表示结构/引用通过**，输出始终 `formal_freeze_ready=false`，正式阻塞逐条输出。
+
+入口在导入本地模块前禁用 Python bytecode，不依赖调用者加 `-B`。Git 子进程先剔除所有继承的 `GIT_*` 环境变量，再设置固定的系统/全局配置隔离；初始化禁用模板，命令禁用 hooks 和签名，保持原 HOME 与登录不变。回归用独立 CLI 和临时源码副本核对源码、生成树及 `--check` 输入的完整字节/模式/mtime 快照；注入探针只用临时外部 Git 仓库，核对文件、index、refs、objects 均不变。
 
 模型 `synthetic-not-a-model`、提供方 `synthetic-no-provider`、CLI `synthetic-not-a-cli`、1.0 USD、0.25/0.30 均是演练常量。Target 文件是明确拒绝执行的本地脚本，不冒充真实 CLI。任务来源明确 `handwritten_synthetic`；没有把手写任务伪称历史重建。配置文件保存在 `inputs/` 供绑定；Host 不得把它复制成可执行实验配置。
 
@@ -88,22 +90,22 @@ python3 -m unittest tests.test_prepare_host_acceptance
 | `budget.sizing_source`、时长/回合、单次/总费用 | `sizing.md` 明示未测；无 spike-000，演练常量不构成用户批准 | 协议预算；Skill §2 |
 | Token 噪声门槛与理由 | 0.25/0.30 是协议建议的演练常量，非用户确定的真实门槛 | Skill §2；协议门槛 |
 
-因此 Host B 若真实遵守 Skill，必须在这些前提处停止。**这只能验收阻塞分支，不能替代真实正常冻结交接。** 未满足前提前不写 `proposal.sha256` 或 `log freeze`。不能宣称正式冻结通过，也不能单凭结构校验继续。
+因此 Host A 在 Skill §1 前置确认时就必须停止，不复制 proposal，不执行 `log draft`，实验目录保持空；不得因合成结构通过而继续起草。若 B 接到已有草稿，也必须在这些前提处停止。**这只能验收阻塞分支，不能替代真实正常冻结交接。** 未满足前提前不写 `proposal.sha256` 或 `log freeze`。不能宣称正式冻结通过，也不能单凭结构校验继续。
 
 ## 真实场景步骤与提示（待另批）
 
 后续额度边界：Claude Code 各 1 会话、全新 Codex 各 1 会话，每个最多 5 分钟墙钟；A 失败不启 B，不重开、不延长。一个会话可能包含多次模型请求；5 分钟不是费用硬上限，失败和中断也占额度。只用现有登录，不换账户/HOME/配置根。**当前隔离和正式前提仍 blocked，以下仅是准备，不能据此启动。**
 
 1. 主控保存真实仓库版本、生成器 Hash，生成 `<corpus>`，保留输出；比较空实验目录 `status`：退出 0、`stage=empty`、`inconsistent=false`、`notes=[]`。准备原 Skill 和协议，不让 Host 跳过读取。
-2. 隔离与正式前提解决并获另批后，A 起草，B 从文件续作。若使用本轮合成输入，按真实 Skill 停在已列阻塞，记录正常交接未测。
+2. 隔离解决并获另批后，A 先做 Skill §1 前置确认；失败立即停止且无写入，A 失败不启动 B。本轮合成输入已知真实前提 blocked，应在 A 此处停止。只有可核验材料使前提全部成立后，A 才能起草，B 才能从文件续作；正常交接继续记为 `not-tested`。
 3. 每次写入前核对 `status` 退出码/阶段/inconsistent/notes；异常停下，不补文件覆盖证据。每步 `log` 只记录简短声明，不写会话全文或私人路径。
 4. 所有前提确已满足时 B 才可按 Skill §3 计算原始字节 Hash、写侧文件、`log freeze`，然后停止于用户批准边界；永不生成 approval/测量/结果，不运行 `run/judge`。
-5. 主控事后对照清单与 Hash；`status=frozen` 本身只证明文件存在，不证明内容通过正式核验。正常冻结期望三文件；当前阻塞分支只能有 `proposal.json` 和 `host_log.jsonl`，没有侧文件。
+5. 主控事后对照清单与 Hash；`status=frozen` 本身只证明文件存在，不证明内容通过正式核验。正常冻结期望 `proposal.json`、`proposal.sha256`、`host_log.jsonl` 三文件；当前 A 前置失败分支的实验目录应为空，`status=empty`，不启动 B。`inputs/proposal.json` 仅为准备脚本生成的夹具，不是 Host 起草产物。前置失败分支不能替代正常验收。
 
 | 写入者 | 允许写入 | 只读 / 禁止 |
 |---|---|---|
 | 准备脚本 | 系统临时目录的新 `<corpus>/` | 生产路径、账户、用户配置、原仓库代码 |
-| A | `<exp>/proposal.json`；`host_log.jsonl` 仅经 `phe.py log draft` | inputs、target、工具/Skill/协议、侧文件、批准与结果 |
+| A | Skill §1 全部满足才可写 `<exp>/proposal.json` 并经 `phe.py log draft` 追加日志；当前 blocked 分支无写入 | inputs、target、工具/Skill/协议、侧文件、批准与结果 |
 | B | 前提全部满足才允许 `<exp>/proposal.sha256`；`host_log.jsonl` 仅经 `log freeze` | 修改 proposal、补字段、改 Hash 去接受差异、配置/批准/结果 |
 | 主控报告 | 被忽略的 `experiments/m2-host-acceptance/<run-id>/` | 会话原文、私人配置内容、真实实验数据 |
 
@@ -115,14 +117,15 @@ Host 自身 session/log/cache 写入必须另行确认机制及允许范围，�
 你做 M2 续作验收第一步，5 分钟内停止。PHE_REPO=<corpus>/repo，TARGET_REPO=<corpus>/target，实验目录 <exp>；只读 <corpus>/inputs。
 先完整读 PHE_REPO/skill/harness-evolve/SKILL.md 和 docs/M-1_PROTOCOL.md。遵守 Skill §1/§2/§8；合成常量不是正式实验参数或预算批准。
 先 phe.py status <exp>，核对退出 0、stage=empty、inconsistent=false、notes=[]；否则停下且不写日志。
-按模板和 inputs 起草 proposal.json，不自行补造未知实际值。可复制 inputs/proposal.json 作为文件起草，但必须报告其 fixture.blockers；运行 prepare_host_acceptance.py --check <exp>/proposal.json 仅做结构与引用检查。
-起草完按 Skill §8 log --host claude --step draft，再 status，停止。只允许写 proposal.json 和通过 log 追加 host_log.jsonl；不得冻结、写 approval、跑 run/judge 或改其他路径。最后报告命令、状态、写入文件和逐项正式阻塞。
+先按 Skill §1 确认路径、任务起点、外置验收器、人工确认修复、真实模型和权限，并只读核对 inputs/blockers.json 与 inputs/proposal.json 的 fixture.blockers。任何前置失败或不清楚即停止：不复制 proposal，不写任何实验文件，不 log draft，报告具体阻塞，正常交接记为 not-tested。本轮合成输入的真实前提已 blocked，必须走此停止分支，不能把准备夹具当成已起草提案。
+只有上级提供可核验材料使 Skill §1 全部成立后，才按 §2 从模板起草 proposal.json，不自行补造未知实际值。prepare_host_acceptance.py --check <exp>/proposal.json 仅核对本合成夹具结构与引用，不证明真实前提成立。
+仅在前置通过并完成起草时，按 Skill §8 log --host claude --step draft，再 status，停止。此分支只允许写 proposal.json 和通过 log 追加 host_log.jsonl；不得冻结、写 approval、跑 run/judge 或改其他路径。最后报告命令、状态、写入文件和逐项正式阻塞。
 ```
 
 ### B 提示词（新 Codex 会话）
 
 ```text
-你从文件续作 M2，5 分钟内停止。PHE_REPO=<corpus>/repo，TARGET_REPO=<corpus>/target，实验目录 <exp>。
+你从文件续作 M2，5 分钟内停止。PHE_REPO=<corpus>/repo，TARGET_REPO=<corpus>/target，实验目录 <exp>。只有 A 成功通过前置并起草才会启动本会话；A 前置失败时不启动 B。
 先完整读原 Skill 和协议。按 Skill §8 先 status，核对退出 0、stage=drafted、inconsistent=false、notes=[]；异常停下，不补文件、不改日志。
 独立按 Skill §1/§2/§3 核对历史任务与人工确认修复、真实模型与权限、spike-000 预算、用户确定门槛、必填字段、schedule、config/harness/引用文件 Hash。prepare_host_acceptance.py --check 只提供结构检查，不代表正式前提成立。
 逐项核对 fixture.blockers。本轮输入的历史来源、真实 Target/加载链、spike-000 和门槛批准均未满足；必须停止，不写 proposal.sha256，不 log freeze。这是阻塞分支，正常交接未测。
@@ -131,6 +134,6 @@ Host 自身 session/log/cache 写入必须另行确认机制及允许范围，�
 
 ## 报告与未测项
 
-本轮报告：`experiments/m2-host-acceptance/20261029-host-acceptance-prep/report.md`（Git 忽略），含版本、帮助探针、命令退出、合成任务验证、检查结果与阻塞。原 CLI 报告继续保留。报告不含会话全文或私人内容。
+准备报告：`experiments/m2-host-acceptance/20261029-host-acceptance-prep/report.md`（原工作树 Git 忽略），含版本、帮助探针、命令退出、合成任务验证、检查结果与阻塞。新增验收准备第 1 轮 P1 修复报告：`experiments/m2-host-acceptance/20261029-p1-round1-fixes/report.md`（当前工作树 Git 忽略），含旧实现失败对照、回归结果、独立 CLI 生成/只读检查输出及完整快照。原 CLI 报告继续保留。报告不含会话全文或私人内容。
 
 未测：真实两 Host 会话、正常冻结交接、Skill 自动发现、写入前核对是否被执行、批准边界停下、真实会话隔离及自身写入、正式提案冻结。授权仅涵盖本轮准备；后续启动、正式预算批准和任何实验执行均不在本轮范围。

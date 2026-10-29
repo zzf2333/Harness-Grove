@@ -16,10 +16,12 @@ import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(REPO / "tools"))
-from phe_judge import (
-    validate_schedule,
-)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+# CLI 与 importlib 测试都需要显式加载相邻模块；必须先禁用 bytecode 并设置路径。
+from host_acceptance_schema import REFERENCES, REQUIRED_FIELDS  # noqa: E402
+from phe_judge import validate_schedule  # noqa: E402
 
 ID = "m2-host-synthetic"
 BROKEN = "def add(a, b):\n    return a - b\n"
@@ -108,7 +110,8 @@ def json_file(path, data):
 
 def git(target, *args):
     # 不读用户 Git 配置、不触发 hooks/签名，仅初始化本轮合成仓库。
-    env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
     return subprocess.run(
         [
             "git",
@@ -164,13 +167,14 @@ def generate(root, experiment_id):
         dest = repo / "tools" / path.name
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, dest)
-    dest = repo / "tools/m2/prepare_host_acceptance.py"
-    dest.parent.mkdir(parents=True)
-    shutil.copyfile(Path(__file__), dest)
+    for name in ("prepare_host_acceptance.py", "host_acceptance_schema.py"):
+        dest = repo / "tools/m2" / name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(Path(__file__).with_name(name), dest)
     (repo / "experiments" / experiment_id).mkdir(parents=True)
     (root / "tmp").mkdir()
     put(target / "calc.py", BROKEN)
-    git(target, "init", "-q")
+    git(target, "init", "--template=", "-q")
     git(target, "add", "calc.py")
     git(target, "commit", "-qm", "synthetic task start")
     commit = git(target, "rev-parse", "HEAD")
@@ -254,37 +258,16 @@ def generate(root, experiment_id):
         "gates.go_requires.aa_pooled_tokens_max_relative_mad": CONSTANTS["tau_mad"],
         "gates.go_requires.aa_token_gates_rationale": "仅协议建议值作为演练常量；未获用户确定",
     }
-    references = {
-        "target.executable_sha256": "target.py",
-        "target.model_settings_sha256": "model-settings.json",
-        "target.argv_sha256": "argv.json",
-        "target.unexcludable_user_content_sha256": "user-content.txt",
-        "task.original_request_sha256": "request.md",
-        "task.start_snapshot_sha256": "snapshot.json",
-        "task.dependency_snapshot_sha256": "dependencies.txt",
-        "task.oracle_sha256": "oracle.py",
-        "task.known_good_patch_sha256": "known-good.patch",
-        "rules.real_rule.content_sha256": "rules/real.md",
-        "rules.required_control.text_sha256": "rules/required.md",
-        "rules.required_control.nonce_sha256": "nonce.txt",
-        "rules.redundant_control.text_sha256": "rules/redundant.md",
-        "rules.redundant_control.duplicated_source_sha256": "rules/redundant.md",
-        "harness.original_snapshot_sha256": "harness/original.md",
-        "harness.calibrated_baseline_sha256": "harness/baseline.md",
-        "harness.effective_load_chain_sha256": "load-chain.json",
-        "runner.config_sha256": "config.json",
-        "experiment.budget.sizing_source.sizing_sha256": "sizing.md",
-        **{f"harness.variants.{g}.snapshot_sha256": f"harness/{g}.md" for g in variants},
-    }
+
     for field, value in values.items():
         set_field(p, field, value)
-    for field, rel in references.items():
+    for field, rel in REFERENCES.items():
         set_field(p, field, digest(inputs / rel))
     p["experiment"]["budget"]["sizing_source"].update(
         {"experiment_id": "synthetic-sizing-not-spike000", "sizing_file": str(inputs / "sizing.md")}
     )
     p["task"]["oracle_files_sha256"] = {str(inputs / "oracle.py"): digest(inputs / "oracle.py")}
-    json_file(inputs / "references.json", references)
+    json_file(inputs / "references.json", REFERENCES)
     json_file(inputs / "blockers.json", BLOCKERS)
     json_file(inputs / "proposal.json", p)
     return inputs / "proposal.json"
@@ -295,14 +278,31 @@ def check(path):
     inputs = Path(p["paths"]["phe_repo_abs"]).parent / "inputs"
     refs = json.loads((inputs / "references.json").read_text())
     problems = [f"null: {field}" for field in null_fields(p)]
+    for section, keys in REQUIRED_FIELDS.items():
+        for key in keys.split():
+            field = f"{section}.{key}" if section else key
+            try:
+                get_field(p, field)
+            except (KeyError, TypeError):
+                problems.append(f"missing: {field}")
+    if refs != REFERENCES:
+        problems.append("references: expected fixed fixture mapping")
     try:
         validate_schedule(p)
     except (ValueError, KeyError, TypeError) as exc:
         problems.append(f"schedule: {exc}")
-    for field, rel in refs.items():
+    for field, rel in REFERENCES.items():
         source = inputs / rel
-        if not source.is_file() or get_field(p, field) != digest(source):
+        try:
+            actual = get_field(p, field)
+        except (KeyError, TypeError):
+            actual = None
+        if not source.is_file() or actual != digest(source):
             problems.append(f"hash: {field}")
+    oracle = inputs / "oracle.py"
+    expected_oracles = {str(oracle): digest(oracle)} if oracle.is_file() else {}
+    if not expected_oracles or p["task"].get("oracle_files_sha256") != expected_oracles:
+        problems.append("hash: task.oracle_files_sha256")
     target = Path(p["paths"]["target_repo_abs"])
     snapshot = json.loads((inputs / "snapshot.json").read_text())
     for rel, expected in snapshot.items():
@@ -340,7 +340,8 @@ def main():
             root = args.root or Path(tempfile.mkdtemp(prefix="phe-m2-inputs-")) / "corpus"
             # 只接受系统临时目录；不把本工具变成任意输出根写入器。
             resolved = root.resolve()
-            temp_roots = (Path(tempfile.gettempdir()).resolve(), Path("/tmp").resolve())
+            # 这里只核对根范围，实际输出仍由 generate 的排他 mkdir 创建。
+            temp_roots = (Path(tempfile.gettempdir()).resolve(), Path("/tmp").resolve())  # noqa: S108
             if not any(parent in resolved.parents for parent in temp_roots):
                 raise ValueError("root 必须是系统临时目录内不存在的子目录")
             proposal = generate(resolved, args.experiment_id)
