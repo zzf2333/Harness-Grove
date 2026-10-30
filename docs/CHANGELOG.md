@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-10-30 · 闭环切片 3：复盘账本与 review 记录
+
+- 新增 `tools/change.py review-plan/review`（复盘入口在 `tools/change_review.py`，账本事实与推导拆到 `tools/change_ledger.py`）。`review-plan --phe-home` 只读列出每个执行（含已恢复）的 `execution_id`、`proposal_id`、`state`、`applied_at`、`restored_at`、原预测、证据、报告引用、观察窗（应用到恢复，未恢复为 `null` = 至今）、全部历史 review 和最新一条，并说明观察窗只是候选取样范围、不证明 Host 加载过配置。
+- `review --execution x0001 --record <JSON> --phe-home` 只追加一条 `kind=review` 事实：记录内容、记录文件路径与原始字节 sha256、`at`。`verdict` 只有 `keep` / `adjust` / `revert` / `observe`，`prediction_met` 只有 `met` / `not_met` / `unknown`；`observations` 是证据指针列表（可为空），`next` 写下一步或缺什么。工具只记录、不判断效果：不改 `applied`/`restored` 状态、不调用 `restore`、不碰配置和发布；同一执行可多次 review，旧行不改写。`status` 每个执行增加 `latest_review`（无则 `null`）。守卫只查 `--phe-home`，不需要 `--home`。
+- 语义写进文档：`verdict=revert` 只是建议，用户批准后才 `restore`，已恢复的执行不重复恢复；`observe` 表示证据不足，对已恢复执行表述为“待补证据”；`prediction_met` 只说原预测是否达到，不是因果证明；写入临时配置 ≠ Host 已加载。
+- `tests/test_change.py` 增加一条正常链路用例：apply → review（`observe`/`unknown`）→ review（`keep`/`met`），两条历史保留、`latest_review` 为后者；`review-plan` 回显原预测、证据、报告引用与观察窗；`restore` 后 `review-plan` 与 `status` 仍读得到 review，且 review 前后目标文件 sha256、发布链接和执行状态不变。
+- 新增 `tools/rehearse_review.py`：复制切片 2 的 `experiments/loop-apply-001/phe/` 到 `experiments/loop-review-001/phe`（原目录不改），对真实演练执行 `x0001` 写 `observe`/`unknown` 的 review，并在明确标注【合成】的会话 JSONL 上按 P1 的 `prediction.verify` 手工计数，把合成 review 写进单独的账本副本 `experiments/loop-review-001/synthetic/phe`，不混入真实演练账本；36 条断言全部成立，工件不清理。合成样例只证明复盘流程可运行，不证明规则有效。
+- 边界：没有自动取样、自动统计或自动判定，观察窗与计数由宿主给出；review 记录不构成效果证据。切片 2 两个执行的 `applied_at` 与 `restored_at` 同秒，观察窗退化为一个时刻，真实复盘要在应用后、恢复前取样。畸形 record、并发写入、权限与攻击场景不在本轮范围。
+
 ## 2026-10-30 · 闭环切片 2：批准、应用与逆序恢复（仅临时配置）
 
 - 新增 `tools/change.py apply/status/restore`。`apply` 读宿主显式准备的机读变更包（报告路径与 sha256、条目 ID、证据、预测/验证方法、目标 asset id、patch）和批准记录（`change_sha256` 绑定确定版本的变更包、`items` 绑定获批条目、`source` 只有 `user` 与 `sandbox_rehearsal`），从目标入口当前实际生效的内容起算，用 `git apply` 打 patch，按 `release import` 的同一 `asset.json` 格式重建资产，再复用既有 `release` 与逐 Agent `deploy`；三个入口全部完成后才追加事实。`status` 从事实推导 `applied`/`restored` 与生效栈，并读文件核对生效发布和 sha256；`restore` 按 journal 逆序恢复。

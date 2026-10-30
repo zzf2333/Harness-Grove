@@ -1,6 +1,6 @@
 # M3a 计划：从经验扫描产生可证伪提案
 
-**状态（2026-10-30）：** 进行中。切片 A 完成：本地草稿 CLI `tools/proposal.py draft/check`。切片 B1 完成：显式 Retired 检索文件的逐条列举与关系核对（`--retired`、`retired_review`）。切片 B2（真实退役数据源与自动检索）、C（独立证据判定）暂停（2026-10-30 调整，见 [AGENTS.md](../AGENTS.md)）；D 缩小为改前写预测和验证方法。当前优先跑通经验复盘闭环：切片 1 的 `history.py digest` 已提供摘要入口，可审批报告的诊断与合并由宿主按 Skill 编排；切片 2 的 `tools/change.py apply/status/restore` 已在临时配置上跑通批准、应用与逆序恢复，真实配置仍未写入。**M3a 未完成**，不能把 A/B1 的报告当作完整协议验证。
+**状态（2026-10-30）：** 进行中。切片 A 完成：本地草稿 CLI `tools/proposal.py draft/check`。切片 B1 完成：显式 Retired 检索文件的逐条列举与关系核对（`--retired`、`retired_review`）。切片 B2（真实退役数据源与自动检索）、C（独立证据判定）暂停（2026-10-30 调整，见 [AGENTS.md](../AGENTS.md)）；D 缩小为改前写预测和验证方法。当前优先跑通经验复盘闭环：切片 1 的 `history.py digest` 已提供摘要入口，可审批报告的诊断与合并由宿主按 Skill 编排；切片 2 的 `tools/change.py apply/status/restore` 已在临时配置上跑通批准、应用与逆序恢复；切片 3 的 `tools/change.py review-plan/review` 已在切片 2 账本副本上跑通复盘记录（观察窗、原预测对照、合成计数样例），仍只记录宿主判断，不证明效果。真实配置仍未写入。**M3a 未完成**，不能把 A/B1 的报告当作完整协议验证。
 
 **上位文档：** [PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」「独立证据与 Retired 账本」；历史输入格式见 [M2_PLAN](M2_PLAN.md)、[M2_HISTORY_FORMATS](M2_HISTORY_FORMATS.md)。
 
@@ -119,6 +119,66 @@ python3 -I tools/change.py restore --execution x0001 --phe-home <临时 PHE_HOME
 
 - `tests/test_change.py`：合成两条不同改动 + 三个 Agent 入口，一次顺序 E2E 覆盖 只批准 P1 → P1 生效 P2 不生效 → 批准并应用 P2 → 恢复 P2 后 P1 保留 → 从当前版本应用 P3（hunk 以 P2 改过的行作上下文，复用陈旧暂存内容会打不上）→ 逆序恢复 P3、P1 回到原字节；并断言账本来源、执行 ID、前后 hash、`status` 与文件一致，以及逆序恢复和批准覆盖范围的拒绝。
 - `tools/rehearse_change.py`：用真实切片 1 报告 `reports/2026-10-30.md` 的 P1/P2，在真实 `config/AGENTS.md` 的只读副本上跑同一流程。输入变更包、批准记录、发布、journal、账本、命令日志和断言报告全部留在 `experiments/loop-apply-001/`（被 Git 忽略），恢复所需文件不清理。演练批准写 `source=sandbox_rehearsal`。
+
+## 闭环切片 3：复盘账本、对照原预测
+
+切片 2 的账本只记事实，不给效果结论。切片 3 让下次复盘能读到原预测、取样范围和既往判断，并把自己的结论写回同一本账。
+
+### 命令
+
+```bash
+python3 -I tools/change.py review-plan --phe-home <PHE_HOME>
+python3 -I tools/change.py review --execution x0001 --record <review 记录 JSON> --phe-home <PHE_HOME>
+```
+
+`review-plan` 只读。`review` 只追加账本事实，不写配置、不改发布：守卫只查 `--phe-home`（不需要 `--home`），等于真实 home、是其祖先或落在 `~/.claude`、`~/.codex`、`~/.pi`、`~/.phe`、`~/.agents`、`~/AI/temper` 之内时在任何写入前退出 2。
+
+### `review-plan` 输出
+
+每个执行（含已恢复）列出：`execution_id`、`proposal_id`、`state`、`applied_at`、`restored_at`、`prediction`、`evidence`、`report`（报告路径与 sha256）、`observation_window`（`from` = 应用时刻，`to` = 恢复时刻；未恢复为 `null`，表示至今）、该执行全部历史 `reviews`（按账本顺序）和 `latest_review`（无则 `null`）。顶层 `note` 写明：观察窗只是候选取样范围，不证明 Host 加载过配置；review 只记录判断和证据指针。
+
+### review 记录
+
+宿主显式写一份 JSON，`review` 原样存进账本：
+
+```json
+{
+  "verdict": "observe",
+  "prediction_met": "unknown",
+  "reason": "只在临时沙箱应用，真实 Host 从未加载，无基线",
+  "observations": ["<源文件绝对路径>:L804", "<工件路径>"],
+  "next": "用户批准真实应用后，按 prediction.verify 在观察窗内统计"
+}
+```
+
+| 字段 | 约定 |
+|---|---|
+| `verdict` | `keep` / `adjust` / `revert` / `observe`，其他值退出 1 |
+| `prediction_met` | `met` / `not_met` / `unknown`，其他值退出 1 |
+| `reason` | 文字说明 |
+| `observations` | 证据指针列表，形如 `<源文件绝对路径>:L<行号>` 或工件路径；可为空列表 |
+| `next` | 下一步或还缺什么证据 |
+
+账本追加一条 `review` 事实：`execution_id`、`proposal_id`、`record`（记录内容）、`record_path`（记录文件路径）、`record_sha256`（记录原始字节）、`at`。同一执行可以多次 review，旧行不改写；`status` 每个执行增加 `latest_review`（无则 `null`）。
+
+### 语义
+
+- review 只记录宿主的判断：工具不判断效果，不改 `applied` / `restored` 状态，不调用 `restore`，不碰配置和发布。
+- `verdict=revert` 只是建议，用户批准后才走 `restore`；已恢复的执行 revert 不重复恢复。
+- `verdict=observe` 表示证据不足、暂不下结论；对已恢复的执行表述为“待补证据”。
+- `prediction_met` 只说原预测是否达到，不是因果证明。
+- 写入临时配置不等于 Host 已加载：观察窗只是候选取样范围。
+
+### 边界
+
+- 没有自动取样、自动统计或自动判定：观察窗、证据指针和计数由宿主给出并核对原文。
+- review 记录不构成效果证据，也不代表真实 Host 加载过配置；账本仍只记事实。
+- 畸形 record、并发写入、权限与攻击场景不在本轮范围，未测。
+
+### 验收
+
+- `tests/test_change.py`：在既有顺序 E2E 的 fixture 上加一条正常链路用例：apply → `review`（`observe` / `unknown`）→ 再 `review`（`keep` / `met`），两条历史都保留、`latest_review` 为后者；`review-plan` 回显原预测、证据、报告引用和观察窗；`restore` 后 `review-plan` / `status` 仍读得到 review 且观察窗收到恢复时刻；review 前后目标文件 sha256、发布链接和执行状态不变。
+- `tools/rehearse_review.py`：把切片 2 演练的 `experiments/loop-apply-001/phe/` 复制到 `experiments/loop-review-001/phe`（原目录不改），先 `review-plan`，再对真实演练执行 `x0001` 写 `observe` / `unknown`，最后在一份明确标注【合成】的会话 JSONL 上按 P1 的 `prediction.verify` 手工计数，把合成 review 写进单独的账本副本 `experiments/loop-review-001/synthetic/phe`。36 条断言全部成立；结论只说明复盘流程可运行，不证明规则有效。工件留在 `experiments/loop-review-001/`（被 Git 忽略），不清理。
 
 ## 切片 A：本地草稿（完成）
 

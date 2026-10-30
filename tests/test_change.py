@@ -58,6 +58,11 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def execution_states(status: dict) -> list[dict]:
+    """status 里每个执行的状态，去掉最新 review：它本来就是随 review 变的一项。"""
+    return [{key: value for key, value in item.items() if key != "latest_review"} for item in status["executions"]]
+
+
 class ChangeFixture(unittest.TestCase):
     """沙箱：temper 副本 + 临时 home（三个 Agent 的软链）+ 临时 PHE_HOME + 合成报告与变更包。"""
 
@@ -182,6 +187,31 @@ class ChangeFixture(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)
 
+    def record(self, name: str, verdict: str, prediction_met: str, observations: list[str]) -> Path:
+        data = {
+            "verdict": verdict,
+            "prediction_met": prediction_met,
+            "reason": f"合成复盘：{verdict}",
+            "observations": observations,
+            "next": "按 prediction.verify 在观察窗内统计",
+        }
+        path = self.out / name
+        write(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+        return path
+
+    def review(self, execution: str, record: Path) -> dict:
+        result = self.review_cli(execution, record)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def review_cli(self, execution: str, record: Path) -> subprocess.CompletedProcess:
+        return run_cli(CHANGE, "review", "--execution", execution, "--record", str(record), "--phe-home", str(self.phe))
+
+    def review_plan(self) -> dict:
+        result = run_cli(CHANGE, "review-plan", "--phe-home", str(self.phe))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
     # 观察面。
 
     def ledger(self) -> list[dict]:
@@ -283,6 +313,58 @@ class ChangeSequenceTests(ChangeFixture):
         self.assertEqual(status["targets"][0]["sha256"], sha256(BASE.encode()))
         # 只读来源：temper 副本一个字节都没动。
         self.assertEqual(self.shared.read_bytes(), BASE.encode())
+
+    def test_review_records_history_without_changing_the_execution(self):
+        """apply → review(observe) → review(keep)：两条历史都保留，恢复后仍能读到，文件和状态不变。"""
+        self.apply("P1", self.approve(["P1"]))
+        target = self.entries["pi"]
+        before_bytes = target.read_bytes()
+        before_link = os.readlink(target)
+        before_status = self.status()
+
+        observe = self.record("review-observe.json", "observe", "unknown", [])
+        first = self.review("x0001", observe)
+        self.assertEqual((first["kind"], first["execution_id"], first["proposal_id"]), ("review", "x0001", "P1"))
+        self.assertEqual(first["record_sha256"], sha256(observe.read_bytes()))
+        self.assertEqual(first["record_path"], str(observe))
+        self.assertEqual(first["record"]["verdict"], "observe")
+        # review 不改目标文件、发布链接和执行状态。
+        after_status = self.status()
+        self.assertEqual(target.read_bytes(), before_bytes)
+        self.assertEqual(os.readlink(target), before_link)
+        self.assertEqual(execution_states(after_status), execution_states(before_status))
+        self.assertEqual(after_status["targets"], before_status["targets"])
+
+        keep = self.record("review-keep.json", "keep", "met", [f"{self.shared}:L2", str(self.report)])
+        second = self.review("x0001", keep)
+        self.assertEqual([fact["kind"] for fact in self.ledger()], ["approval", "apply", "review", "review"])
+
+        applied = self.ledger()[1]
+        plan = self.review_plan()
+        self.assertIn("观察窗", plan["note"])
+        self.assertEqual(len(plan["executions"]), 1)
+        entry = plan["executions"][0]
+        self.assertEqual((entry["execution_id"], entry["proposal_id"], entry["state"]), ("x0001", "P1", "applied"))
+        self.assertEqual(entry["prediction"], applied["prediction"])
+        self.assertEqual(entry["evidence"], applied["evidence"])
+        self.assertEqual(entry["report"], applied["report"])
+        self.assertEqual(entry["observation_window"], {"from": applied["at"], "to": None})
+        self.assertEqual(entry["reviews"], [first, second])
+        self.assertEqual(entry["latest_review"], second)
+        self.assertEqual(self.status()["executions"][0]["latest_review"], second)
+
+        # 恢复后 review 历史仍在，观察窗收到恢复时刻；review 不阻止恢复，也不重复恢复。
+        restored = self.restore("x0001")
+        self.assertEqual(restored["release"], None)
+        entry = self.review_plan()["executions"][0]
+        self.assertEqual(entry["state"], "restored")
+        self.assertEqual(entry["observation_window"], {"from": applied["at"], "to": restored["at"]})
+        self.assertEqual([row["record"]["verdict"] for row in entry["reviews"]], ["observe", "keep"])
+        self.assertEqual(entry["latest_review"], second)
+        status = self.status()
+        self.assertEqual([item["state"] for item in status["executions"]], ["restored"])
+        self.assertEqual(status["executions"][0]["latest_review"], second)
+        self.assertEqual(target.read_bytes(), BASE.encode())
 
     def test_restore_refuses_out_of_order(self):
         """同一资产只支持逆序恢复：P2 还生效时不能先恢复 P1。"""

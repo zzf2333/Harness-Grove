@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""闭环切片 2：按批准的机读变更包应用、查看与恢复（标准库）。
+"""闭环切片 2/3：按批准的机读变更包应用、查看、恢复与复盘（标准库）。
 
 宿主显式准备两份输入：变更包（报告引用与 sha256、条目 ID、证据、预测/验证方法、目标资产、patch）
 和批准记录（`source`、绑定变更包原始字节的 sha256、获批条目）。`apply` 取目标入口当前实际生效的
 内容，打上一条获批条目的 patch，再走既有 release + deploy；`restore` 按 journal 回到上一个部署或
-原文件。账本 `<phe-home>/ledger.jsonl` 只追加事实（approval / apply / restore），状态由事实推导。
+原文件。账本 `<phe-home>/ledger.jsonl` 只追加事实，状态由事实推导。
+
+`review-plan` / `review` 是闭环切片 3 的复盘入口，实现在 `change_review.py`：只记录宿主的判断，
+不改执行状态、不调用 restore。账本事实与推导在 `change_ledger.py`。
 
 只在临时沙箱运行：`--home`、`--phe-home` 必填且不得指向真实环境，写入都经 release_deploy.Sandbox。
 本轮范围：单个 instructions 资产 + 三个 Agent 的临时软链入口。skill、普通文件入口、多资产发布不支持。
@@ -22,6 +25,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import release as release_tool
+from change_ledger import append_ledger, executions, latest_reviews, next_execution_id, read_json, read_ledger, require
+from change_review import cmd_review, cmd_review_plan, phe_roots
 from release_deploy import (
     GUARD_EXIT_CODE,
     GuardError,
@@ -37,7 +42,6 @@ from release_deploy import (
 SCHEMA_VERSION = 1
 # 演练批准必须显式写 sandbox_rehearsal，不能拿它冒充用户批准。
 APPROVAL_SOURCES = ("user", "sandbox_rehearsal")
-LEDGER = "ledger.jsonl"
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -46,16 +50,6 @@ def sha256_bytes(data: bytes) -> str:
 
 def sha256_file(path: Path) -> str:
     return sha256_bytes(path.read_bytes())
-
-
-def require(mapping: dict, key: str, where: str):
-    if key not in mapping:
-        raise ValueError(f"{where} 缺少字段：{key}")
-    return mapping[key]
-
-
-def read_json(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def read_change(path: Path) -> tuple[dict, str]:
@@ -193,47 +187,7 @@ def release_of(phe: Path, target: str | None) -> str | None:
     return parts[0]
 
 
-# 账本：只追加事实，状态从事实推导。
-
-
-def read_ledger(phe: Path) -> list[dict]:
-    path = phe / LEDGER
-    if not path.is_file():
-        return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-
-
-def append_ledger(sandbox: Sandbox, phe: Path, row: dict) -> None:
-    path = phe / LEDGER
-    sandbox.check(path)
-    with open(path, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-
-def next_execution_id(facts: list[dict]) -> str:
-    numbers = [int(fact["execution_id"][1:]) for fact in facts if fact["kind"] == "apply"]
-    return f"x{max(numbers, default=0) + 1:04d}"
-
-
-def executions(facts: list[dict]) -> list[dict]:
-    """按 apply 事实的顺序列出执行；restore 事实只改推导出的状态，不改写已有行。"""
-    result: dict[str, dict] = {}
-    for fact in facts:
-        if fact["kind"] == "apply":
-            result[fact["execution_id"]] = {
-                "execution_id": fact["execution_id"],
-                "proposal_id": fact["proposal_id"],
-                "release": fact["release"],
-                "state": "applied",
-                "applied_at": fact["at"],
-                "restored_at": None,
-                "before_sha256": fact["before_sha256"],
-                "after_sha256": fact["after_sha256"],
-            }
-        elif fact["kind"] == "restore":
-            result[fact["execution_id"]]["state"] = "restored"
-            result[fact["execution_id"]]["restored_at"] = fact["at"]
-    return list(result.values())
+# 账本：只追加事实，状态从事实推导（实现与推导在 change_ledger.py）。
 
 
 def link_release(phe: Path, path: str) -> str | None:
@@ -371,6 +325,9 @@ def cmd_status(args: argparse.Namespace) -> int:
     phe = args.phe_home
     facts = read_ledger(phe)
     items = executions(facts)
+    latest = latest_reviews(facts)
+    for item in items:
+        item["latest_review"] = latest.get(item["execution_id"])
     applies = [fact for fact in facts if fact["kind"] == "apply"]
     targets = []
     if applies:
@@ -398,11 +355,11 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
-COMMANDS = {"apply": cmd_apply, "restore": cmd_restore}
+COMMANDS = {"apply": cmd_apply, "restore": cmd_restore, "review": cmd_review}
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="闭环切片 2：按批准应用与恢复（只在临时沙箱运行）")
+    parser = argparse.ArgumentParser(description="闭环切片 2/3：按批准应用、恢复与复盘（只在临时沙箱运行）")
     commands = parser.add_subparsers(dest="cmd", required=True)
 
     applier = commands.add_parser("apply", help="应用变更包里一条获批条目")
@@ -418,6 +375,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     viewer = commands.add_parser("status", help="从账本事实推导执行状态")
     viewer.add_argument("--phe-home", type=Path, required=True, help="PHE 账本根目录")
+
+    planner = commands.add_parser("review-plan", help="列出每个执行的观察窗、原预测和 review 历史（只读）")
+    planner.add_argument("--phe-home", type=Path, required=True, help="PHE 账本根目录")
+
+    reviewer = commands.add_parser("review", help="追加一条 review 事实，只记录不判断效果")
+    reviewer.add_argument("--execution", required=True, help="执行 ID，如 x0001")
+    reviewer.add_argument("--record", type=Path, required=True, help="宿主编写的 review 记录 JSON")
+    reviewer.add_argument("--phe-home", type=Path, required=True, help="PHE 账本根目录")
     return parser
 
 
@@ -426,7 +391,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.cmd == "status":
             return cmd_status(args)
-        roots = sandbox_roots(args.home, args.phe_home)
+        if args.cmd == "review-plan":
+            return cmd_review_plan(args)
+        roots = phe_roots(args.phe_home) if args.cmd == "review" else sandbox_roots(args.home, args.phe_home)
         return COMMANDS[args.cmd](args, roots)
     except GuardError as exc:
         print(f"change: {exc}", file=sys.stderr)
