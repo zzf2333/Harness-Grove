@@ -30,6 +30,8 @@ description: 在用户现有的 Agent（Codex / Claude Code / Pi）里用本仓�
 
 从模板复制到 `${PHE_REPO}/experiments/<id>/proposal.json`：[examples/m-1/proposal.template.json](../../examples/m-1/proposal.template.json)。
 
+经验扫描产生的候选草案不用手工复制模板，按 §10 用 `tools/proposal.py draft` 生成。
+
 - 填齐路径、任务、模型、Hash、预算和 Token 噪声门槛。除 `backend_revision="unknown"` 外，冻结时不允许必填项为 null。
 - 组角色由 `harness.variants[*].remove` 推导：`remove` 为空的两个组是基线，`["real_rule"]` 是真实规则组，`["required_control"]` / `["redundant_control"]` 是控制组，各至多一组。
 - `gates.version` 缺省按 v1；新 proposal 用 `v2`。v2 的 `N_cost = max(N_gap, 2·N_mad, |1 − T[B_redundant]/T[A]|)`，没有冗余组时退回 v1 公式。`follow_up_candidate` 的节约必须超过 `N_cost`。
@@ -127,3 +129,22 @@ rm -rf "$TMP"
 ```
 
 `run` 被拒绝说明批准绑定生效；只有拒绝发生在任何 Target 启动之前才算通过。演练期间不执行真实的 `run` 成功路径。
+
+## 10. 经验扫描草稿（M3a 切片 A）
+
+从 M2 的分组产物起草候选提案时，用 `tools/proposal.py`，不要手工复制模板：
+
+```bash
+python3 -I tools/proposal.py draft \
+    --groups <分组 JSON> \
+    --candidate <Host 候选 JSON> \
+    --experiment-id <新实验 ID>
+python3 -I tools/proposal.py check --experiment-id <实验 ID>
+```
+
+- `--candidate` 只有 `groups`、`hypothesis`、`predictions` 三个字段。证据只从 `--groups` 解析；Host 自填引用、`excerpt` 和 Retired 声明都不接收。
+- stdout 是 JSON：`saved` / `checked` 只表示保存或检查成功，`freeze_ready` 单独报告。`missing`、`null_fields`、`freeze_ready_blockers` 要逐项处理；不能把“保存成功”当成“可以冻结”。
+- 带 `candidate` 的草稿在进入 §3 冻结前必须先运行 `check`；`freeze_ready` 为 false 或有阻塞项时不得冻结。这是流程约束：本切片没有 Retired 数据源和检索，`freeze_ready` 永远不是 true，工具也不阻止宿主手工写 `proposal.sha256`。
+- 报告只覆盖候选段和明显的未填项，不是完整协议验证。分组文件 sha256 只绑定输入字节，不验证语义质量、证据强度或预测是否合理。
+- 没有 `candidate` 的旧提案不在 `check` 范围内，不被判为失效。
+- 契约、示例和未完成的切片见 [docs/M3a_PLAN.md](../../docs/M3a_PLAN.md)。
