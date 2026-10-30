@@ -1,6 +1,8 @@
 # M2 计划：历史采集、证据分组与跨 Host 续作
 
-**状态：** 进行中（2026-10-28）。切片 A0、A 完成（reviewer 3 轮 PASS，本机最近 7 天只读采集抽查指针一致）；切片 B 完成（reviewer 3 轮 PASS，本机 7 天数据 923 条 → 376 组）；切片 C 代码部分完成（reviewer 2 轮 PASS；c-002、spike-001 只读 status 均为 reported）；跨 Host 验收准备完成（2026-10-29，第 1 轮独立审查的 P1/P2 已修并重跑）：合成演练 4/4 场景通过；失败时保留现场、报告目录排他创建，写入前置核对写进两份提示词。合成演练只验证文件交接与哈希绑定，不是正式冻结校验。第 2 轮（同日）补可核验合成任务/patch/规则与结构检查；正式前提（历史任务、真实 Target/加载链、spike-000、用户门槛）逐项 blocked，不能把结构检查当正式冻结。新增验收准备第 1 轮四项 P1 修复：入口禁用 bytecode，Git 清除继承的 `GIT_*`；固定合成夹具 schema/引用与 oracle Hash 集合核对；A 在 Skill §1 前置失败时不复制 proposal、不记 draft，实验目录保持空。正常交接仍为 `not-tested`，前置失败分支不能替代验收。执行层核对完成临时 allow/deny 控制及两 CLI 各一次受限禁网帮助探针，真实会话组合隔离仍未测。两个真实 Host 续作同一提案仍待用户批准（消耗额度），见 [M2_HOST_ACCEPTANCE](M2_HOST_ACCEPTANCE.md)。Codex Target 最小接口（目标选择、默认 argv、JSONL 用量/失败解析、费用 `None`、指纹与 runner Hash 绑定）已完成，只用测试层替换 subprocess 的合成输出验证（Codex 拒绝 `config.target_argv` 覆盖）；真实 Codex 会话隔离、费用和 max-turns 控制仍待决，见 [M2_RUN_CONTROLS](M2_RUN_CONTROLS.md) §4。上位文档：[PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」；开发约束沿用 [M1_PLAN](M1_PLAN.md)「原则：开发与使用分离」。
+**当前状态（2026-10-30）：** A0/A/B 完成；切片 C 的真实跨 Host 验收通过：S1 验证阻塞交接，S2 验证 Pi 起草、Codex 独立复核并冻结同一提案。S2 的旧快照绑定由主控找回原命令并补核通过。Target 支持按下表分别记录；Codex Target 真实运行不是本计划已规定的必需结项条件，不能与 Codex Host 交接混同。
+
+**历史进度（2026-10-28 至 2026-10-29，以下未测状态由当前结果更新）：**切片 A0、A 完成（reviewer 3 轮 PASS，本机最近 7 天只读采集抽查指针一致）；切片 B 完成（reviewer 3 轮 PASS，本机 7 天数据 923 条 → 376 组）；切片 C 代码部分完成（reviewer 2 轮 PASS；c-002、spike-001 只读 status 均为 reported）；跨 Host 验收准备完成（2026-10-29，第 1 轮独立审查的 P1/P2 已修并重跑）：合成演练 4/4 场景通过；失败时保留现场、报告目录排他创建，写入前置核对写进两份提示词。合成演练只验证文件交接与哈希绑定，不是正式冻结校验。第 2 轮（同日）补可核验合成任务/patch/规则与结构检查；正式前提（历史任务、真实 Target/加载链、spike-000、用户门槛）逐项 blocked，不能把结构检查当正式冻结。新增验收准备第 1 轮四项 P1 修复：入口禁用 bytecode，Git 清除继承的 `GIT_*`；固定合成夹具 schema/引用与 oracle Hash 集合核对；A 在 Skill §1 前置失败时不复制 proposal、不记 draft，实验目录保持空。正常交接仍为 `not-tested`，前置失败分支不能替代验收。执行层核对完成临时 allow/deny 控制及两 CLI 各一次受限禁网帮助探针，真实会话组合隔离仍未测。两个真实 Host 续作同一提案仍待用户批准（消耗额度），见 [M2_HOST_ACCEPTANCE](M2_HOST_ACCEPTANCE.md)。Codex Target 最小接口（目标选择、默认 argv、JSONL 用量/失败解析、费用 `None`、指纹与 runner Hash 绑定）已完成，只用测试层替换 subprocess 的合成输出验证（Codex 拒绝 `config.target_argv` 覆盖）；真实 Codex 会话隔离、费用和 max-turns 控制仍待决，见 [M2_RUN_CONTROLS](M2_RUN_CONTROLS.md) §4。上位文档：[PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」；开发约束沿用 [M1_PLAN](M1_PLAN.md)「原则：开发与使用分离」。
 
 M2 的 Gate：缺失的环境信息明确标出；两个不同 Host 能继续同一个提案；实验 Target 按需逐个适配。
 
@@ -9,8 +11,8 @@ M2 的 Gate：缺失的环境信息明确标出；两个不同 Host 能继续同
 | Gate 条件 | 状态 | 证据 / 缺口 |
 |---|---|---|
 | 缺失的环境信息明确标出 | 基本达成 | `collect` 对不可用来源记 `available: false` + `missing_reason`，`group` 汇总进 `sources_unavailable`；字段级未知项在 [M2_HISTORY_FORMATS](M2_HISTORY_FORMATS.md) 标 `unknown` |
-| 两个不同 Host 续作同一提案 | 未通过（S1 阻塞交接已通过） | 机制与合成演练已有；合成演练的两个 Host 只是 `--host` 标签。已有真实实验（m2-real-001/002）每一步都由 Pi 完成，不是跨 Host 证据。m2-handoff-001 S1（2026-10-30）：Pi 起草的合成草案由真实 Codex 会话只凭文件续读、给出阻塞并停止，不证明正常冻结交接。验收口径见 [M2_HOST_ACCEPTANCE](M2_HOST_ACCEPTANCE.md)「验收口径」 |
-| 实验 Target 按需逐个适配 | 部分 | Claude Code：真实启动过但未取得有效测量（见下）。Codex：只完成接口与合成解析，未启动真实会话，费用无来源，见 [M2_RUN_CONTROLS](M2_RUN_CONTROLS.md) §4。哪些 Target 属于“按需”必需项，文档未规定 |
+| 两个不同 Host 续作同一提案 | 通过 | m2-handoff-001 S1 验证阻塞交接；m2-handoff-002 S2 由 Pi 起草、真实 Codex 会话独立复核并冻结，proposal 字节不变，日志依次为 pi/draft、codex/freeze。主控补核旧文件清单 Hash 后接收；没有运行批准或 Target 调用。见 [M2_HOST_ACCEPTANCE](M2_HOST_ACCEPTANCE.md)「当前结果」 |
+| 实验 Target 按需逐个适配 | 分 Target 记录 | Claude Code：M-1/M0 已有真实通过证据；新隔离配置下的 m2-real-002 因 403 停止，加载链仍有运行前阻塞。Codex Target：接口与合成验证完成，真实运行、费用与隔离未验证，列为后续适配项；本计划未要求所有 Host 都作为 Target 实测通过。见 [M2_RUN_CONTROLS](M2_RUN_CONTROLS.md) §4 |
 
 **m2-real-002（2026-10-29，单 Host：Pi）：** 用户批准最多 15 次 Claude Code Target 启动，并约定失败即停。实际启动 1 次：沙箱包裹与 policy Hash 核对通过；CLI 首个请求收到服务端 403 `oauth_not_allowed_for_organization`（订阅登录被拒），用量缺失，runner 写 `stop.json = pivot:telemetry_missing`；`judge` 给出 `probe_decision=pivot`。按批准未续跑剩余 14 次，该批准不覆盖重试。加载链仅部分确认：用户级 `CLAUDE.md`、hooks 未加载，但 `--strict-mcp-config` 下仍拉取了 claude.ai connectors 列表。这次 403 只说明该 Target 启动路径的认证被拒，不证明 Claude Code 作为 Host 不可用。本地报告在被忽略的 `experiments/m2-real-002/report.md`。
 
