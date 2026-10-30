@@ -196,7 +196,7 @@ python3 -I tools/proposal.py check --experiment-id <实验 ID> [--retired <Retir
 
 4. 读结果：`apply` 输出执行 ID、发布号、前后 sha256 和 journal；账本 `<phe-home>/ledger.jsonl` 记批准来源、执行 ID、报告/变更包 sha256、三行说明原文（`prediction`）、实际发布号、journal 与恢复所需引用。执行 ID（`x0001`）和提案 ID（`P1`）不同，同一提案可以先后有多次应用。批准与 `apply` 成功只说明改动写进了临时配置，**不是效果已验证**。
 5. 恢复：同一资产只支持**逆序恢复**（先恢复最后一次生效的执行）。恢复 B 保留 A，恢复 A 回原文件；恢复只追加事实，不表示提案无效或 retired。保留 B 单独撤销 A、补丁重排本轮不支持。
-6. 边界：只覆盖单个 instructions 资产 + 三个 Agent 软链入口；skill 资产、普通文件入口、多资产发布不支持。失败时保留 journal 与发布，不自动重试。账本是事实记录，不是效果结论；预测对照按 §13。偏好符合用户意图不等于证明提升任务表现；没做行为实验的条目按未验证采纳处理。演练批准仍写 `sandbox_rehearsal`，不升级为用户批准。
+6. 边界：只覆盖单个 instructions 资产 + 三个 Agent 软链入口；skill 资产、普通文件入口、多资产发布不支持。失败时保留 journal 与发布，不自动重试。账本是事实记录，不是效果结论；预测对照按 §13。偏好符合用户意图不等于证明提升任务表现；只有 `source=user` 的批准、`apply` 事实和没有效果证据三者同时成立，才称“未验证采纳”；批准前写“收益待验证”。演练批准仍写 `sandbox_rehearsal`，不升级为用户批准。
 
 演练入口：`python3 -I tools/rehearse_change.py --out <新目录> --report reports/<日期>.md --config <真实 config/AGENTS.md>`。工件全部留在 `--out`，批准写 `source=sandbox_rehearsal`。
 
@@ -212,7 +212,7 @@ python3 -I tools/proposal.py check --experiment-id <实验 ID> [--retired <Retir
 
    每个执行给出观察窗（`from` = 应用时刻，`to` = 恢复时刻；未恢复为 `null`）、原预测（`prediction` 原样回显，含三行说明）、证据、报告引用、全部历史 review 和最新一条。观察窗只是候选取样范围，不证明 Host 加载过配置。
 2. 按观察窗两端筛会话：`history.py digest --since` 只接受 `7d` 或 `YYYY-MM-DD`，只设日期下界、没有上界，同日应用前的记录也会混入。必须按源记录自身的 `ts` 核对半开区间 `[from, to)`：`to` 为 `null` 时上界取本次复盘时刻，不取复盘之后的记录。早于 `from` 或达到上界（`>=`）的记录都不算观察，恰好等于恢复时刻的记录也不算，不得只按会话结束时间判断。
-3. 派只读子代理按 `prediction.verify` 核对：按源文件绝对路径与 `L<行号>` 回读原文，统计口径与预测一致；材料不足就写不足，不拿摘要计数代替原文核对。`verify` 写“收益待验证”时没有可执行的判定口径，只能记 `observe` / `unknown`。
+3. 派只读子代理按 `prediction.verify` 核对：按源文件绝对路径与 `L<行号>` 回读原文，统计口径与预测一致；材料不足就写不足，不拿摘要计数代替原文核对。本次复盘仍缺少足够证据或可执行的判定口径时，记 `observe` / `unknown`；原预测写过“收益待验证”不妨碍以后按新证据记 `met` / `not_met`。
 4. 宿主写 review 记录并追加到账本：
 
    ```json
@@ -231,6 +231,6 @@ python3 -I tools/proposal.py check --experiment-id <实验 ID> [--retired <Retir
 
    `verdict` 只有 `keep` / `adjust` / `revert` / `observe`，`prediction_met` 只有 `met` / `not_met` / `unknown`，不新增“未验证”之类的值。工具只记录，不判断效果；同一执行可以多次 review，旧行不改写。
 5. 向用户报告：保留、调整、撤销还是继续观察，附证据指针、原预测是否达到和还缺什么。`prediction_met` 不是因果证明；写入临时配置不等于 Host 加载过配置；批准与应用成功也不等于效果已验证。
-6. `revert` 只是建议：用户批准后才走 §12 的 `restore`；已恢复的执行不重复恢复。`observe` 表示证据不足，对已恢复执行表述为“待补证据”，对没做行为实验的条目表述为“未验证采纳”。
+6. `revert` 只是建议：用户批准后才走 §12 的 `restore`；已恢复的执行不重复恢复。`observe` 表示证据不足，对已恢复执行表述为“待补证据”，对用户批准应用、还没有效果证据的条目表述为“未验证采纳”，演练批准的条目仍写演练。
 
 边界：没有自动取样、自动统计和自动判定，观察窗与计数由宿主给出。演练入口：`python3 -I tools/rehearse_review.py --out <新目录> --source <切片 2 的 phe 目录>`，工件留在 `--out`；合成样例按 `[from, 上界)` 取样（未恢复时上界取声明的模拟复盘时刻，并放一条晚于它的命中证明不计入），只证明复盘流程可运行，不证明规则有效。

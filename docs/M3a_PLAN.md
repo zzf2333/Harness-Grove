@@ -178,7 +178,7 @@ python3 -I tools/change.py review --execution x0001 --record <review 记录 JSON
 - review 只记录宿主的判断：工具不判断效果，不改 `applied` / `restored` 状态，不调用 `restore`，不碰配置和发布。
 - 批准与 `apply` 成功只表示改动已写进临时配置，**不表示效果已验证**；改动符合用户明确偏好，也不等于证明它提升了任务表现。
 - 未验证采纳由三件事实共同表达：`approval`（`source=user`）+ `apply` 事实 + 没有效果证据。不新增状态，也不给 `review.verdict` 加值：收益没测时仍用 `observe` / `prediction_met=unknown`。
-- `prediction.verify` 写“收益待验证”时，review 只能记 `observe` / `unknown`；没有可执行的判定口径就写 `met` 会把待验证说成已验证。
+- 本次复盘仍缺少足够证据或可执行的判定口径时，review 记 `observe` / `unknown`；这时写 `met` 会把待验证说成已验证。原预测写过“收益待验证”不限制以后的复盘：之后拿到足以判断的证据（L2 实验或观察窗内的计数），照常按证据记 `met` / `not_met`。
 - 沙盒演练的批准仍是 `sandbox_rehearsal`，应用成功也不升级为用户批准；账本只按原值记录。
 - `verdict=revert` 只是建议，用户批准后才走 `restore`；已恢复的执行 revert 不重复恢复。
 - `verdict=observe` 表示证据不足、暂不下结论；对已恢复的执行表述为“待补证据”。

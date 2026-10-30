@@ -123,8 +123,9 @@ class LightweightEvaluationTests(ChangeFixture):
         for fact in facts:
             self.assertNotIn("已验证", json.dumps(fact, ensure_ascii=False), fact)
             self.assertFalse([key for key in fact if "effect" in key or "verified" in key], fact)
+            self.assertNotIn("prediction_met", fact, fact)
 
-        # 3. 对假设条目写一条 review：收益待验证，只能 observe / unknown。
+        # 3. 对假设条目写一条 review：本次还没有效果证据，记 observe / unknown。
         record_data = {
             "verdict": "observe",
             "prediction_met": "unknown",
