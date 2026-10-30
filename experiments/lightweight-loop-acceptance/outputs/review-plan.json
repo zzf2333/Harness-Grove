@@ -1,0 +1,61 @@
+{
+  "phe_home": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/phe",
+  "note": "观察窗只是候选取样范围（应用到恢复或至今），不证明 Host 加载过配置；review 只记录宿主的判断和证据指针，不判断效果。",
+  "executions": [
+    {
+      "execution_id": "x0001",
+      "proposal_id": "W1",
+      "state": "applied",
+      "applied_at": "2026-10-30T15:32:25+00:00",
+      "restored_at": null,
+      "prediction": {
+        "why": "用户明确要求“以后每次回答都先给结论，再解释理由”（会话 L6）；配置第 2 行要求先复述问题再回答，与新偏好冲突",
+        "expected": "先给结论，再复述问题；不丢“用户说先别做时，不要越界执行”这条约束",
+        "verify": "读一遍：措辞是否准确表达偏好、是否与其余行冲突；偏好不需要证明更优",
+        "baseline": "待观察"
+      },
+      "evidence": [
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L6",
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/temper/config/AGENTS.md:L2"
+      ],
+      "report": {
+        "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/lightweight-loop/host-report.md",
+        "sha256": "7f499b53a7aa6bb9306ba9b98b6b3950611a28cb4917a0b5a6cfc0a62fe698b9"
+      },
+      "observation_window": {
+        "from": "2026-10-30T15:32:25+00:00",
+        "to": null
+      },
+      "reviews": [],
+      "latest_review": null
+    },
+    {
+      "execution_id": "x0002",
+      "proposal_id": "W3",
+      "state": "applied",
+      "applied_at": "2026-10-30T15:32:25+00:00",
+      "restored_at": null,
+      "prediction": {
+        "why": "会话 L9、L12 两次因 Agent 顺手改相邻文件被用户叫停；配置第 4 行只写“先别做时不要越界执行”，没写不能顺手做相邻改动",
+        "expected": "越界后需要用户叫停的情况减少；不丢原有“先别做时不越界”约束",
+        "verify": "收益待验证：本轮不做行为实验；用户批准真实应用后，在观察窗内统计越界后需要叫停的次数",
+        "baseline": "待观察"
+      },
+      "evidence": [
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L9",
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L12",
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/temper/config/AGENTS.md:L4"
+      ],
+      "report": {
+        "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/lightweight-loop/host-report.md",
+        "sha256": "7f499b53a7aa6bb9306ba9b98b6b3950611a28cb4917a0b5a6cfc0a62fe698b9"
+      },
+      "observation_window": {
+        "from": "2026-10-30T15:32:25+00:00",
+        "to": null
+      },
+      "reviews": [],
+      "latest_review": null
+    }
+  ]
+}

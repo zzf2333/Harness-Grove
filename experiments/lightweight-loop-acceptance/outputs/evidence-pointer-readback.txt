@@ -1,0 +1,13 @@
+（本次运行的临时工作区：/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG）
+
+会话 L2 → {"type":"message","timestamp":"2026-10-28T09:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"帮我把 config/AGENTS.md 里的说明整理一下，顺便看看 README 的措辞。"}]}}
+会话 L6 → {"type":"message","timestamp":"2026-10-28T09:00:15.000Z","message":{"role":"user","content":[{"type":"text","text":"回答先给结论：以后每次回答都先给结论，再解释理由。这是我的固定偏好。"}]}}
+会话 L9 → {"type":"message","timestamp":"2026-10-28T09:00:40.000Z","message":{"role":"user","content":[{"type":"text","text":"停一下，我没让你改 README。先别做相邻改动。"}]}}
+会话 L12 → {"type":"message","timestamp":"2026-10-28T09:01:20.000Z","message":{"role":"user","content":[{"type":"text","text":"不是让你顺手改别的文件，我说的是只动 config。停下来。"}]}}
+配置 L1 → 先给结论。
+配置 L2 → 先复述问题再回答。
+配置 L3 → 先给结论。
+配置 L4 → 用户说先别做时，不要越界执行。
+
+样例配置副本与仓库内 examples/lightweight-loop/config/AGENTS.md 逐字节一致：是
+会话首行时间：2026-10-28T09:00:00.000Z；应用时刻见 outputs/status-after-apply.json 的 applied_at（会话早于应用，不能当观察证据）

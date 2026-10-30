@@ -1,0 +1,23 @@
+报告里的证据指针 → 原文（在 host-report.md 里能逐字找到）：
+- 会话 L2: 帮我把 config/AGENTS.md 里的说明整理一下，顺便看看 README 的措辞。
+  在 host-report.md 里逐字出现：True
+- 会话 L6: 回答先给结论：以后每次回答都先给结论，再解释理由。这是我的固定偏好。
+  在 host-report.md 里逐字出现：True
+- 会话 L9: 停一下，我没让你改 README。先别做相邻改动。
+  在 host-report.md 里逐字出现：True
+- 会话 L12: 不是让你顺手改别的文件，我说的是只动 config。停下来。
+  在 host-report.md 里逐字出现：True
+- 配置 L1: 先给结论。
+  在 host-report.md 里逐字出现：True
+- 配置 L2: 先复述问题再回答。
+  在 host-report.md 里逐字出现：True
+- 配置 L3: 先给结论。
+  在 host-report.md 里逐字出现：True
+- 配置 L4: 用户说先别做时，不要越界执行。
+  在 host-report.md 里逐字出现：True
+
+R6 会话 L6 是否在报告 W1 的证据指针里： True
+R9/L12 是否在报告 W3 的证据指针里： True
+配置 L2 是否在报告 W1 的证据指针里： True
+配置 L3 是否在报告 W2 的证据指针里： True
+配置 L4 是否在报告 W3 的证据指针里： True

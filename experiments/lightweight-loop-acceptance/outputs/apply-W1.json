@@ -1,0 +1,14 @@
+{
+  "execution_id": "x0001",
+  "proposal_id": "W1",
+  "source": "sandbox_rehearsal",
+  "asset_id": "asset-0001",
+  "release": "r0001",
+  "before_sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66",
+  "after_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+  "journals": [
+    "journal/20261030T153225Z.json",
+    "journal/20261030T153225Z-1.json",
+    "journal/20261030T153225Z-2.json"
+  ]
+}

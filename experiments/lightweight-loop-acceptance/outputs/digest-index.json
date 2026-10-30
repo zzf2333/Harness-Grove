@@ -1,0 +1,19 @@
+{
+  "host": "pi",
+  "root": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/lightweight-loop/pi-root",
+  "since": "2026-10-01",
+  "window_start": "2026-10-01T00:00:00+08:00",
+  "generated_at": "2026-10-30T15:32:24+00:00",
+  "sessions_total": 1,
+  "sessions_included": 1,
+  "sessions_skipped": 0,
+  "sessions_unavailable": 0,
+  "blocks": [
+    {
+      "file": "pi-1.md",
+      "sessions": 1,
+      "bytes": 1096
+    }
+  ],
+  "unavailable_sources": []
+}

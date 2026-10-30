@@ -1,0 +1,13 @@
+{
+  "kind": "restore",
+  "at": "2026-10-30T15:32:25+00:00",
+  "execution_id": "x0002",
+  "proposal_id": "W3",
+  "journals": [
+    "journal/20261030T153225Z-3.json",
+    "journal/20261030T153225Z-4.json",
+    "journal/20261030T153225Z-5.json"
+  ],
+  "restored_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+  "release": "r0001"
+}

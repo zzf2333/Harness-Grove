@@ -1,0 +1,44 @@
+{
+  "assets": [
+    {
+      "asset_id": "asset-0001",
+      "resolved_path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/temper/config/AGENTS.md",
+      "observed": [
+        {
+          "agent": "claude",
+          "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/home/.claude/CLAUDE.md",
+          "is_symlink": true,
+          "symlink_target": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/temper/config/AGENTS.md"
+        },
+        {
+          "agent": "codex",
+          "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/home/.codex/AGENTS.md",
+          "is_symlink": true,
+          "symlink_target": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/temper/config/AGENTS.md"
+        },
+        {
+          "agent": "pi",
+          "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/home/.pi/agent/AGENTS.md",
+          "is_symlink": true,
+          "symlink_target": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/temper/config/AGENTS.md"
+        }
+      ],
+      "baseline": {
+        "sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66",
+        "size": 131,
+        "mtime": "2026-10-30T15:32:24+00:00",
+        "paths": {
+          "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/home/.claude/CLAUDE.md": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/temper/config/AGENTS.md",
+          "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/home/.codex/AGENTS.md": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/temper/config/AGENTS.md",
+          "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/home/.pi/agent/AGENTS.md": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/temper/config/AGENTS.md"
+        }
+      },
+      "state": "Active",
+      "origin": "imported",
+      "evidence_status": "unverified",
+      "adopted_at": "2026-10-30T15:32:25+00:00",
+      "inventory_sha256": "e76cc00babc38436823b736c79ed14f738a2c7db8422b122dd31928d8f73046b"
+    }
+  ],
+  "next_asset_number": 2
+}

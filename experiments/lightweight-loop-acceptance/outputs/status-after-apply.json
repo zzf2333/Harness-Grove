@@ -1,0 +1,68 @@
+{
+  "phe_home": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/phe",
+  "executions": [
+    {
+      "execution_id": "x0001",
+      "proposal_id": "W1",
+      "release": "r0001",
+      "state": "applied",
+      "applied_at": "2026-10-30T15:32:25+00:00",
+      "restored_at": null,
+      "before_sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66",
+      "after_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+      "latest_review": null
+    },
+    {
+      "execution_id": "x0002",
+      "proposal_id": "W3",
+      "release": "r0002",
+      "state": "applied",
+      "applied_at": "2026-10-30T15:32:25+00:00",
+      "restored_at": null,
+      "before_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+      "after_sha256": "a98213676922a48ae0278eb6a4a3a62f6e237d81445a695b1eac996eae747421",
+      "latest_review": null
+    }
+  ],
+  "active": [
+    {
+      "execution_id": "x0001",
+      "proposal_id": "W1",
+      "release": "r0001",
+      "state": "applied",
+      "applied_at": "2026-10-30T15:32:25+00:00",
+      "restored_at": null,
+      "before_sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66",
+      "after_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+      "latest_review": null
+    },
+    {
+      "execution_id": "x0002",
+      "proposal_id": "W3",
+      "release": "r0002",
+      "state": "applied",
+      "applied_at": "2026-10-30T15:32:25+00:00",
+      "restored_at": null,
+      "before_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+      "after_sha256": "a98213676922a48ae0278eb6a4a3a62f6e237d81445a695b1eac996eae747421",
+      "latest_review": null
+    }
+  ],
+  "targets": [
+    {
+      "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/home/.claude/CLAUDE.md",
+      "release": "r0002",
+      "sha256": "a98213676922a48ae0278eb6a4a3a62f6e237d81445a695b1eac996eae747421"
+    },
+    {
+      "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/home/.codex/AGENTS.md",
+      "release": "r0002",
+      "sha256": "a98213676922a48ae0278eb6a4a3a62f6e237d81445a695b1eac996eae747421"
+    },
+    {
+      "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.VFWWIb6tAG/home/.pi/agent/AGENTS.md",
+      "release": "r0002",
+      "sha256": "a98213676922a48ae0278eb6a4a3a62f6e237d81445a695b1eac996eae747421"
+    }
+  ]
+}
