@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-10-30 · m2-handoff-001 S1
+
+- 首次真实跨 Host 交接：Pi 起草合成草案，真实 Codex 会话（用户批准的一次 `codex exec` 例外）只凭文件读取阶段、核对 Skill §1–§3，结论为不能冻结并停止；文件快照除报告外不变。
+- 只证明阻塞交接；正常冻结交接（S2）仍 blocked，M2 Gate 未通过。
+- 新增 `ruff.toml`（line-length=120）和 MIT `LICENSE`。
+
 ## 2026-10-30 · M2 状态核对
 
 - M2_PLAN 新增 Gate 进度表，记录 m2-real-002：Claude Code Target 启动 1/15 次，服务端 403 拒绝订阅登录，停在 `pivot:telemetry_missing`，未续跑。全部步骤由 Pi 完成，不算跨 Host 证据。

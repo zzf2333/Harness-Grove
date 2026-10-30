@@ -13,26 +13,28 @@ Gate“两个不同 Host 能继续同一个提案”分两类证据记录，不�
 
 Host 交接证据可以先于正式前提验收；未覆盖的既定场景（正常冻结交接等）继续标“未测”，不提前宣布 M2 完成。候选 Host 组合优先 Pi + Codex，理由是验证另一种真实 Host 的续作；m2-real-002 的 Target 403 不证明 Claude Code Host 不可用。Codex Host 的可用性未核实。真实执行前须列明会话数、费用上限与停止条件，由用户本人批准。
 
-## 下一轮真实验收方案：m2-handoff-001（待用户批准，未执行）
+## 真实验收：m2-handoff-001（S1 已执行，S2 blocked）
 
 两个场景按顺序做，前一个不替代后一个：
 
 | 场景 | 内容 | 能证明 | 不能证明 | 状态 |
 |---|---|---|---|---|
-| S1 阻塞交接 | Pi 在合成语料上放入草案并 `log --host pi --step draft`；用户在原生 Codex 会话中只凭文件续作，`status`、核对材料，写出缺失前提与下一步后停止 | 真实的第二个 Host 能从文件读到同一提案的阶段和阻塞，并停在边界 | 正常冻结交接；M2 Gate 通过 | 待批准 |
+| S1 阻塞交接 | Pi 在合成语料上放入草案并 `log --host pi --step draft`；真实 Codex 会话只凭文件续作，`status`、核对材料，写出缺失前提与下一步后停止 | 真实的第二个 Host 能从文件读到同一提案的阶段和阻塞，并停在边界 | 正常冻结交接；M2 Gate 通过 | **通过（2026-10-30）** |
 | S2 正常冻结交接 | 新提案的正式前提逐项核实后，第二个 Host 按 Skill §3 合法冻结 | 两个 Host 续作同一提案 | Target 可运行 | blocked：正式前提未核实 |
 
 S1 的安排：
 
 - **输入只用合成语料。** 用 `prepare_host_acceptance.py` 在系统临时目录生成 `<corpus>`，内含本仓库工具、Skill、协议副本与手写任务。不把 Sutra 等私人任务材料交给 Codex。m2-real-002 的材料和批准（含 D2 来源偏差）不延伸到新提案。
 - **A = Pi（主控会话）。** 核对 `status` 为 `empty` 后，把 `inputs/proposal.json` 原样复制到 `<corpus>/repo/experiments/m2-handoff-001/`，`log --host pi --step draft --note "合成夹具草案，正式前提 blocked"`。这是有意偏离上文 A 提示词的停止分支：目的是让 B 有一份可读的草案，草案仍不具备冻结条件。不写 `proposal.sha256`。主控另在验收记录里记 proposal 原始字节 Hash。
-- **B = Codex，由用户本人在原生 Codex 会话中启动。** 主控不用 bash 启动 `codex exec`：用户约定不启用外部 CLI 执行器，这次没有例外授权。用户在 `<corpus>/repo` 里打开 Codex，粘贴下方 S1-B 提示词。
+- **B = Codex。** 原方案由用户在原生 Codex 会话中启动。实际执行时用户批准一次例外：主控用 bash 启动一次 `codex exec --json --skip-git-repo-check -s workspace-write -C <corpus>/repo --add-dir <corpus>`，300 秒超时，不重试，不加 `--ephemeral`（保留会话文件作身份证据）。该例外只覆盖这一次。
 - **费用与停止。** Pi 侧不调用 Target，只用主控会话自身。Codex 侧 1 个会话，占用用户现有 Codex 登录额度；一个会话可能包含多次模型请求，**没有 USD 上限来源**。停止方式：提示词要求写完报告即停；用户在 5 分钟墙钟或发现越界时手动中断。失败不重开。
 - **数据发送范围。** Codex 会把它读到的 `<corpus>` 内容发给 OpenAI：公开的工具、Skill、协议副本和手写合成任务。不含会话历史、私人配置或真实任务。
 - **写入。** B 在 S1 不冻结，也不运行 `log`，只允许写 `<corpus>/handoff-report.md`。Codex 自身会写 `~/.codex/sessions`、`history.jsonl`、`log`，这属于用户正常使用 Codex 的自身写入，需随批准一并接受；`workspace-write` 不证明其他写入被隔离。
 - **主控事后核对。** proposal 原始字节 Hash 前后一致；`host_log.jsonl` 只有 pi/draft 一条；无 `proposal.sha256`、`approval.json`、`runs.jsonl`；`<corpus>` 其他文件字节快照不变；报告列出的阻塞与 `inputs/blockers.json` 一致。Host 身份证据：用户提供的 Codex 会话 id，主控只核对 `~/.codex/sessions` 下对应文件存在及其 `cwd` 字段，不读会话正文。结果写入被忽略的 `experiments/m2-handoff-001/`。
 
-### S1-B 提示词（用户粘贴到原生 Codex 会话）
+**S1 结果（2026-10-30）：** `codex exec` 退出 0，用时 174 秒。Codex 自报用量：input 318,690（其中缓存 280,704），output 3,495，无费用来源。Host 身份：会话文件 `~/.codex/sessions/2026/10/30/rollout-…-<thread_id>.jsonl` 首行 `cwd` 为语料目录，与 JSONL 的 `thread_id` 一致。核对：proposal 原始字节 Hash 不变；原有 59 个文件快照无差异，唯一新增是 `handoff-report.md`；`host_log` 只有 pi/draft；没有生成侧文件、批准或测量；`status` 仍是 `drafted`。报告结论为不能冻结：5 项阻塞与 `inputs/blockers.json` 深度相等，另外指出 2 项缺口，即实验目录缺 `config.json`、规则/控制/基线缺人工核对证据。Codex 加载了用户级配置，这对 Host 验收是预期行为，不能作为 Target 隔离证据。证据在被忽略的 `experiments/m2-handoff-001/acceptance.md`。**S1 不证明正常冻结交接，M2 Gate 仍未通过。**
+
+### S1-B 提示词（实际执行时作为 codex exec 的 prompt）
 
 ```text
 你从文件续作一份 PHE 提案，5 分钟内停止。当前目录是 PHE_REPO；实验目录 experiments/m2-handoff-001；只读 ../inputs。
