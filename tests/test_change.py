@@ -3,6 +3,9 @@
 fixture 全在临时目录：temper 副本 + 三个 Agent 入口软链（共享同一 instructions 资产）+ 临时 PHE_HOME。
 三条合成改动改同一文件的不同行：P1 改第 2 行，P2 改第 4 行，P3 改第 5 行。P3 的 hunk 以 P1+P2 之后
 仍不变的 `delta` 作上下文，所以复用陈旧暂存内容（含 `delta B`）会让 P3 打不上。
+
+`tests/test_change_lightweight.py` 用另一份合成内容验证 PHE_SPEC §2.5 的口径：偏好 / 清理 / 假设三类条目写
+三行说明，只批准偏好与假设，不做行为实验也能走完应用、记账、复盘、恢复。
 """
 
 import hashlib
@@ -66,6 +69,8 @@ def execution_states(status: dict) -> list[dict]:
 class ChangeFixture(unittest.TestCase):
     """沙箱：temper 副本 + 临时 home（三个 Agent 的软链）+ 临时 PHE_HOME + 合成报告与变更包。"""
 
+    BASE_TEXT = BASE
+
     def setUp(self):
         self.tmp = Path(os.path.realpath(tempfile.mkdtemp(prefix="change-test-")))
         self.addCleanup(rmtree_force, self.tmp)
@@ -79,7 +84,7 @@ class ChangeFixture(unittest.TestCase):
             "codex": self.home / ".codex/AGENTS.md",
             "pi": self.home / ".pi/agent/AGENTS.md",
         }
-        write(self.shared, BASE)
+        write(self.shared, self.BASE_TEXT)
         for path in self.entries.values():
             path.parent.mkdir(parents=True, exist_ok=True)
             os.symlink(self.shared, path)

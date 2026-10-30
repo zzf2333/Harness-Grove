@@ -1,10 +1,10 @@
 # M3a 计划：从经验扫描产生可证伪提案
 
-**状态（2026-10-30）：** 进行中。切片 A 完成：本地草稿 CLI `tools/proposal.py draft/check`。切片 B1 完成：显式 Retired 检索文件的逐条列举与关系核对（`--retired`、`retired_review`）。切片 B2（真实退役数据源与自动检索）、C（独立证据判定）暂停（2026-10-30 调整，见 [AGENTS.md](../AGENTS.md)）；D 缩小为改前写预测和验证方法。当前优先跑通经验复盘闭环：切片 1 的 `history.py digest` 已提供摘要入口，可审批报告的诊断与合并由宿主按 Skill 编排；切片 2 的 `tools/change.py apply/status/restore` 已在临时配置上跑通批准、应用与逆序恢复；切片 3 的 `tools/change.py review-plan/review` 已在切片 2 账本副本上跑通复盘记录（观察窗、原预测对照、合成计数样例），仍只记录宿主判断，不证明效果。真实配置仍未写入。**M3a 未完成**，不能把 A/B1 的报告当作完整协议验证。
+**状态（2026-10-30）：** 进行中。切片 A 完成：本地草稿 CLI `tools/proposal.py draft/check`。切片 B1 完成：显式 Retired 检索文件的逐条列举与关系核对（`--retired`、`retired_review`）。切片 B2（真实退役数据源与自动检索）、C（独立证据判定）暂停（2026-10-30 调整，见 [AGENTS.md](../AGENTS.md)）；D 缩小为改前写三行说明（为什么改 / 期待什么 / 凭什么判断）。当前优先跑通经验复盘闭环：切片 1 的 `history.py digest` 已提供摘要入口，可审批报告的诊断与合并由宿主按 Skill 编排；切片 2 的 `tools/change.py apply/status/restore` 已在临时配置上跑通批准、应用与逆序恢复；切片 3 的 `tools/change.py review-plan/review` 已在切片 2 账本副本上跑通复盘记录（观察窗、原预测对照、合成计数样例），仍只记录宿主判断，不证明效果。真实配置仍未写入。**M3a 未完成**，不能把 A/B1 的报告当作完整协议验证。
 
 **上位文档：** [PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」「独立证据与 Retired 账本」；历史输入格式见 [M2_PLAN](M2_PLAN.md)、[M2_HISTORY_FORMATS](M2_HISTORY_FORMATS.md)。
 
-原 M3a 实验路线的 Gate：使用固定指标、冻结预测和 Retired 检索；不自动发布。2026-10-30 起优先按下述闭环切片推进，L2 对照实验可选。已完成的 A/B1 CLI 仍只读报告明显未闭合项，原有实验入口保留。
+原 M3a 实验路线的 Gate（选择实验时适用）：使用固定指标、冻结预测和 Retired 检索；不自动发布。2026-10-30 起优先按下述闭环切片推进，默认三行评估说明，L2 对照实验可选。已完成的 A/B1 CLI 仍只读报告明显未闭合项，原有实验入口保留。
 
 ## 切片
 
@@ -14,7 +14,7 @@
 | B1 | 显式 Retired 检索文件：`draft --retired <JSON>` 逐条列举、`retired_review` 关系核对、`check --retired` 显式复核来源 | 完成 | 只处理提供者给出的有限文件；不扫描目录、不推断语义相关、不截断 |
 | B2 | Retired 真实数据源与自动检索：负样本来源、匹配规则、扫描范围 | 暂停（2026-10-30 调整，见 AGENTS.md） | 宿主显式写出检索范围与依据 |
 | C | 独立证据判定：重新启用已退役方案时判断新证据是否独立、是否充分 | 暂停（2026-10-30 调整，见 AGENTS.md） | 宿主显式写出判断依据与材料缺口 |
-| D | 缩小为改前写预测和验证方法 | 待按闭环报告落实 | 改前记录预期效果、验证方法；无基线写待观察 |
+| D | 缩小为改前写三行说明 | 待按闭环报告落实 | 改前写为什么改、改后期待什么（含不能丢的约束）、凭什么判断；收益测不出写“收益待验证”，无基线写待观察 |
 
 原 M3a 实验路线的 Gate 尚未核对；不以完成暂停项作为当前闭环切片的前置条件。以下 A/B1 记录保留其交付时的契约与限制。
 
@@ -64,7 +64,7 @@ python3 -I tools/change.py restore --execution x0001 --phe-home <临时 PHE_HOME
   "report": {"path": "<报告绝对路径>", "sha256": "<报告原始字节>"},
   "items": [
     {"item_id": "P1", "evidence": ["<源文件绝对路径>:L804"],
-     "prediction": {"expected": "...", "verify": "...", "baseline": "待观察"},
+     "prediction": {"why": "...", "expected": "...", "verify": "...", "baseline": "待观察"},
      "target": {"asset_id": "asset-0001"},
      "patch": "--- a/config/AGENTS.md\n+++ b/config/AGENTS.md\n@@ ..."}
   ]
@@ -72,6 +72,17 @@ python3 -I tools/change.py restore --execution x0001 --phe-home <临时 PHE_HOME
 ```
 
 `apply` 会重算 `report.sha256`，不一致就退出 1：变更包必须引用当前这一版报告。
+
+`prediction` 承载 §2.5 的三行说明，四个键都是自由文本（`baseline` 可缺）：
+
+| 键 | 对应三行里的哪一行 | 写什么 |
+|---|---|---|
+| `why` | 为什么改 | 用户偏好、具体问题（附 `evidence` 指针）或规则之间的冲突 |
+| `expected` | 改后期待什么 | 一个具体行为，加改后不能丢掉的约束 |
+| `verify` | 凭什么判断 | 已核对什么、还有什么不知道；收益测不出就写“收益待验证” |
+| `baseline` | 可缺 | 基线；没测过写“待观察” |
+
+工具只要求整个 `prediction` 存在，不校验内部键，入账时原样保存。所以旧变更包（只写 `expected` / `verify`）继续可用，只是账本里少了 `why`；偏好和清理类条目不需要指标或行为实验就能走完批准、应用、记账、复盘、恢复。
 
 批准记录绑定确定版本的变更包和获批条目：
 
@@ -118,6 +129,7 @@ python3 -I tools/change.py restore --execution x0001 --phe-home <临时 PHE_HOME
 ### 验收
 
 - `tests/test_change.py`：合成两条不同改动 + 三个 Agent 入口，一次顺序 E2E 覆盖 只批准 P1 → P1 生效 P2 不生效 → 批准并应用 P2 → 恢复 P2 后 P1 保留 → 从当前版本应用 P3（hunk 以 P2 改过的行作上下文，复用陈旧暂存内容会打不上）→ 逆序恢复 P3、P1 回到原字节；并断言账本来源、执行 ID、前后 hash、`status` 与文件一致，以及逆序恢复和批准覆盖范围的拒绝。
+- `tests/test_change_lightweight.py` 复用同一 fixture，新增一条按 §2.5 口径的正常链路用例：三条不同性质的条目（偏好 / 清理重复 / 减少失误的假设）都写三行说明，只批准偏好与假设 → 分别应用 → 对假设写一条 `observe` / `unknown` 的 review → 逆序恢复回原字节。断言账本保留批准来源（`source=user`）和 `why` / `expected` / `verify` 原文，清理条目未批准也未生效，没有任何字段把批准或应用写成效果已验证；旧格式变更包（只有 `expected` / `verify`）照常可用。
 - `tools/rehearse_change.py`：用真实切片 1 报告 `reports/2026-10-30.md` 的 P1/P2，在真实 `config/AGENTS.md` 的只读副本上跑同一流程。输入变更包、批准记录、发布、journal、账本、命令日志和断言报告全部留在 `experiments/loop-apply-001/`（被 Git 忽略），恢复所需文件不清理。演练批准写 `source=sandbox_rehearsal`。
 
 ## 闭环切片 3：复盘账本、对照原预测
@@ -164,6 +176,10 @@ python3 -I tools/change.py review --execution x0001 --record <review 记录 JSON
 ### 语义
 
 - review 只记录宿主的判断：工具不判断效果，不改 `applied` / `restored` 状态，不调用 `restore`，不碰配置和发布。
+- 批准与 `apply` 成功只表示改动已写进临时配置，**不表示效果已验证**；改动符合用户明确偏好，也不等于证明它提升了任务表现。
+- 未验证采纳由三件事实共同表达：`approval`（`source=user`）+ `apply` 事实 + 没有效果证据。不新增状态，也不给 `review.verdict` 加值：收益没测时仍用 `observe` / `prediction_met=unknown`。
+- `prediction.verify` 写“收益待验证”时，review 只能记 `observe` / `unknown`；没有可执行的判定口径就写 `met` 会把待验证说成已验证。
+- 沙盒演练的批准仍是 `sandbox_rehearsal`，应用成功也不升级为用户批准；账本只按原值记录。
 - `verdict=revert` 只是建议，用户批准后才走 `restore`；已恢复的执行 revert 不重复恢复。
 - `verdict=observe` 表示证据不足、暂不下结论；对已恢复的执行表述为“待补证据”。
 - `prediction_met` 只说原预测是否达到，不是因果证明。
@@ -177,7 +193,7 @@ python3 -I tools/change.py review --execution x0001 --record <review 记录 JSON
 
 ### 验收
 
-- `tests/test_change.py`：在既有顺序 E2E 的 fixture 上加一条正常链路用例：apply → `review`（`observe` / `unknown`）→ 再 `review`（`keep` / `met`），两条历史都保留、`latest_review` 为后者；`review-plan` 回显原预测、证据、报告引用和观察窗；`restore` 后 `review-plan` / `status` 仍读得到 review 且观察窗收到恢复时刻；review 前后目标文件 sha256、发布链接和执行状态不变。
+- `tests/test_change.py`：在既有顺序 E2E 的 fixture 上加一条正常链路用例：apply → `review`（`observe` / `unknown`）→ 再 `review`（`keep` / `met`），两条历史都保留、`latest_review` 为后者；`review-plan` 回显原预测、证据、报告引用和观察窗；`restore` 后 `review-plan` / `status` 仍读得到 review 且观察窗收到恢复时刻；review 前后目标文件 sha256、发布链接和执行状态不变。§2.5 口径的新用例对“收益待验证”的条目录 `observe` / `unknown`，并核对 `why` / `expected` / `verify` 原文进了账本。
 - `tools/rehearse_review.py`：把切片 2 演练的 `experiments/loop-apply-001/phe/` 复制到 `experiments/loop-review-001/phe`（原目录不改），先 `review-plan`，再对真实演练执行 `x0001` 写 `observe` / `unknown`；然后在 `experiments/loop-review-001/synthetic/` 下另建一套【合成】沙箱（小 base、三个软链入口、独立 PHE_HOME），apply 合成条目 `S1` 后不 restore，`to` 是 `null`，取样上界取演练声明的【模拟复盘时刻】`cutoff = applied_at + 60 分钟`，窗口因此是 `[应用时刻, cutoff)`；合成会话时间戳按相对实际 `applied_at` 的偏移生成，按窗口两端取样后手算 `cwd does not exist` 次数，结论按窗口内计数推导，并放一条晚于 `cutoff` 的命中证明不计入。另用零宽窗口样例证明切片 2 `x0001` 的 `[T, T)` 窗口内观察数为 0（含恰好等于端点的一条），结论只能是 `observe` / `unknown`。49 条断言全部成立；合成产物与真实演练账本分开，结论只说明复盘流程可运行，不证明规则有效。工件留在 `experiments/loop-review-001/`（被 Git 忽略），不清理。报告渲染在 `tools/rehearse_review_report.py`。
 
 ## 切片 A：本地草稿（完成）
