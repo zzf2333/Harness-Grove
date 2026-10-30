@@ -47,6 +47,11 @@ NOTES = (
     "candidate.retired 的 completed 只表示该文件已完整列举；entries 为空只表示该文件为空，不是完整历史无退役",
     "unrelated / alternative / reopen 是 Host 判断，不是检索无命中的证据",
     "分组与 Retired 文件的 sha256 只绑定输入字节，不验证语义质量、证据独立性或预测是否合理",
+    (
+        "时序检查只依据 proposal 内可编辑的 pointers.ts：默认 check 与 check --retired "
+        "都不回读原始分组文件，不复核原始时间，也不重算分组文件 sha256"
+    ),
+    "retired source unchanged 只说明 Retired 来源文件字节未变，不代表分组时间或原始证据被复核",
     "预测冻结与正式核验未实现，freeze_ready 永远不是 true",
 )
 DRAFT_SOURCE_CHECK = {

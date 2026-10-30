@@ -4,6 +4,7 @@
 `test_proposal_retired.py`。
 """
 
+import hashlib
 import json
 import unittest
 
@@ -15,6 +16,7 @@ class RetiredCheckTests(RepoCopyCase):
         candidate = self.write_candidate(candidate_with_review(review), name="check-review.json")
         result = self.draft(candidate=candidate, retired=retired or self.retired_path)
         self.assertEqual(result.returncode, 0, result.stderr)
+        return result
 
     def proposal_bytes(self, experiment_id=EXPERIMENT_ID):
         return (self.experiments / experiment_id / "proposal.json").read_bytes()
@@ -59,6 +61,41 @@ class RetiredCheckTests(RepoCopyCase):
         after = self.snapshot()
         self.assertEqual({path: after[path] for path in before}, before)
         self.assertEqual(set(after) - set(before), set())
+
+    def test_group_times_come_from_editable_pointers_not_original_source(self):
+        """时序只来自 proposal 里的可编辑指针：改草稿时间、不动外部文件即可消掉时序阻塞。"""
+        document = retired_document()
+        document["entries"][0]["retired_at"] = "2026-10-29T00:00:00Z"
+        retired = self.write_retired(document, name="retired-after-group.json")
+        groups_before = self.groups_path.read_bytes()
+        draft = self.draft_with_retired(retired=retired)
+        self.assertIn("retired_evidence_not_after_retirement", json.loads(draft.stdout)["freeze_ready_blockers"])
+
+        def move_pointers_after_retirement(proposal):
+            for group in proposal["candidate"]["evidence"]["groups"]:
+                for pointer in group["pointers"]:
+                    pointer["ts"] = "2026-10-30T00:00:00Z"
+
+        self.edit_proposal(move_pointers_after_retirement)
+        self.assertEqual(self.groups_path.read_bytes(), groups_before)
+        result = self.check(retired=retired)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["retired_source_check"]["status"], "unchanged")
+        self.assertNotIn("retired_evidence_not_after_retirement", report["freeze_ready_blockers"])
+        self.assertEqual(report["retired_findings"], [])
+        self.assertFalse(report["freeze_ready"])
+        self.assertIn("prediction_freeze_not_implemented", report["freeze_ready_blockers"])
+        self.assertEqual(report["evidence"]["groups_file"]["sha256"], hashlib.sha256(groups_before).hexdigest())
+        notes = "\n".join(report["notes"])
+        self.assertIn("proposal 内可编辑的 pointers.ts", notes)
+        self.assertIn("默认 check 与 check --retired 都不回读原始分组文件", notes)
+        self.assertIn("retired source unchanged 只说明 Retired 来源文件字节未变", notes)
+        default = self.check()
+        self.assertEqual(default.returncode, 0, default.stderr)
+        self.assertIn(
+            "默认 check 与 check --retired 都不回读原始分组文件", "\n".join(json.loads(default.stdout)["notes"])
+        )
 
     def test_explicit_check_reports_unavailable_source(self):
         self.draft_with_retired()

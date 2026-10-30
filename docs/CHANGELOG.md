@@ -7,6 +7,7 @@
 - `check` 默认仍不回读外部输入，报告用 `retired_source_check=not_performed` 明确说明无法检测外部变化；新增 `check --retired <file>` 显式重算来源 sha256 并比对存储的记录，变化或来源不可用时报 `re_search_required`、退出 1，且不改写 proposal。存储的 Retired 结构与 Host 判断用与 `draft` 相同的规则检查，不信任草稿自造的枚举或模板。
 - `freeze_ready` 在 B1 仍恒为 false，新增固定阻塞 `prediction_freeze_not_implemented`；旧切片 A 的 `unavailable` 草稿照常列阻塞，不迁移、不重写。目录覆盖能力不变（已有或冻结目录仍拒绝写入），`dont_write_bytecode` 保留。
 - 新增 `tools/proposal_input.py`（共用输入校验）、`tools/proposal_retired.py`（Retired 输入、关系核对、来源复核），`tools/proposal_candidate.py` 只保留候选段与报告；新增 `examples/m3a/` 三份可直接跑的合成输入示例（分组、带 `retired_review` 的候选、Retired 检索）。README、SKILL §10、`docs/M3a_PLAN.md` 同步。真实的 Retired 数据源/自动检索（B2）、独立证据判断（C）、完整预测冻结（D）未开始，**M3a 未完成**。
+- 修两个 P2 缺口：`candidate.retired.schema_version` 只接受 JSON 整数 `1`，`1.0` / `1e0` / `true` 均退出 1 且不留产物（原先 `1.0 == 1` 被放行）；报告 `notes` 与 `docs/M3a_PLAN.md` 写明时序检查只依据 proposal 内可编辑的 `pointers.ts`，默认 `check` 与 `check --retired` 都不回读原始分组文件、不复核原始时间，`retired_source_check=unchanged` 只说明 Retired 来源文件字节未变。
 
 ## 2026-10-30 · M3a 切片 A 与 M2 结项
 

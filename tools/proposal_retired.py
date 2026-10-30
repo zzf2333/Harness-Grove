@@ -97,7 +97,8 @@ def load_retired(path) -> dict:
         raise InputError(f"Retired 检索文件顶层不是对象：{path}")
     check_keys("Retired 检索文件", data, SOURCE_KEYS)
     version = data.get("schema_version")
-    if isinstance(version, bool) or version != SCHEMA_VERSION:
+    # JSON 的 1.0 和 1e0 都解析成 float，`!= 1` 不成立；版本只接受真的 JSON 整数 1，bool 也排除。
+    if isinstance(version, bool) or not isinstance(version, int) or version != SCHEMA_VERSION:
         raise InputError(f"Retired 检索文件 schema_version 只能是整数 {SCHEMA_VERSION}")
     supplied_scope = non_empty_string("Retired 检索文件.scope", data.get("scope"))
     entries = normalize_entries("Retired 检索文件.entries", data.get("entries"))

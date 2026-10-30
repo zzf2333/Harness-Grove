@@ -188,7 +188,7 @@ python3 -I tools/proposal.py check --experiment-id <已有实验 ID> --retired <
 
 | 字段 | 约定 |
 |---|---|
-| `schema_version` | 必须是整数 `1`；其他版本直接拒绝，不做迁移 |
+| `schema_version` | 必须是 JSON 整数 `1`；`1.0`、`1e0`、`true` 和 `2` 都拒绝，不做迁移 |
 | `scope` | 必填非空字符串。它只是提供者声明的检索范围，**不表示完整历史** |
 | `entries` | 必填数组，合法空数组就是真正完成过的检索结果（`completed`），但只代表该文件为空 |
 | `retired_id` | 稳定 ID，同一文件内重复即拒绝 |
@@ -267,12 +267,14 @@ Host 只在候选 JSON 里声明关系，不写 `matches`、`status` 或任何�
 | 非法值 | `relation` 不在三个取值里、`retired_id` 不存在、review 里 `retired_id` 重复、`new_evidence_groups` 引用当前候选未选中的分组、出现未支持字段（含 `user_authorized`、`matches`、`status`）都退出 1，不写产物 |
 | `unrelated` | 不需要新证据；检索到的记录仍原样保留在 `candidate.retired.entries` 里 |
 | `alternative` / `reopen` | 必须给出 `new_evidence_groups`（至少一个当前候选已选分组）。缺了列 `retired_new_evidence_required` 阻塞 |
-| 新证据时序 | 每条引用分组必须 **不** 在该记录的 `evidence_groups` 里（否则 `retired_evidence_group_reused`），且分组里每个指针的时间都必须晚于 `retired_at`（时间未知 `retired_evidence_time_unknown`，不晚于 `retired_evidence_not_after_retirement`）。这些只列阻塞，不拒绝保存 |
+| 新证据时序 | 每条引用分组必须 **不** 在该记录的 `evidence_groups` 里（否则 `retired_evidence_group_reused`），且分组里每个指针的时间都必须晚于 `retired_at`（时间未知 `retired_evidence_time_unknown`，不晚于 `retired_evidence_not_after_retirement`）。时间取自 proposal 里可编辑的指针，见下方「时序证据的边界」。这些只列阻塞，不拒绝保存 |
 | 未提供的边界 | 只检查上述必要结构和时序：不判断新证据是否语义独立、是否充分，也不接受 `user_authorized=true` 之类的手动恢复声明（手动恢复不在本切片） |
 
 ### 检查与报告
 
 `draft` 和 `check` 共用同一套结构校验（`tools/proposal_retired.py`），因此手工编辑过的 proposal 也按同一规则检查，不信任草稿里自造的枚举或模板。
+
+**时序证据的边界：** 时序检查只读 `candidate.evidence.groups[].pointers[].ts`——这是 proposal 内可编辑的字段。默认 `check` 和 `check --retired` 都**不**回读原始分组文件、不复核原始时间，也不重算分组文件的 sha256；`retired_source_check` 的 `unchanged` 只说明 Retired 来源文件字节未变，不代表分组时间或原始证据被复核。所以 Host 把 pointers 的时间改到 `retired_at` 之后就能消掉时序阻塞，这不会被工具发现。报告 `notes` 逐条写明这两条限制。这是本切片的已知缺口，不是执行层保护；原始时间复核属于 D（冻结前置检查）。
 
 `freeze_ready` 在切片 B1 仍恒为 `false`：`freeze_ready_blockers` 固定包含 `prediction_freeze_not_implemented`（预测冻结和正式核验未实现），再叠加下面这些 Retired 相关项：
 
@@ -292,7 +294,7 @@ Host 只在候选 JSON 里声明关系，不写 `matches`、`status` 或任何�
 | `retired` | 存储的 `candidate.retired` 原样回显（检索事实） |
 | `retired_review` | 规范化的 Host 关系判断；未提供时为 `null` |
 | `retired_findings` | 逐条关系问题的可读说明（含 `retired_id`），与上面的阻塞标识对应 |
-| `retired_source_check` | `draft` 为 `not_performed`；默认 `check` 为 `not_performed` 并说明**默认 check 不回读外部输入，无法检测外部变化**；`check --retired` 为 `unchanged` / `changed` / `unavailable` |
+| `retired_source_check` | `draft` 为 `not_performed`；默认 `check` 为 `not_performed` 并说明**默认 check 不回读外部输入，无法检测外部变化**；`check --retired` 为 `unchanged` / `changed` / `unavailable`。`unchanged` 只覆盖 Retired 来源文件，不覆盖分组时间 |
 
 `check --retired <file>` 只读复核：重算来源字节 sha256 并与草稿绑定比对，重新解析记录并与存储的 `entries`、`supplied_scope` 比对。`changed` 或 `unavailable` 时报告 `action_required: re_search_required`、`proposal_updated: false`，退出 1；报告仍是完整 JSON（与 `draft` 输入错误不同：这是已完成的复核结论，不是输入被拒绝），proposal 字节不变。复核通过时 `status: unchanged`、退出 0。来源不可用或损坏不写成 no_match，也不自动改写草稿。草稿本身是 `unavailable`（旧切片 A 草稿）时，`check --retired` 只回 `not_performed` 并说明无需复核，不迁移、不重写。
 
@@ -325,7 +327,7 @@ ruff check .
 ruff format --check .
 ```
 
-`tests/proposal_fixture.py` 增加合成 Retired 输入，`tests/test_proposal_retired.py`（draft）与 `tests/test_proposal_retired_check.py`（check）走真实 CLI 覆盖：未提供/不存在/目录来源保存 `unavailable` 且不是 no_match、合法空来源需要 Host 声明并保留阻塞、畸形/重复/非法字段拒绝、记录逐条列举且理由来自源、命中缺关系阻塞、`unrelated` 保留命中事实、`reopen`/`alternative` 缺新证据/旧时间/同组阻塞、有效新证据放行（仍不可冻结）、伪造 ID/字段拒绝、显式 `check --retired` 报告来源变化且文件不变、默认 `check` 不回读来源、旧 `unavailable` 草稿照常阻塞、全树无 `.pyc`。示例文件本身也由一条 CLI 测试保证可跑。
+`tests/proposal_fixture.py` 增加合成 Retired 输入，`tests/test_proposal_retired.py`（draft）与 `tests/test_proposal_retired_check.py`（check）走真实 CLI 覆盖：未提供/不存在/目录来源保存 `unavailable` 且不是 no_match、合法空来源需要 Host 声明并保留阻塞、畸形/重复/非法字段拒绝、记录逐条列举且理由来自源、命中缺关系阻塞、`unrelated` 保留命中事实、`reopen`/`alternative` 缺新证据/旧时间/同组阻塞、有效新证据放行（仍不可冻结）、伪造 ID/字段拒绝、显式 `check --retired` 报告来源变化且文件不变、默认 `check` 不回读来源、改草稿指针时间可消掉时序阻塞且报告写明限制、`schema_version` 为 `1.0` / `1e0` / `true` 时退出 1 且不留产物、旧 `unavailable` 草稿照常阻塞、全树无 `.pyc`。示例文件本身也由一条 CLI 测试保证可跑。
 
 ### 本切片的边界
 

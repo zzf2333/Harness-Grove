@@ -173,6 +173,19 @@ class RetiredDraftTests(RepoCopyCase):
                 path = self.write_retired(document, name=f"{name}.json")
                 self.assert_rejected(self.draft(candidate=candidate, retired=path))
 
+    def test_schema_version_must_be_integer_one(self):
+        """`1.0` 和 `1e0` 都解析成 float：类型不严格就会被当成合法版本 1。"""
+        cases = {
+            "float": '{"schema_version": 1.0, "scope": "s", "entries": []}',
+            "exponent": '{"schema_version": 1e0, "scope": "s", "entries": []}',
+            "boolean": '{"schema_version": true, "scope": "s", "entries": []}',
+        }
+        for name, document in cases.items():
+            with self.subTest(case=name):
+                path = self.write_retired(document, name=f"schema-{name}.json")
+                self.assert_rejected(self.draft(experiment_id=f"{EXPERIMENT_ID}-{name}", retired=path))
+        self.assertEqual(self.draft(experiment_id=f"{EXPERIMENT_ID}-int", retired=self.retired_path).returncode, 0)
+
     def test_records_without_host_review_are_saved_but_blocked(self):
         result = self.draft(retired=self.retired_path)
         self.assertEqual(result.returncode, 0, result.stderr)
