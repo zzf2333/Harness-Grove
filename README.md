@@ -29,6 +29,7 @@ Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 运�
 | [docs/M-1_PROTOCOL.md](docs/M-1_PROTOCOL.md) | M-1 探针的完整执行协议：路径、对照规则、spike-000 用量测量、25 次运行、预算、门槛、判定 | 准备执行或审查 M-1 |
 | [examples/m-1/proposal.template.json](examples/m-1/proposal.template.json) | M-1 预注册模板（draft），未知项为 null | 填写并冻结 spike-001 时 |
 | [examples/m3a/](examples/m3a/) | M3a 合成输入示例：分组 JSON、带 `retired_review` 的 Host 候选、显式 Retired 检索文件 | 跑通 `draft --retired` / `check --retired` 时 |
+| [examples/lightweight-loop/](examples/lightweight-loop/) | 轻量评估闭环的可复跑示例：合成 pi 会话、最小配置、宿主手写报告与 `render_inputs.py`，全部只写临时目录 | 想从头走一遍摘要 → 报告 → 批准 → 应用 → 复盘 → 恢复时 |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | 各版本的设计决定 | 想知道某个决定为什么这样定 |
 
 **阅读顺序：** 先读 PHE_SPEC 的「产品边界」「用户怎么使用」「里程碑与 Gate」，再读 M-1 协议。

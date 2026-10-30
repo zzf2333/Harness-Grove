@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 2026-10-30 · 轻量评估闭环的可复跑示例
+
+- 新增 `examples/lightweight-loop/`：一份合成 pi 会话（13 行，L6 是“回答先给结论”的偏好，L9、L12 是用户叫停越界改相邻文件）、5 行最小配置 `config/AGENTS.md`（与 `tests/test_change_lightweight.py` 的 `LIGHT_BASE` 逐字节相同）、宿主手写的样例报告 `host-report.md`（W1 偏好 / W2 清理重复 / W3 收益待验证的假设，标注“不是工具自动诊断”）、`render_inputs.py`（标准库，不 import `tests/`，生成变更包、`source=sandbox_rehearsal` 的演练批准与 W3 的 `observe`/`unknown` review 记录）和 `README.md`。三个 patch 与测试里的 `PREFERENCE_PATCH` / `CLEANUP_PATCH` / `ASSUMPTION_PATCH` 逐字节相同；测试是机器断言，示例是给人逐条跑的同一流程。
+- README 每一节标“工具生成”或“宿主判断”，命令可逐条复制；先说明只写 `mktemp -d` 建的临时工作区、不碰真实 `~/.pi`、`~/.codex`、`~/.claude`、`~/AI/temper`，再串起 `history.py digest` → 回读 `L` 行号 → 盘点/登记 → `change.py apply`（只批 W1、W3）→ `status` → `review-plan` → `review` → 逆序 `restore` → `cmp` 回原字节。写清批准与 `apply` 成功不等于效果已验证、`sandbox_rehearsal` 不是用户批准、W3 复盘保留 `unknown`、样例会话在应用之前不能当观察证据。
+- 以首次使用者身份在全新临时目录只按 README 复跑，发现并修正两处文档问题：`mktemp -d` 要用 `pwd -P`，否则 `registry.py adopt --group` 与盘点里的 resolved path 对不上会退出 1；清理步骤要先 `chmod -R u+w` 再 `rm -rf`，因为发布目录按设计只读，只写 `rm -rf` 会留下半个临时目录并退出 1（首次运行的实际阻塞）。`tools/` 未改。
+- 验收证据（命令与退出码、摘要、apply/status/review-plan/review/restore 的 JSON、账本快照、19 条检查、报告）留在被 Git 忽略的 `experiments/lightweight-loop-acceptance/`，本次用 `git add -f` 精确加入这些证据文件。
+- 未验证：真实配置写入、真实 Host 是否加载改后配置、观察窗内的行为统计、`source=user` 的用户批准路径与 L2 对照实验；示例只证明闭环能跑通，不证明改动有效。
+
 ## 2026-10-30 · 轻量评估口径贯通到变更包与复盘
 
 - 消除与 PHE_SPEC §2.5 冲突的旧口径：Proposal 不再要求“能计算指标才能生成”或“每条都带实验验收方法”。报告示例、架构图、资产生命周期、M3a Gate 改为默认三行说明与最小评估；M-1、L2 Gate 的原协议保留，并标明选择实验时适用。
