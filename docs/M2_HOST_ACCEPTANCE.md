@@ -24,15 +24,15 @@ Host 交接证据可以先于正式前提验收；未覆盖的既定场景（正
 
 S1 的安排：
 
-- **输入只用合成语料。** 用 `prepare_host_acceptance.py` 在系统临时目录生成 `<corpus>`，内含本仓库工具、Skill、协议副本与手写任务。不把 Sutra 等私人任务材料交给 Codex。m2-real-002 的材料和批准（含 D2 来源偏差）不延伸到新提案。
+- **输入只用合成语料。** 用 `python3 -I tools/m2/prepare_host_acceptance.py --root <corpus> --experiment-id m2-handoff-001` 在系统临时目录生成 `<corpus>`（`--experiment-id` 必须与实验目录名一致，缺省会生成 `m2-host-synthetic`），内含本仓库工具、Skill、协议副本与手写任务。不把 Sutra 等私人任务材料交给 Codex。m2-real-002 的材料和批准（含 D2 来源偏差）不延伸到新提案。
 - **A = Pi（主控会话）。** 核对 `status` 为 `empty` 后，把 `inputs/proposal.json` 原样复制到 `<corpus>/repo/experiments/m2-handoff-001/`，`log --host pi --step draft --note "合成夹具草案，正式前提 blocked"`。这是有意偏离上文 A 提示词的停止分支：目的是让 B 有一份可读的草案，草案仍不具备冻结条件。不写 `proposal.sha256`。主控另在验收记录里记 proposal 原始字节 Hash。
 - **B = Codex。** 原方案由用户在原生 Codex 会话中启动。实际执行时用户批准一次例外：主控用 bash 启动一次 `codex exec --json --skip-git-repo-check -s workspace-write -C <corpus>/repo --add-dir <corpus>`，300 秒超时，不重试，不加 `--ephemeral`（保留会话文件作身份证据）。该例外只覆盖这一次。
-- **费用与停止。** Pi 侧不调用 Target，只用主控会话自身。Codex 侧 1 个会话，占用用户现有 Codex 登录额度；一个会话可能包含多次模型请求，**没有 USD 上限来源**。停止方式：提示词要求写完报告即停；用户在 5 分钟墙钟或发现越界时手动中断。失败不重开。
+- **费用与停止。** Pi 侧不调用 Target，只用主控会话自身。Codex 侧 1 个会话，占用用户现有 Codex 登录额度；一个会话可能包含多次模型请求，**没有 USD 上限来源**。停止方式：提示词要求写完报告即停；实际执行用 300 秒子进程超时代替原方案的用户手动中断。失败不重开。
 - **数据发送范围。** Codex 会把它读到的 `<corpus>` 内容发给 OpenAI：公开的工具、Skill、协议副本和手写合成任务。不含会话历史、私人配置或真实任务。
 - **写入。** B 在 S1 不冻结，也不运行 `log`，只允许写 `<corpus>/handoff-report.md`。Codex 自身会写 `~/.codex/sessions`、`history.jsonl`、`log`，这属于用户正常使用 Codex 的自身写入，需随批准一并接受；`workspace-write` 不证明其他写入被隔离。
-- **主控事后核对。** proposal 原始字节 Hash 前后一致；`host_log.jsonl` 只有 pi/draft 一条；无 `proposal.sha256`、`approval.json`、`runs.jsonl`；`<corpus>` 其他文件字节快照不变；报告列出的阻塞与 `inputs/blockers.json` 一致。Host 身份证据：用户提供的 Codex 会话 id，主控只核对 `~/.codex/sessions` 下对应文件存在及其 `cwd` 字段，不读会话正文。结果写入被忽略的 `experiments/m2-handoff-001/`。
+- **主控事后核对。** proposal 原始字节 Hash 前后一致；`host_log.jsonl` 只有 pi/draft 一条；无 `proposal.sha256`、`approval.json`、`runs.jsonl`；`<corpus>` 其他文件字节快照不变；报告列出的阻塞与 `inputs/blockers.json` 一致。Host 身份证据：`codex exec --json` 输出的 `thread_id`，以及 `~/.codex/sessions` 下对应会话文件首行的 `cwd`（原方案为用户提供会话 id，已被实际执行方式替代）。实际取证时用 `grep -rl <thread_id>` 扫描了会话目录定位文件：工具只返回匹配路径，但扫描读过其他会话正文，超出原定的元数据读取范围；以后改为按文件名中的 thread_id 定位。结果写入被忽略的 `experiments/m2-handoff-001/`。
 
-**S1 结果（2026-10-30）：** `codex exec` 退出 0，用时 174 秒。Codex 自报用量：input 318,690（其中缓存 280,704），output 3,495，无费用来源。Host 身份：会话文件 `~/.codex/sessions/2026/10/30/rollout-…-<thread_id>.jsonl` 首行 `cwd` 为语料目录，与 JSONL 的 `thread_id` 一致。核对：proposal 原始字节 Hash 不变；原有 59 个文件快照无差异，唯一新增是 `handoff-report.md`；`host_log` 只有 pi/draft；没有生成侧文件、批准或测量；`status` 仍是 `drafted`。报告结论为不能冻结：5 项阻塞与 `inputs/blockers.json` 深度相等，另外指出 2 项缺口，即实验目录缺 `config.json`、规则/控制/基线缺人工核对证据。Codex 加载了用户级配置，这对 Host 验收是预期行为，不能作为 Target 隔离证据。证据在被忽略的 `experiments/m2-handoff-001/acceptance.md`。**S1 不证明正常冻结交接，M2 Gate 仍未通过。**
+**S1 结果（2026-10-30）：** `codex exec` 退出 0，用时 174 秒。CLI 自报 Token：input 318,690（其中缓存 280,704），output 3,495，无费用来源。Host 身份：会话文件 `~/.codex/sessions/2026/10/30/rollout-…-<thread_id>.jsonl` 首行 `cwd` 为语料目录，与 JSONL 的 `thread_id` 一致。核对：proposal 原始字节 Hash 不变；语料目录内原有 59 个文件快照无差异（只覆盖语料目录，不证明 Codex 的全部写入受限），唯一新增是 `handoff-report.md`；`host_log` 只有 pi/draft；没有生成侧文件、批准或测量；`status` 仍是 `drafted`。报告结论为不能冻结：5 项阻塞与 `inputs/blockers.json` 深度相等，另外指出 2 项缺口，即实验目录缺 `config.json`、规则/控制/基线缺人工核对证据。Codex 加载了用户级配置，这对 Host 验收是预期行为，不能作为 Target 隔离证据。证据在被忽略的 `experiments/m2-handoff-001/acceptance.md`。**S1 不证明正常冻结交接，M2 Gate 仍未通过。**
 
 ### S1-B 提示词（实际执行时作为 codex exec 的 prompt）
 
