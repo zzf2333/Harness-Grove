@@ -70,6 +70,7 @@ class Session:
         self.session_id = path.stem
         self.project = ""
         self.calls = {}
+        self.tool_call_count = 0
         self.last_call = None
         self.repeat_flagged = False
 
@@ -83,6 +84,7 @@ class Session:
         一串连续相同的调用（例如反复轮询同一个长任务）只记一次：信号是“出现了一对连续相同的调用”，
         不是每对都记一条。标记在 signature 变化时才复位，所以连续四次相同调用也只记一条。
         """
+        self.tool_call_count += 1
         signature = (name, canonical(arguments))
         same = signature == self.last_call
         repeat = same and not self.repeat_flagged
@@ -92,6 +94,15 @@ class Session:
 
     def record(self, line_no, record):
         """返回该行的 [(kind, excerpt, ts)]；不产生 Episode 的行返回空列表。"""
+        raise NotImplementedError
+
+    def human_message(self, record):
+        """该行的真人用户发言原文，否则 None。
+
+        与 `record()` 判 `user_correction` 的条件相同，只少一条「命中纠正词」：注入的上下文、
+        工具结果、技能展开和压缩摘要都不算用户发言。摘要（`tools/history_digest.py`）用它取
+        普通用户消息，Episode 的 kind 不受影响。
+        """
         raise NotImplementedError
 
 
@@ -129,17 +140,14 @@ class ClaudeSession(Session):
         if record.get("type") == "user":
             if record.get("isMeta") or record.get("isCompactSummary"):
                 return found
-            texts = []
             for block in content if isinstance(content, list) else []:
                 if not isinstance(block, dict):
                     continue
-                if block.get("type") == "text":
-                    texts.append(block.get("text") or "")
-                elif block.get("type") == "tool_result" and block.get("is_error"):
+                if block.get("type") == "tool_result" and block.get("is_error"):
                     name = self.calls.get(block.get("tool_use_id"))
                     found.append(("tool_failure", failure_text(name, blocks_text(block.get("content"))), ts))
-            text = (content if isinstance(content, str) else "\n".join(texts)).strip()
-            if text and not text.startswith(CLAUDE_SKIP_PREFIX) and CORRECTION_RE.search(text):
+            text = self.human_message(record)
+            if text and CORRECTION_RE.search(text):
                 found.append(("user_correction", text, ts))
         elif record.get("type") == "assistant":
             for block in content if isinstance(content, list) else []:
@@ -150,6 +158,22 @@ class ClaudeSession(Session):
                 if repeat:
                     found.append(("retry", repeat, ts))
         return found
+
+    def human_message(self, record):
+        if record.get("type") != "user" or record.get("isMeta") or record.get("isCompactSummary"):
+            return None
+        content = (record.get("message") or {}).get("content")
+        if isinstance(content, str):
+            text = content.strip()
+        elif isinstance(content, list):
+            text = "\n".join(
+                block.get("text") or "" for block in content if isinstance(block, dict) and block.get("type") == "text"
+            ).strip()
+        else:
+            return None
+        if not text or text.startswith(CLAUDE_SKIP_PREFIX):
+            return None
+        return text
 
 
 class CodexSession(Session):
@@ -174,8 +198,8 @@ class CodexSession(Session):
                 found.append(("tool_failure", f"exit_code={code} {command}", ts))
         elif record.get("type") == "response_item":
             if payload_type == "message":
-                text = blocks_text(payload.get("content"))
-                if payload.get("role") == "user" and codex_human_message(payload, text) and CORRECTION_RE.search(text):
+                text = self.human_message(record)
+                if text and CORRECTION_RE.search(text):
                     found.append(("user_correction", text, ts))
             elif payload_type in ("function_call", "custom_tool_call"):
                 name = payload.get("name")
@@ -189,6 +213,17 @@ class CodexSession(Session):
                     name = self.calls.get(payload.get("call_id"))
                     found.append(("tool_failure", failure_text(name, text), ts))
         return found
+
+    def human_message(self, record):
+        if record.get("type") != "response_item":
+            return None
+        payload = record.get("payload") or {}
+        if payload.get("type") != "message" or payload.get("role") != "user":
+            return None
+        text = blocks_text(payload.get("content"))
+        if not codex_human_message(payload, text) or not text.strip():
+            return None
+        return text
 
 
 def codex_human_message(payload, text):
@@ -228,9 +263,8 @@ class PiSession(Session):
         role = message.get("role")
         found = []
         if role == "user":
-            text = blocks_text(message.get("content")).strip()
-            # Pi 把 /skill 调用展开成 <skill name="..."> 块，展开的正文不是用户写的。
-            if text and not text.startswith("<") and CORRECTION_RE.search(text):
+            text = self.human_message(record)
+            if text and CORRECTION_RE.search(text):
                 found.append(("user_correction", text, ts))
         elif role == "assistant":
             for block in message.get("content") or []:
@@ -245,6 +279,18 @@ class PiSession(Session):
                 ("tool_failure", failure_text(message.get("toolName"), blocks_text(message.get("content"))), ts)
             )
         return found
+
+    def human_message(self, record):
+        if record.get("type") != "message":
+            return None
+        message = record.get("message") or {}
+        if message.get("role") != "user":
+            return None
+        text = blocks_text(message.get("content")).strip()
+        # Pi 把 /skill 调用展开成 <skill name="..."> 块，展开的正文不是用户写的。
+        if not text or text.startswith("<"):
+            return None
+        return text
 
 
 SESSIONS = {"claude": ClaudeSession, "codex": CodexSession, "pi": PiSession}

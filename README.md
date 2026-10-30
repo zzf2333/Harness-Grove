@@ -7,7 +7,8 @@ Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 运�
 - 已有设计文档、实验模板和标准库评测入口 `tools/phe.py`。
 - M1 已完成（盘点、登记、漂移检测、沙箱内发布/部署/回滚；接管真实环境需用户另批）。
 - M2 已完成（按原定 Gate 结项，2026-10-30）：历史采集、结构分组、`log`/`status` 续作记录、Codex Target 最小接口已完成。两个真实 Host 续作同一提案已通过：S1 阻塞交接（Pi 起草、真实 Codex 会话从文件续读并停在阻塞处），S2 正常冻结交接（Pi 起草、Codex 独立复核后冻结，主控补核快照绑定；未批准或运行 Target），见 [docs/M2_PLAN.md](docs/M2_PLAN.md)。Target 按需逐个适配：Claude Code 有 M-1/M0 真实运行证据；真实 Claude Code Target 实验 m2-real-002 启动 1/15 次后因服务端拒绝订阅登录（403）停在 `pivot:telemetry_missing`，加载链阻塞保留。Codex Target 真实运行、费用与隔离验证是后续适配项，不追加为 Gate。
-- M3a 进行中：切片 A 完成，新增 `tools/proposal.py draft/check` 从 M2 分组产物生成经验候选提案并只读检查缺项；切片 B1 完成，`draft --retired <JSON>` / `check --retired <JSON>` 处理 Host 显式给出的有限 Retired 检索文件并核对 `unrelated` / `alternative` / `reopen` 关系。真实的 Retired 数据源与自动检索（B2）、独立证据判断（C）、完整预测冻结（D）未开始，M3a 未完成，见 [docs/M3a_PLAN.md](docs/M3a_PLAN.md)。
+- M3a 进行中：切片 A 完成，新增 `tools/proposal.py draft/check` 从 M2 分组产物生成经验候选提案并只读检查缺项；切片 B1 完成，`draft --retired <JSON>` / `check --retired <JSON>` 处理 Host 显式给出的有限 Retired 检索文件并核对 `unrelated` / `alternative` / `reopen` 关系。自动 Retired 检索（B2）、自动独立证据判断（C）暂停，D 缩小为改前写预测和验证方法，M3a 未完成，见 [docs/M3a_PLAN.md](docs/M3a_PLAN.md)。
+- 闭环切片 1 进行中：`tools/history.py digest` 把真实会话整理为带源文件/行号指针的脱敏 Markdown 分块；宿主按 [Skill §11](skill/harness-evolve/SKILL.md#11-经验复盘闭环切片-1) 只读诊断、核对原文并生成可审批报告，尚不应用配置。
 - M-1 已完成：spike-001 判定 **go**（2026-10-28，25 次运行，7 项门槛全部通过）；真实规则信号为 inconclusive。M0 已完成：生产等价基线复验 c-002 判定 go（15 次，规则信号 inconclusive）。运行产物位于被忽略的 `experiments/`。
 
 ## 文档地图
@@ -46,6 +47,8 @@ Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 运�
   `check --experiment-id <id>` 只读同一份 proposal（metric 白名单另读仓库模板，不读草稿自己的 `metrics`），不写侧文件、也不留 `__pycache__`，不运行 `run`/`judge`；编辑后的 `candidate.evidence` 若 `count` 与指针数不符、组 ID 重复或选中 ID 顺序不一致都拒绝，编辑后的 `candidate.retired` / `retired_review` 按与 `draft` 相同的规则检查。默认 `check` 不回读任何外部输入，报告里的 `retired_source_check` 会明确说明无法检测外部变化；`check --retired <file>` 才重算来源 sha256 并比对记录，变化或来源不可用时报 `re_search_required`、退出 1，且不改写 proposal。`freeze_ready` 在 B1 仍恒为 false（剩余预测冻结与正式核验未实现）；没有 `candidate` 的旧提案报 `legacy_proposal_out_of_scope`，不被判为失效。stdout 是 JSON，`saved`/`checked` 与 `freeze_ready` 分开；报告只覆盖候选、Retired 结构和明显的未填项，不是完整协议验证。
 - `experiments/`：M-1 和 M0 的运行产物，已被 Git 忽略。提交脱敏样本需要另行批准。
 - `tools/history.py`：M2 切片 A/B 的只读采集与结构分组；`collect --host {claude,codex,pi} --root <Host 配置根> --out <Episode JSON> [--since 7d|YYYY-MM-DD] [--exclude GLOB …]`。流式逐行读会话 JSONL，产出 `{"episodes":[…],"sources":[…]}`：每条 Episode 带 `host`、`source_path`、`session_id`、`line`、源文件 `sha256`、`project`、`ts`、`kind`、脱敏后的 `excerpt`（≤300 字）、`available`，`kind` 只有 `user_correction`、`tool_failure`、`retry` 三种启发式（召回率与准确率未评估）。源文件读不到或有行解析失败时，`sources` 里记 `available: false` 和 `missing_reason`，不静默跳过。Pi 默认排除 `sessions/subagent/*`，`--exclude` 在默认之外追加。`--root`、`--out` 必填；`--out` 落在真实 home 的 `.claude`、`.codex`、`.pi`、`.phe`、`.agents`、`AI/temper` 之内时在任何写入前退出 2。产物写在被 Git 忽略的 `episodes/`。切片 B 的 `group --episodes <Episode JSON…> --out <分组 JSON>` 把一份或多份 collect 产物按 host + session_id + kind 分组成 `correlation_group`（三者 sha256 前 12 位，同输入同输出）；每组记 project、count、首末 ts 和指针列表（`source_path`、`line`、`ts`、已脱敏 `excerpt`），不复制会话原文；不同会话不合并，只在 `same_project` 里互相列出同 project 同 kind 的组 id（project 为空不关联）；输入里 `available: false` 的来源汇总进 `sources_unavailable`。输入字段不合格时退出 1、不写输出。`--out` 落在真实 home 的 Agent 配置目录、与任一输入文件是同一文件、与任一会话源文件相同或落进会话源目录时退出 2。
+- `tools/history.py digest --host {claude,codex,pi} --root <Host 配置根> --out-dir <目录> [--since 7d|YYYY-MM-DD] [--exclude GLOB …]`：闭环切片 1 的只读会话摘要入口，约 40KB 分块写 `<host>-N.md` 与 `<host>-index.json`；正文带 `L行号`，普通真人消息仅进入摘要，`collect/group` 的三种 kind 不变。
+- `reports/`：含隐私的经验复盘报告，已被 Git 忽略。
 - 被测任务所在的仓库只读，实验只在临时目录里运行。
 
 ## 许可证

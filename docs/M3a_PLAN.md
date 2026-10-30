@@ -1,10 +1,10 @@
 # M3a 计划：从经验扫描产生可证伪提案
 
-**状态（2026-10-30）：** 进行中。切片 A 完成：本地草稿 CLI `tools/proposal.py draft/check`。切片 B1 完成：显式 Retired 检索文件的逐条列举与关系核对（`--retired`、`retired_review`）。切片 B2（真实退役数据源与自动检索）、C（独立证据判定）、D（完整预测冻结）未开始。**M3a 未完成**，不能把 A/B1 的报告当作完整协议验证。
+**状态（2026-10-30）：** 进行中。切片 A 完成：本地草稿 CLI `tools/proposal.py draft/check`。切片 B1 完成：显式 Retired 检索文件的逐条列举与关系核对（`--retired`、`retired_review`）。切片 B2（真实退役数据源与自动检索）、C（独立证据判定）暂停（2026-10-30 调整，见 [AGENTS.md](../AGENTS.md)）；D 缩小为改前写预测和验证方法。当前优先跑通经验复盘闭环，切片 1 的 `history.py digest` 已提供摘要入口，可审批报告的诊断与合并由宿主按 Skill 编排。**M3a 未完成**，不能把 A/B1 的报告当作完整协议验证。
 
 **上位文档：** [PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」「独立证据与 Retired 账本」；历史输入格式见 [M2_PLAN](M2_PLAN.md)、[M2_HISTORY_FORMATS](M2_HISTORY_FORMATS.md)。
 
-M3a 的 Gate：使用固定指标、冻结预测和 Retired 检索；不自动发布。切片 A 只完成第一条链路：把 M2 的结构分组结果变成一份本地草稿，并只读报告明显未闭合项。
+原 M3a 实验路线的 Gate：使用固定指标、冻结预测和 Retired 检索；不自动发布。2026-10-30 起优先按下述闭环切片推进，L2 对照实验可选。已完成的 A/B1 CLI 仍只读报告明显未闭合项，原有实验入口保留。
 
 ## 切片
 
@@ -12,11 +12,32 @@ M3a 的 Gate：使用固定指标、冻结预测和 Retired 检索；不自动�
 |---|---|---|---|
 | A | `tools/proposal.py draft/check`：Host 显式选组、写假设与预测，CLI 生成 `experiments/<id>/proposal.json` 并只读检查 | 完成 | 合成 CLI 测试；不联网、不调用模型、不读会话原文 |
 | B1 | 显式 Retired 检索文件：`draft --retired <JSON>` 逐条列举、`retired_review` 关系核对、`check --retired` 显式复核来源 | 完成 | 只处理提供者给出的有限文件；不扫描目录、不推断语义相关、不截断 |
-| B2 | Retired 真实数据源与自动检索：负样本来源、匹配规则、扫描范围 | 未开始 | 需要先定数据源和隐私边界 |
-| C | 独立证据判定：重新启用已退役方案时判断新证据是否独立、是否充分 | 未开始 | 依赖 B2 的负样本 |
-| D | 完整预测冻结：候选段闭合、冻结侧文件、冻结前置检查 | 未开始 | 依赖 A–C；纳入执行层核对 |
+| B2 | Retired 真实数据源与自动检索：负样本来源、匹配规则、扫描范围 | 暂停（2026-10-30 调整，见 AGENTS.md） | 宿主显式写出检索范围与依据 |
+| C | 独立证据判定：重新启用已退役方案时判断新证据是否独立、是否充分 | 暂停（2026-10-30 调整，见 AGENTS.md） | 宿主显式写出判断依据与材料缺口 |
+| D | 缩小为改前写预测和验证方法 | 待按闭环报告落实 | 改前记录预期效果、验证方法；无基线写待观察 |
 
-M3a 的 Gate 在 B–D 完成后才能核对。切片 A 不改变 Gate 状态。
+原 M3a 实验路线的 Gate 尚未核对；不以完成暂停项作为当前闭环切片的前置条件。以下 A/B1 记录保留其交付时的契约与限制。
+
+## 闭环切片 1：真实会话 → 可审批报告
+
+先用最近 7 天的真实会话生成摘要，再由宿主组织只读诊断、合并并生成逐条可审批的报告：
+
+```bash
+python3 -I tools/history.py digest --host pi --root ~/.pi/agent \
+    --out-dir episodes/digest-YYYY-MM-DD --since 7d
+python3 -I tools/history.py digest --host codex --root ~/.codex \
+    --out-dir episodes/digest-YYYY-MM-DD --since 7d
+python3 -I tools/history.py digest --host claude --root ~/.claude \
+    --out-dir episodes/digest-YYYY-MM-DD --since 7d
+```
+
+`--since` 也接受 `YYYY-MM-DD`，省略时不限制时间。`--exclude GLOB` 可重复，Pi 默认排除 `sessions/subagent/*`。每个来源文件作为一个会话统计；`sessions_total` 是遍历到的来源数，时间窗内没有真人发言的记 `sessions_skipped`，读不到、有坏行或不支持 schema 的记 `sessions_unavailable`，三类与 `sessions_included` 相加等于总数。
+
+产物为 `<host>-1.md`、`<host>-2.md`…（约 40KB 分块，会话不跨块，单会话可能超过目标大小）以及 `<host>-index.json`（时间窗、总数、入选/跳过/不可用数、各块文件名/字节数及不可用来源原因）。每节包含完整会话 id、Host、项目、首末时间、源文件绝对路径，统计窗口内用户消息、工具调用、工具失败；正文只列脱敏后的真人消息（≤300 字）、工具失败（≤200 字）和 retry 标注。工具失败按原 collect 的信号计数，Codex 同一次失败可能有两条信号。摘要没有助手上下文，诊断者必须按 `源文件路径 + L行号` 回读源 JSONL 上下文核对，材料不足就写不足。脱敏只到现有正则级别，摘要和报告仍含隐私；`episodes/`、`reports/` 均被 Git 忽略。
+
+报告写到 `reports/<YYYY-MM-DD>.md`，每条包含：编号、问题、证据指针与判断依据、目标文件、实际 diff、预期效果、验证方法；基线取不到就写“待观察”，不编造实测改善。Retired 检索和独立性由宿主显式说明依据，L2 实验只在有争议的改动上选用。切片 1 只读诊断，不改配置、不批准、不应用；用户逐条批准与账本/恢复留给切片 2。
+
+验收：对真实最近 7 天三家 Host 各跑一次；记录会话数、入选数、块数和总字节；抽查报告引用能按源文件路径与行号回到原文，并核对诊断所需上下文。摘要 CLI 冒烟只证明采集可运行，不代表诊断报告已完成，也不证明建议有效。流程见 [Skill §11](../skill/harness-evolve/SKILL.md#11-经验复盘闭环切片-1)。
 
 ## 切片 A：本地草稿（完成）
 
@@ -274,7 +295,7 @@ Host 只在候选 JSON 里声明关系，不写 `matches`、`status` 或任何�
 
 `draft` 和 `check` 共用同一套结构校验（`tools/proposal_retired.py`），因此手工编辑过的 proposal 也按同一规则检查，不信任草稿里自造的枚举或模板。
 
-**时序证据的边界：** 时序检查只读 `candidate.evidence.groups[].pointers[].ts`——这是 proposal 内可编辑的字段。默认 `check` 和 `check --retired` 都**不**回读原始分组文件、不复核原始时间，也不重算分组文件的 sha256；`retired_source_check` 的 `unchanged` 只说明 Retired 来源文件字节未变，不代表分组时间或原始证据被复核。所以 Host 把 pointers 的时间改到 `retired_at` 之后就能消掉时序阻塞，这不会被工具发现。报告 `notes` 逐条写明这两条限制。这是本切片的已知缺口，不是执行层保护；原始时间复核属于 D（冻结前置检查）。
+**时序证据的边界：** 时序检查只读 `candidate.evidence.groups[].pointers[].ts`——这是 proposal 内可编辑的字段。默认 `check` 和 `check --retired` 都**不**回读原始分组文件、不复核原始时间，也不重算分组文件的 sha256；`retired_source_check` 的 `unchanged` 只说明 Retired 来源文件字节未变，不代表分组时间或原始证据被复核。所以 Host 把 pointers 的时间改到 `retired_at` 之后就能消掉时序阻塞，这不会被工具发现。报告 `notes` 逐条写明这两条限制。这是本切片的已知缺口，不是执行层保护；原始时间复核原计划属于 D（冻结前置检查），现已随完整冻结暂停；闭环报告改由诊断者按指针回读上下文核对。
 
 `freeze_ready` 在切片 B1 仍恒为 `false`：`freeze_ready_blockers` 固定包含 `prediction_freeze_not_implemented`（预测冻结和正式核验未实现），再叠加下面这些 Retired 相关项：
 
@@ -336,4 +357,4 @@ ruff format --check .
 - 预测冻结、冻结侧文件、正式核验未实现（D 未做），`freeze_ready` 恒为 false。
 - 不迁移或重写切片 A 的旧 `unavailable` 草稿；它们照常列 `retired_unavailable` 阻塞。
 - 不新增目录覆盖能力：`experiments/<id>` 已存在或已冻结时仍拒绝写入。
-- 不修改 M2 文档、资产登记表或 PHE_SPEC；本轮不改 M-1 模板。
+- B1 当时未修改 M2 文档、资产登记表或 PHE_SPEC；本轮闭环调整不改 M-1 模板。

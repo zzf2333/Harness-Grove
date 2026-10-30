@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-10-30 · 闭环切片 1：真实会话摘要入口
+
+- 新增 `history.py digest` 与 `tools/history_digest.py`，复用来源遍历、时间窗、Host 解析、脱敏和输出守卫，按会话生成约 40KB 的 Markdown 分块与索引。正文只列真人用户发言、工具失败、retry 标注，带源文件绝对路径和 `L行号`；无真人发言的会话只在索引计数。`Session.human_message` 提供普通真人消息，`collect/group` 的三种 kind 保持不变。
+- 新增三家 Host 的合成真实 CLI 测试，覆盖真人/注入区分、失败与原文行号、会话跳过、分块与 collect 契约。真实最近 7 天只读冒烟产物存于主仓库被忽略的 `episodes/digest-2026-10-30/`，不提交会话内容。
+- PHE_SPEC、M3a_PLAN、README、Skill 同步闭环优先级：B2/C 暂停，D 缩小为改前写预测与验证方法，L2 实验可选。Skill §11 增加按块只读诊断、回读源上下文与合并报告流程，报告包含实际 diff 和验证方法，无基线写待观察；`reports/` 加入忽略。当前只交付摘要零件，诊断报告与配置应用尚未执行。
+
 ## 2026-10-30 · M3a 切片 B1：显式 Retired 检索输入与关系核对
 
 - `draft` 新增可选 `--retired <JSON>`：Host 显式给出的有限文件（`schema_version: 1`、`scope`、`entries`）按原顺序逐条列举，不推断语义相关、不排序、不截断、不选 topK，也不扫描目录或真实退役记录。`candidate.retired` 只有 `unavailable`（未提供或读不到，带原因）和 `completed`（来源路径 + 原始字节 sha256、`scope=all_entries_in_supplied_file`、`entries`）两种状态；只提供路径但读不到时保存 `unavailable` 并写原因，不冒充 no_match。`entries` 为空只表示该文件为空。

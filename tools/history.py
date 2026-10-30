@@ -13,7 +13,9 @@ Git 忽略的 `episodes/`。会话内容按不可信输入处理：只解析，�
 格式依据见 docs/M2_HISTORY_FORMATS.md（本机观察，未按官方文档核实）。
 
 `group` 子命令读 collect 产物、按 host + session_id + kind 做确定性结构分组，实现在
-tools/history_group.py；它复用这里的 `--out` 守卫和原子写。
+tools/history_group.py；它复用这里的 `--out` 守卫和原子写。`digest` 子命令把最近的真实会话整理成
+脱敏 Markdown 摘要供诊断子代理读，实现在 tools/history_digest.py；它复用这里的来源遍历、时间窗、
+脱敏和输出守卫，并额外用 `Session.human_message` 取普通真人用户消息（不进 collect 产物）。
 """
 
 import argparse
@@ -64,6 +66,10 @@ REDACTIONS = (
 )
 EXCERPT_MAX = 300
 
+# collect 产出的三种启发式 kind。USER_MESSAGE_KIND 不是 Episode kind，只给摘要用。
+EPISODE_KINDS = ("user_correction", "tool_failure", "retry")
+USER_MESSAGE_KIND = "user_message"
+
 # 解析器碰到结构异常的行时抛这些异常：记为坏行，不影响同文件的其他行。
 PARSER_ERRORS = (AttributeError, TypeError, KeyError, ValueError)
 
@@ -74,9 +80,9 @@ def redact(text):
     return text
 
 
-def excerpt(text):
-    """压缩空白、脱敏、截断到 300 字。"""
-    return " ".join(redact(text or "").split())[:EXCERPT_MAX]
+def excerpt(text, limit=EXCERPT_MAX):
+    """压缩空白、脱敏、截断到 limit 字（默认 300）。"""
+    return " ".join(redact(text or "").split())[:limit]
 
 
 def parse_ts(value):
@@ -104,11 +110,39 @@ def in_window(ts, since):
 
 
 def collect_source(host, path, since):
-    """流式读一个会话文件，返回 (episodes, source)。sha256 覆盖整份文件。"""
+    """采集一个会话文件，返回 (episodes, source)。"""
+    rows, source, project = scan_source(host, path, since)
+    episodes = [
+        {"kind": kind, "line": row["line"], "ts": row["ts"], "excerpt": excerpt(text)}
+        for row in rows
+        for kind, text in row["entries"]
+        if kind in EPISODE_KINDS
+    ]
+    for episode in episodes:
+        episode.update(
+            host=host,
+            source_path=source["source_path"],
+            session_id=source["session_id"],
+            sha256=source["sha256"],
+            project=project,
+            available=True,
+        )
+    return episodes, source
+
+
+def scan_source(host, path, since):
+    """流式读一个会话文件，返回 (rows, source, project)。sha256 覆盖整份文件。
+
+    `rows` 只覆盖时间窗内的记录，按文件顺序，每行一条：`{"line", "ts", "tool_calls", "entries"}`。
+    `entries` 是该行的 `[(kind, 原文)]`，kind 是三个 Episode kind 外加只给摘要用的
+    `USER_MESSAGE_KIND`；`tool_calls` 是该行新增的工具调用数。
+    有时间戳的行也产出 row，供摘要计算首末时间。`source` 与 collect 的 `sources` 条目同形状，`project`
+    单独返回，因为来源条目里没有这个字段。
+    """
     session = SESSIONS[host](path)
     hasher = hashlib.sha256()
-    episodes, bad_lines, error = [], [], None
-    seen = recognized = 0
+    rows, bad_lines, error = [], [], None
+    seen = recognized = episode_count = 0
     try:
         with path.open("rb") as handle:
             for line_no, raw in enumerate(handle, 1):
@@ -124,54 +158,62 @@ def collect_source(host, path, since):
                 if not isinstance(record, dict):
                     bad_lines.append({"line": line_no, "missing_reason": "not_an_object"})
                     continue
+                calls_before = session.tool_call_count
                 # Host 解析和 json.loads 在同一层异常边界里：坏行只废掉自己，不中断整份文件。
                 try:
                     known = session.recognizes(record)
                     found = session.record(line_no, record)
+                    message = session.human_message(record)
                 except PARSER_ERRORS as exc:
                     bad_lines.append({"line": line_no, "missing_reason": f"malformed_record: {type(exc).__name__}"})
                     continue
                 if known:
                     recognized += 1
-                for kind, text, ts in found:
-                    if in_window(ts, since):
-                        episodes.append({"kind": kind, "line": line_no, "ts": ts, "excerpt": excerpt(text)})
+                ts = record.get("timestamp")
+                if not in_window(ts, since):
+                    continue
+                entries = [(kind, text) for kind, text, _ts in found]
+                if message is not None:
+                    entries.append((USER_MESSAGE_KIND, message))
+                tool_calls = session.tool_call_count - calls_before
+                if not entries and not tool_calls and parse_ts(ts) is None:
+                    continue
+                episode_count += sum(1 for kind, _text in entries if kind in EPISODE_KINDS)
+                rows.append({"line": line_no, "ts": ts, "tool_calls": tool_calls, "entries": entries})
     except OSError as exc:
         error = type(exc).__name__
     if error is not None:
         # 读到一半失败时 sha256 只覆盖了部分字节，指针也不可信：整份来源作废。
-        episodes, bad_lines = [], []
+        rows, bad_lines, episode_count = [], [], 0
         digest = None
     else:
         digest = hasher.hexdigest()
-    # 一行都认不出本 Host 的已知记录类型（例如 Pi 的 `*_transcript.jsonl`）时，不能静默产出空结果。
-    # 有坏行时先说坏行：那时无法断言整份文件的 schema。空文件不算。
-    unsupported = error is None and not bad_lines and seen > 0 and recognized == 0
+    reason = unavailable_reason(bad_lines, error, seen, recognized)
     source = {
         "host": host,
         "source_path": str(path),
         "session_id": session.session_id,
         "sha256": digest,
-        "available": error is None and not bad_lines and not unsupported,
-        "episode_count": len(episodes),
+        "available": reason is None,
+        "episode_count": episode_count,
     }
     if bad_lines:
         source["bad_lines"] = bad_lines
-        source["missing_reason"] = f"line {bad_lines[0]['line']}: {bad_lines[0]['missing_reason']}"
-    if unsupported:
-        source["missing_reason"] = "unsupported_schema"
+    if reason is not None:
+        source["missing_reason"] = reason
+    return rows, source, session.project
+
+
+def unavailable_reason(bad_lines, error, seen, recognized):
+    """一份来源是否可用；不可用时给出原因，可用时 None。三种语义见 docs/M2_HISTORY_FORMATS.md。"""
     if error is not None:
-        source["missing_reason"] = error
-    for episode in episodes:
-        episode.update(
-            host=host,
-            source_path=str(path),
-            session_id=session.session_id,
-            sha256=digest,
-            project=session.project,
-            available=True,
-        )
-    return episodes, source
+        return error
+    if bad_lines:
+        return f"line {bad_lines[0]['line']}: {bad_lines[0]['missing_reason']}"
+    # 一行都认不出本 Host 的已知记录类型（例如 Pi 的 `*_transcript.jsonl`）时，不能静默产出空结果。
+    if seen > 0 and recognized == 0:
+        return "unsupported_schema"
+    return None
 
 
 def iter_sources(root, host, excludes):
@@ -289,10 +331,20 @@ def main():
         "--episodes", type=Path, nargs="+", required=True, help="collect 产出的 Episode JSON，可多个"
     )
     group_parser.add_argument("--out", type=Path, required=True, help="分组 JSON 输出路径")
+    digest_parser = commands.add_parser("digest", help="把最近的真实会话整理成脱敏 Markdown 摘要")
+    digest_parser.add_argument("--host", choices=sorted(SESSIONS), required=True)
+    digest_parser.add_argument("--root", type=Path, required=True, help="Host 配置根，例如 ~/.claude")
+    digest_parser.add_argument("--out-dir", type=Path, required=True, help="摘要与索引的输出目录")
+    digest_parser.add_argument("--since", help="`7d` 或 `YYYY-MM-DD`")
+    digest_parser.add_argument("--exclude", action="append", default=[], help="相对 --root 的 glob，可重复")
     args = parser.parse_args()
     try:
         if args.cmd == "collect":
             code = collect(args.host, args.root, args.out, args.since, args.exclude)
+        elif args.cmd == "digest":
+            from history_digest import digest
+
+            code = digest(args.host, args.root, args.out_dir, args.since, args.exclude)
         else:
             # 分组单独放 tools/history_group.py，采集和分组不互相拖大；它复用本模块的输出守卫。
             from history_group import group
