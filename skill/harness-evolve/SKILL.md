@@ -209,8 +209,8 @@ python3 -I tools/proposal.py check --experiment-id <实验 ID> [--retired <Retir
    python3 -I tools/change.py review-plan --phe-home <PHE_HOME>
    ```
 
-   每个执行给出观察窗（应用到恢复；未恢复为至今）、原预测与验证方法、证据、报告引用、全部历史 review 和最新一条。观察窗只是候选取样范围，不证明 Host 加载过配置。
-2. 按观察窗两端筛会话：`history.py digest --since` 只接受 `7d` 或 `YYYY-MM-DD`，只设日期下界、没有上界，同日应用前的记录也会混入。必须按源记录自身的 `ts` 核对 `[from, to]`（`to` 为 `null` 表示至今）：早于 `from` 或晚于 `to` 的记录都不算观察，不得只按会话结束时间判断。
+   每个执行给出观察窗（`from` = 应用时刻，`to` = 恢复时刻；未恢复为 `null`）、原预测与验证方法、证据、报告引用、全部历史 review 和最新一条。观察窗只是候选取样范围，不证明 Host 加载过配置。
+2. 按观察窗两端筛会话：`history.py digest --since` 只接受 `7d` 或 `YYYY-MM-DD`，只设日期下界、没有上界，同日应用前的记录也会混入。必须按源记录自身的 `ts` 核对半开区间 `[from, to)`：`to` 为 `null` 时上界取本次复盘时刻，不取复盘之后的记录。早于 `from` 或达到上界（`>=`）的记录都不算观察，恰好等于恢复时刻的记录也不算，不得只按会话结束时间判断。
 3. 派只读子代理按 `prediction.verify` 核对：按源文件绝对路径与 `L<行号>` 回读原文，统计口径与预测一致；材料不足就写不足，不拿摘要计数代替原文核对。
 4. 宿主写 review 记录并追加到账本：
 
@@ -232,4 +232,4 @@ python3 -I tools/proposal.py check --experiment-id <实验 ID> [--retired <Retir
 5. 向用户报告：保留、调整、撤销还是继续观察，附证据指针、原预测是否达到和还缺什么。`prediction_met` 不是因果证明；写入临时配置不等于 Host 加载过配置。
 6. `revert` 只是建议：用户批准后才走 §12 的 `restore`；已恢复的执行不重复恢复。`observe` 表示证据不足，对已恢复执行表述为“待补证据”。
 
-边界：没有自动取样、自动统计和自动判定，观察窗与计数由宿主给出。演练入口：`python3 -I tools/rehearse_review.py --out <新目录> --source <切片 2 的 phe 目录>`，工件留在 `--out`；合成样例按窗口两端取样，只证明复盘流程可运行，不证明规则有效。
+边界：没有自动取样、自动统计和自动判定，观察窗与计数由宿主给出。演练入口：`python3 -I tools/rehearse_review.py --out <新目录> --source <切片 2 的 phe 目录>`，工件留在 `--out`；合成样例按 `[from, 上界)` 取样（未恢复时上界取声明的模拟复盘时刻，并放一条晚于它的命中证明不计入），只证明复盘流程可运行，不证明规则有效。

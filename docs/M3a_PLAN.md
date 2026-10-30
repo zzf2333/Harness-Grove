@@ -135,7 +135,7 @@ python3 -I tools/change.py review --execution x0001 --record <review 记录 JSON
 
 ### `review-plan` 输出
 
-每个执行（含已恢复）列出：`execution_id`、`proposal_id`、`state`、`applied_at`、`restored_at`、`prediction`、`evidence`、`report`（报告路径与 sha256）、`observation_window`（`from` = 应用时刻，`to` = 恢复时刻；未恢复为 `null`，表示至今）、该执行全部历史 `reviews`（按账本顺序）和 `latest_review`（无则 `null`）。顶层 `note` 写明：观察窗只是候选取样范围，不证明 Host 加载过配置；review 只记录判断和证据指针。
+每个执行（含已恢复）列出：`execution_id`、`proposal_id`、`state`、`applied_at`、`restored_at`、`prediction`、`evidence`、`report`（报告路径与 sha256）、`observation_window`（`from` = 应用时刻，`to` = 恢复时刻；未恢复为 `null`，取样上界改取本次复盘时刻）、该执行全部历史 `reviews`（按账本顺序）和 `latest_review`（无则 `null`）。顶层 `note` 写明：观察窗只是候选取样范围，不证明 Host 加载过配置；review 只记录判断和证据指针。
 
 ### review 记录
 
@@ -171,14 +171,14 @@ python3 -I tools/change.py review --execution x0001 --record <review 记录 JSON
 
 ### 边界
 
-- 没有自动取样、自动统计或自动判定：观察窗、证据指针和计数由宿主给出并核对原文。取样按源记录自身的 `ts` 核对观察窗两端（`from` 与 `to`，`to` 为 `null` 表示至今）；`history.py --since` 只到日期粒度，只能粗筛，不得只按会话结束时间判断。
+- 没有自动取样、自动统计或自动判定：观察窗、证据指针和计数由宿主给出并核对原文。取样按源记录自身的 `ts` 核对半开区间 `[from, 上界)`：`to` 为 `null` 时上界取本次复盘时刻，不取复盘之后的记录；恰好等于上界的记录不算窗口内。`history.py --since` 只到日期粒度，只能粗筛，不得只按会话结束时间判断。
 - review 记录不构成效果证据，也不代表真实 Host 加载过配置；账本仍只记事实。
 - 畸形 record、并发写入、权限与攻击场景不在本轮范围，未测。
 
 ### 验收
 
 - `tests/test_change.py`：在既有顺序 E2E 的 fixture 上加一条正常链路用例：apply → `review`（`observe` / `unknown`）→ 再 `review`（`keep` / `met`），两条历史都保留、`latest_review` 为后者；`review-plan` 回显原预测、证据、报告引用和观察窗；`restore` 后 `review-plan` / `status` 仍读得到 review 且观察窗收到恢复时刻；review 前后目标文件 sha256、发布链接和执行状态不变。
-- `tools/rehearse_review.py`：把切片 2 演练的 `experiments/loop-apply-001/phe/` 复制到 `experiments/loop-review-001/phe`（原目录不改），先 `review-plan`，再对真实演练执行 `x0001` 写 `observe` / `unknown`；然后在 `experiments/loop-review-001/synthetic/` 下另建一套【合成】沙箱（小 base、三个软链入口、独立 PHE_HOME），apply 合成条目 `S1` 后不 restore，观察窗因此是 `[应用时刻, 至今)`，合成会话时间戳按相对实际 `applied_at` 的偏移生成，按窗口两端取样后手算 `cwd does not exist` 次数，结论按窗口内计数推导。另用零宽窗口样例证明切片 2 `x0001` 的窗口内观察数为 0，结论只能是 `observe` / `unknown`。45 条断言全部成立；合成产物与真实演练账本分开，结论只说明复盘流程可运行，不证明规则有效。工件留在 `experiments/loop-review-001/`（被 Git 忽略），不清理。
+- `tools/rehearse_review.py`：把切片 2 演练的 `experiments/loop-apply-001/phe/` 复制到 `experiments/loop-review-001/phe`（原目录不改），先 `review-plan`，再对真实演练执行 `x0001` 写 `observe` / `unknown`；然后在 `experiments/loop-review-001/synthetic/` 下另建一套【合成】沙箱（小 base、三个软链入口、独立 PHE_HOME），apply 合成条目 `S1` 后不 restore，`to` 是 `null`，取样上界取演练声明的【模拟复盘时刻】`cutoff = applied_at + 60 分钟`，窗口因此是 `[应用时刻, cutoff)`；合成会话时间戳按相对实际 `applied_at` 的偏移生成，按窗口两端取样后手算 `cwd does not exist` 次数，结论按窗口内计数推导，并放一条晚于 `cutoff` 的命中证明不计入。另用零宽窗口样例证明切片 2 `x0001` 的 `[T, T)` 窗口内观察数为 0（含恰好等于端点的一条），结论只能是 `observe` / `unknown`。49 条断言全部成立；合成产物与真实演练账本分开，结论只说明复盘流程可运行，不证明规则有效。工件留在 `experiments/loop-review-001/`（被 Git 忽略），不清理。报告渲染在 `tools/rehearse_review_report.py`。
 
 ## 切片 A：本地草稿（完成）
 
