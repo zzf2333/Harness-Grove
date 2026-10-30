@@ -83,7 +83,7 @@ Host 候选 JSON 只有三个字段：
 
 - `groups` 必填，显式选中的 `correlation_group` 数组，不能为空。组不存在，或同一个 ID 在输入里对应多份不同内容（歧义），直接拒绝，不猜。
 - `hypothesis` 可缺。`observation`、`change`、`expected_effect` 缺失、为 `null` 或空串时保存为 `null`，并在报告里逐项列出。
-- `predictions` 可缺。每一项的 `metric` 必填，且必须是模板 `metrics` 里已有的键（`test_pass_v1`、`calibration_contract_pass_v1`、`total_tokens_v1`、`wall_time_v1`、`estimated_cost_usd_v1`）；`expected_change`、`falsified_when` 可缺并报告。
+- `predictions` 可缺。每一项的 `metric` 必填，且必须是模板 `metrics` 里已有的键（`test_pass_v1`、`calibration_contract_pass_v1`、`total_tokens_v1`、`wall_time_v1`、`estimated_cost_usd_v1`）；`expected_change`、`falsified_when` 可缺并报告。白名单只取仓库模板 [examples/m-1/proposal.template.json](../examples/m-1/proposal.template.json)，`draft` 和 `check` 同源：往草稿自己的 `metrics` 里加键不能放行未知指标。
 - 未支持字段一律拒绝：Host 自填 `evidence`、`retired` 声明、`measured_value` 等都不接收。证据只从 `--groups` 解析。
 - 损坏 JSON、畸形类型（例如 `groups` 不是数组、`hypothesis` 不是对象、`line` 不是正整数）退出 1，不写任何产物。
 
@@ -91,7 +91,7 @@ Host 候选 JSON 只有三个字段：
 
 - 形状取自 [examples/m-1/proposal.template.json](../examples/m-1/proposal.template.json)，不裁剪 `metrics`。只改 `experiment_id`、`status=draft`、`paths.artifact_root_relative_to_phe_repo`，并新增 `candidate`。
 - M-1 专属段（`target`、`task`、`rules`、`harness`、`experiment`、`gates` 等）保持模板原值或 `null`。本切片不填这些字段，也不把它们当作 M3a 的执行计划或冻结值。
-- `candidate.evidence` 绑定分组文件的原始字节 sha256、选中组 ID 和指针（`source_path`、`line`、`ts`）。`count` 由实际指针数推导，不采用输入里的计数字段。不复制 `excerpt`，不读会话原文。
+- `candidate.evidence` 绑定分组文件的原始字节 sha256、选中组 ID 和指针（`source_path`、`line`、`ts`）。`count` 由实际指针数推导，不采用输入里的计数字段；`check` 要求 `count` 等于 `pointers` 数量、同一组 ID 只出现一次、`selected_group_ids` 与 `groups` 顺序和内容一致，编辑后任何一项不一致都拒绝。不复制 `excerpt`，不读会话原文。
 - `candidate.host_judgment.source = "host_judgment_not_measurement"`：假设与预测是 Host 判断，不是实测。
 - `candidate.retired = {"status": "unavailable", "reason": "尚无Retired数据源及检索实现"}`。不写空 `matches`，也不接受 Host 声明已经检索。
 
@@ -120,7 +120,8 @@ Host 候选 JSON 只有三个字段：
 
 ### 检查范围
 
-- `check` 只读 `experiments/<id>/proposal.json`，不回读分组文件、会话原文或任何 Host 配置，不写侧文件、`approval.json` 或 `proposal.sha256`，也不运行 `run` / `judge`。
+- `check` 只读 `experiments/<id>/proposal.json` 和仓库模板的 `metrics`（metric 白名单与 `draft` 同源），不回读分组文件、会话原文或任何 Host 配置，不写侧文件、`approval.json` 或 `proposal.sha256`，也不运行 `run` / `judge`。
+- `draft` 和 `check` 在导入相邻模块前关闭字节码缓存，不在仓库副本里留下 `__pycache__` 或 `.pyc`；只读性用不排除任何文件的完整文件树快照核对。
 - 没有 `candidate` 段的旧提案不在检查范围：`scope=legacy_proposal_out_of_scope`、`freeze_ready=null`。新检查不使旧提案失效。
 - 报告只覆盖候选段和明显的未填项，不是完整协议验证。分组文件 sha256 只绑定输入字节，不验证语义质量、证据强度、指标选择或预测是否合理；指针仍可能在源文件变化后失效。
 - 本切片没有 Retired 数据源和检索，所以 `freeze_ready` 永远不是 `true`。
@@ -139,7 +140,7 @@ ruff check .
 ruff format --check .
 ```
 
-`tests/test_proposal.py` 用临时仓库副本走真实 CLI：有效引用保存、缺假设/预测报告、未知 metric / 组不存在 / 组歧义 / 畸形输入拒绝、Retired 永远阻塞、已有或冻结目录不覆盖、目录越界拒绝、旧提案不在范围、`check` 不回读分组且不写文件。可复跑的脱敏验收记录写在仓库外的临时目录。
+`tests/proposal_fixture.py` 提供临时仓库副本和合成输入（`tools/` 与 `examples/` 复制到临时目录），`tests/test_proposal.py` 与 `tests/test_proposal_check.py` 走真实 CLI：有效引用保存、缺假设/预测报告、未知 metric / 组不存在 / 组歧义 / 畸形输入拒绝、Retired 永远阻塞、已有或冻结目录不覆盖、目录越界拒绝；`check` 拒绝编辑后的草稿（改自己 `metrics` 放行未知指标、`count` 与指针数不符、组 ID 重复）、不回读分组文件，且 `draft`/`check` 结束后完整文件树里没有字节码缓存；旧提案不在范围。可复跑的脱敏验收记录写在仓库外的临时目录。
 
 ## 不做（本切片）
 

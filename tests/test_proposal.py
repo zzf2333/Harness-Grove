@@ -1,164 +1,25 @@
-"""tools/proposal.py draft/check 的契约：证据只从分组 JSON 解析、缺项报告、拒绝与不覆盖。
+"""`tools/proposal.py draft` 的契约：证据只从分组 JSON 解析、缺项报告、拒绝与不覆盖。
 
-所有输入都是手写合成材料，路径和名字都是虚构的（`/home/alice/...`），不来自任何真实会话。
-仓库根由 `tools/proposal.py` 的源码位置推导，所以测试把 `tools/` 和 `examples/` 复制到临时仓库，
-用真实 CLI 跑，从不写本仓库的 `experiments/`。
+夹具在 `proposal_fixture.py`：合成输入、临时仓库副本和真实 CLI 调用。这里只覆盖保存路径和
+draft 阶段的拒绝；`check` 的契约在 `test_proposal_check.py`。
 """
 
 import hashlib
 import json
-import os
-import shutil
-import subprocess
-import sys
-import tempfile
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-TEMPLATE = json.loads((ROOT / "examples/m-1/proposal.template.json").read_text(encoding="utf-8"))
-EXPERIMENT_ID = "m3a-demo-001"
-PROJECT = "/home/alice/proj"
-SESSION_A = "11111111-1111-4111-8111-111111111111"
-SESSION_B = "22222222-2222-4222-8222-222222222222"
-CLAUDE_PATH = "/home/alice/.claude/projects/-home-alice-proj/aaaa.jsonl"
-CODEX_PATH = "/home/alice/.codex/sessions/2026/10/28/rollout-bbbb.jsonl"
-GROUP_A = "aaaaaaaaaaaa"
-GROUP_B = "bbbbbbbbbbbb"
-EXCERPT_SENTINEL = "SENTINEL-EXCERPT-不应进入提案"
-REPO_FILES = ("tools", "examples")
-
-
-def groups_document():
-    return {
-        "groups": [
-            {
-                "correlation_group": GROUP_A,
-                "host": "claude",
-                "session_id": SESSION_A,
-                "project": PROJECT,
-                "kind": "user_correction",
-                "count": 2,
-                "first_ts": "2026-10-28T01:00:00Z",
-                "last_ts": "2026-10-28T01:00:05Z",
-                "episodes": [
-                    {"source_path": CLAUDE_PATH, "line": 3, "ts": "2026-10-28T01:00:00Z", "excerpt": EXCERPT_SENTINEL},
-                    {"source_path": CLAUDE_PATH, "line": 9, "ts": "2026-10-28T01:00:05Z", "excerpt": EXCERPT_SENTINEL},
-                ],
-                "same_project": [],
-            },
-            {
-                "correlation_group": GROUP_B,
-                "host": "codex",
-                "session_id": SESSION_B,
-                "project": PROJECT,
-                "kind": "retry",
-                "count": 1,
-                "first_ts": "2026-10-28T02:00:00Z",
-                "last_ts": "2026-10-28T02:00:00Z",
-                "episodes": [
-                    {"source_path": CODEX_PATH, "line": 4, "ts": "2026-10-28T02:00:00Z", "excerpt": EXCERPT_SENTINEL}
-                ],
-                "same_project": [],
-            },
-        ],
-        "sources_unavailable": [],
-    }
-
-
-def valid_candidate():
-    return {
-        "groups": [GROUP_A, GROUP_B],
-        "hypothesis": {
-            "observation": "同一会话里反复出现同类纠正",
-            "change": "把该约束写成一条更短的规则",
-            "expected_effect": "同类纠正减少，测试通过数不下降",
-        },
-        "predictions": [
-            {
-                "metric": "test_pass_v1",
-                "expected_change": "不下降",
-                "falsified_when": "处理组比基线低 2 次以上",
-            }
-        ],
-    }
-
-
-class RepoCopyCase(unittest.TestCase):
-    def setUp(self):
-        temp = tempfile.TemporaryDirectory(prefix="phe-proposal-")
-        self.addCleanup(temp.cleanup)
-        self.tmp = Path(os.path.realpath(temp.name))
-        self.repo = self.tmp / "repo"
-        for relative in REPO_FILES:
-            shutil.copytree(
-                ROOT / relative,
-                self.repo / relative,
-                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-            )
-        self.experiments = self.repo / "experiments"
-        self.groups_path = self.tmp / "groups.json"
-        self.candidate_path = self.tmp / "candidate.json"
-        self.write_groups(groups_document())
-        self.write_candidate(valid_candidate())
-
-    def write_groups(self, document, name="groups.json"):
-        path = self.tmp / name
-        if isinstance(document, str):
-            path.write_text(document, encoding="utf-8")
-        else:
-            path.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        if name == "groups.json":
-            self.groups_path = path
-        return path
-
-    def write_candidate(self, document, name="candidate.json"):
-        path = self.tmp / name
-        if isinstance(document, str):
-            path.write_text(document, encoding="utf-8")
-        else:
-            path.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        if name == "candidate.json":
-            self.candidate_path = path
-        return path
-
-    def cli(self, *argv):
-        return subprocess.run(
-            [sys.executable, "-I", str(self.repo / "tools/proposal.py"), *argv],
-            cwd=self.tmp,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-    def draft(self, experiment_id=EXPERIMENT_ID, groups=None, candidate=None):
-        return self.cli(
-            "draft",
-            "--groups",
-            str(groups or self.groups_path),
-            "--candidate",
-            str(candidate or self.candidate_path),
-            "--experiment-id",
-            experiment_id,
-        )
-
-    def check(self, experiment_id=EXPERIMENT_ID):
-        return self.cli("check", "--experiment-id", experiment_id)
-
-    def proposal(self, experiment_id=EXPERIMENT_ID):
-        return json.loads((self.experiments / experiment_id / "proposal.json").read_text(encoding="utf-8"))
-
-    def assert_no_artifact(self, experiment_id=EXPERIMENT_ID):
-        self.assertFalse((self.experiments / experiment_id).exists())
-        self.assertFalse(self.experiments.exists())
-
-    def snapshot(self):
-        # 解释器可能写 __pycache__，那不是本工具写出的产物。
-        return {
-            str(path.relative_to(self.repo)): b"<dir>" if path.is_dir() else path.read_bytes()
-            for path in sorted(self.repo.rglob("*"))
-            if "__pycache__" not in path.parts and path.suffix != ".pyc"
-        }
+from proposal_fixture import (
+    CLAUDE_PATH,
+    EXCERPT_SENTINEL,
+    EXPERIMENT_ID,
+    GROUP_A,
+    GROUP_B,
+    SESSION_A,
+    TEMPLATE,
+    RepoCopyCase,
+    groups_document,
+    valid_candidate,
+)
 
 
 class DraftSaveTests(RepoCopyCase):
@@ -362,75 +223,6 @@ class DraftRejectTests(RepoCopyCase):
         result = self.draft()
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertEqual(list((self.experiments / EXPERIMENT_ID).iterdir()), [])
-
-
-class CheckTests(RepoCopyCase):
-    def test_check_reports_same_missing_items_and_never_allows_freeze(self):
-        self.assertEqual(self.draft().returncode, 0)
-        before = self.snapshot()
-        result = self.check()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        report = json.loads(result.stdout)
-        self.assertEqual(report["action"], "check")
-        self.assertTrue(report["checked"])
-        self.assertIs(report["freeze_ready"], False)
-        self.assertIn("retired_unavailable", report["freeze_ready_blockers"])
-        self.assertEqual(report["missing"], [])
-        self.assertIn("paths.phe_repo_abs", report["null_fields"])
-        self.assertEqual(self.snapshot(), before)
-
-    def test_check_does_not_reread_groups_file(self):
-        self.assertEqual(self.draft().returncode, 0)
-        self.groups_path.unlink()
-        result = self.check()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(json.loads(result.stdout)["checked"])
-
-    def test_check_without_candidate_is_out_of_scope(self):
-        exp = self.experiments / "legacy-001"
-        exp.mkdir(parents=True)
-        (exp / "proposal.json").write_text(
-            json.dumps({"experiment_id": "legacy-001", "status": "draft"}), encoding="utf-8"
-        )
-        result = self.check("legacy-001")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        report = json.loads(result.stdout)
-        self.assertEqual(report["scope"], "legacy_proposal_out_of_scope")
-        self.assertIs(report["candidate_present"], False)
-        self.assertIsNone(report["freeze_ready"])
-        self.assertIs(report["freeze_ready_evaluated"], False)
-
-    def test_check_rejects_corrupted_proposal(self):
-        exp = self.experiments / EXPERIMENT_ID
-        exp.mkdir(parents=True)
-        (exp / "proposal.json").write_text("{broken", encoding="utf-8")
-        result = self.check()
-        self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertEqual(result.stdout, "")
-
-    def test_check_rejects_symlinked_proposal(self):
-        exp = self.experiments / EXPERIMENT_ID
-        exp.mkdir(parents=True)
-        outside = self.tmp / "outside-proposal.json"
-        outside.write_text("{}", encoding="utf-8")
-        (exp / "proposal.json").symlink_to(outside)
-        result = self.check()
-        self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertEqual(outside.read_text(encoding="utf-8"), "{}")
-
-    def test_check_rejects_missing_proposal(self):
-        (self.experiments / EXPERIMENT_ID).mkdir(parents=True)
-        result = self.check()
-        self.assertEqual(result.returncode, 1, result.stderr)
-
-    def test_check_rejects_edited_candidate_evidence(self):
-        self.assertEqual(self.draft().returncode, 0)
-        path = self.experiments / EXPERIMENT_ID / "proposal.json"
-        proposal = json.loads(path.read_text(encoding="utf-8"))
-        proposal["candidate"]["evidence"]["selected_group_ids"] = [GROUP_B, GROUP_A]
-        path.write_text(json.dumps(proposal, ensure_ascii=False), encoding="utf-8")
-        result = self.check()
-        self.assertEqual(result.returncode, 1, result.stderr)
 
 
 if __name__ == "__main__":

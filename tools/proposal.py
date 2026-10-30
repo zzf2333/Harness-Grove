@@ -20,6 +20,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+# 导入相邻模块前关掉字节码缓存：draft/check 不能在仓库副本里留下 __pycache__ 和 .pyc。
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from proposal_candidate import (
     EXPERIMENTS_DIR,
@@ -123,12 +125,13 @@ def write_new_experiment(experiment_id, proposal):
 def draft(groups_path, candidate_path, experiment_id):
     validate_experiment_id(experiment_id)
     template = load_template()
-    selectors, judgment = read_host_candidate(candidate_path, set(template["metrics"]))
+    metric_names = set(template["metrics"])
+    selectors, judgment = read_host_candidate(candidate_path, metric_names)
     groups, raw = read_groups(groups_path)
     selected = select_groups(groups, selectors)
     candidate = build_candidate(selected, hashlib.sha256(raw).hexdigest(), groups_path, judgment)
     proposal = build_proposal(template, experiment_id, candidate)
-    inspection = inspect_proposal(proposal)
+    inspection = inspect_proposal(proposal, metric_names)
     if inspection is None:
         raise InputError("内部不变量被破坏：新提案缺少 candidate 段")
     write_new_experiment(experiment_id, proposal)
@@ -164,7 +167,8 @@ def check(experiment_id):
     if Path(os.path.realpath(proposal_path)).parent != Path(os.path.realpath(exp)):
         raise Refusal("proposal.json 越出实验目录，拒绝读取")
     proposal, _ = read_json_object(proposal_path, "proposal.json")
-    inspection = inspect_proposal(proposal)
+    # 白名单与 draft 同源，只取仓库模板：改草稿里的 metrics 不能放行未知指标。
+    inspection = inspect_proposal(proposal, set(load_template()["metrics"]))
     if inspection is None:
         report = legacy_report(experiment_id, REPO_ROOT)
         summary = "不在检查范围"

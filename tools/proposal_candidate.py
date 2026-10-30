@@ -262,15 +262,20 @@ def inspect_evidence(evidence):
         if not isinstance(group, dict):
             raise InputError(f"{where} 不是对象")
         check_keys(where, group, GROUP_KEYS)
-        group_ids.append(non_empty_string(f"{where}.correlation_group", group.get("correlation_group")))
+        group_id = non_empty_string(f"{where}.correlation_group", group.get("correlation_group"))
+        if group_id in group_ids:
+            raise InputError(f"{where}.correlation_group 重复：{group_id}；选中组只能出现一次")
+        group_ids.append(group_id)
         for field in ("host", "session_id", "kind"):
             non_empty_string(f"{where}.{field}", group.get(field))
         if not isinstance(group.get("project"), str):
             raise InputError(f"{where}.project 不是字符串")
-        positive_int(f"{where}.count", group.get("count"))
+        count = positive_int(f"{where}.count", group.get("count"))
         pointers = group.get("pointers")
         if not isinstance(pointers, list) or not pointers:
             raise InputError(f"{where}.pointers 不是非空数组")
+        if count != len(pointers):
+            raise InputError(f"{where}.count 与 pointers 数量不一致：{count} != {len(pointers)}")
         for pointer_index, pointer in enumerate(pointers):
             pointer_where = f"{where}.pointers[{pointer_index}]"
             if not isinstance(pointer, dict):
@@ -333,8 +338,11 @@ def inspect_judgment(candidate, metric_names):
     return missing
 
 
-def inspect_proposal(proposal):
-    """draft 和 check 共用的候选检查。没有 candidate 段的旧提案返回 None。"""
+def inspect_proposal(proposal, metric_names):
+    """draft 和 check 共用的候选检查。没有 candidate 段的旧提案返回 None。
+
+    `metric_names` 必须来自仓库可信模板：草稿自己的 `metrics` 被改过也不能放行未知指标。
+    """
     if "candidate" not in proposal:
         return None
     candidate = proposal.get("candidate")
@@ -345,9 +353,9 @@ def inspect_proposal(proposal):
         raise InputError(f"candidate.origin 只能是 {CANDIDATE_ORIGIN}")
     metrics = proposal.get("metrics")
     if not isinstance(metrics, dict) or not metrics:
-        raise InputError("proposal 缺少 metrics 字典，无法校验预测指标")
+        raise InputError("proposal 缺少 metrics 字典")
     selectors, group_count, pointer_count = inspect_evidence(candidate.get("evidence"))
-    missing = inspect_judgment(candidate, set(metrics))
+    missing = inspect_judgment(candidate, metric_names)
     retired = candidate.get("retired")
     if not isinstance(retired, dict):
         raise InputError("candidate.retired 不是对象")

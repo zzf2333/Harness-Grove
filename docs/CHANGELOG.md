@@ -4,6 +4,7 @@
 
 - 新增 `tools/proposal.py draft/check`（候选结构在 `tools/proposal_candidate.py`）：从 M2 分组产物生成经验候选提案。证据只复制 `source_path`/`line`/`ts` 和分组文件原始字节 sha256，不复制摘录；复用 M-1 模板完整形状与 `metrics`，只改实验身份、`status=draft` 和 artifact 路径，并追加 `candidate`。
 - 缺假设/预测字段可保存并逐项报告；未知 metric、组不存在、同一 ID 对应多份内容、畸形 JSON/类型、已存在目录（含冻结目录）和路径穿越/软链逃逸拒绝，输入错误不留下半份产物。`candidate.retired` 固定 `unavailable`，本切片 `freeze_ready` 永远不是 true，报告只覆盖候选与明显未填项，不是完整协议验证。
+- `check` 的 metric 白名单只取仓库模板：改草稿自己的 `metrics` 不能放行未知指标；证据计数必须等于指针数、组 ID 不得重复；`draft`/`check` 导入相邻模块前关闭字节码缓存，不在仓库副本里留下 `__pycache__`/`.pyc`。
 - `check` 只读新 proposal，不回读分组文件或会话原文，不写侧文件、批准或冻结 Hash；没有 `candidate` 的旧提案报 `legacy_proposal_out_of_scope`，不因新检查失效。Skill 补“带 candidate 的草稿先 check”的流程约束，并说明它不是执行层封锁。
 - 新增 `docs/M3a_PLAN.md`：切片 A 完成，B（Retired 真实检索）、C（reopen/alternative 处理）、D（完整预测冻结）未开始，M3a 未完成；示例全部为手写合成材料。
 - M2 按原定 Gate 结项：S1 阻塞交接、S2 正常冻结交接通过；Target 按需逐个适配。Codex Target 真实运行、费用/隔离验证和 m2-real-002 的加载链阻塞保留为后续事项，不追加为 Gate。未重跑 S2。
