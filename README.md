@@ -37,3 +37,7 @@ Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 运�
 - `experiments/`：M-1 和 M0 的运行产物，已被 Git 忽略。提交脱敏样本需要另行批准。
 - `tools/history.py`：M2 切片 A/B 的只读采集与结构分组；`collect --host {claude,codex,pi} --root <Host 配置根> --out <Episode JSON> [--since 7d|YYYY-MM-DD] [--exclude GLOB …]`。流式逐行读会话 JSONL，产出 `{"episodes":[…],"sources":[…]}`：每条 Episode 带 `host`、`source_path`、`session_id`、`line`、源文件 `sha256`、`project`、`ts`、`kind`、脱敏后的 `excerpt`（≤300 字）、`available`，`kind` 只有 `user_correction`、`tool_failure`、`retry` 三种启发式（召回率与准确率未评估）。源文件读不到或有行解析失败时，`sources` 里记 `available: false` 和 `missing_reason`，不静默跳过。Pi 默认排除 `sessions/subagent/*`，`--exclude` 在默认之外追加。`--root`、`--out` 必填；`--out` 落在真实 home 的 `.claude`、`.codex`、`.pi`、`.phe`、`.agents`、`AI/temper` 之内时在任何写入前退出 2。产物写在被 Git 忽略的 `episodes/`。切片 B 的 `group --episodes <Episode JSON…> --out <分组 JSON>` 把一份或多份 collect 产物按 host + session_id + kind 分组成 `correlation_group`（三者 sha256 前 12 位，同输入同输出）；每组记 project、count、首末 ts 和指针列表（`source_path`、`line`、`ts`、已脱敏 `excerpt`），不复制会话原文；不同会话不合并，只在 `same_project` 里互相列出同 project 同 kind 的组 id（project 为空不关联）；输入里 `available: false` 的来源汇总进 `sources_unavailable`。输入字段不合格时退出 1、不写输出。`--out` 落在真实 home 的 Agent 配置目录、与任一输入文件是同一文件、与任一会话源文件相同或落进会话源目录时退出 2。
 - 被测任务所在的仓库只读，实验只在临时目录里运行。
+
+## 许可证
+
+[MIT](LICENSE)。
