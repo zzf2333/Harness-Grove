@@ -4,6 +4,16 @@
 
 M2 的 Gate：缺失的环境信息明确标出；两个不同 Host 能继续同一个提案；实验 Target 按需逐个适配。
 
+## Gate 进度（2026-10-30 核对）
+
+| Gate 条件 | 状态 | 证据 / 缺口 |
+|---|---|---|
+| 缺失的环境信息明确标出 | 基本达成 | `collect` 对不可用来源记 `available: false` + `missing_reason`，`group` 汇总进 `sources_unavailable`；字段级未知项在 [M2_HISTORY_FORMATS](M2_HISTORY_FORMATS.md) 标 `unknown` |
+| 两个不同 Host 续作同一提案 | 未通过 | 机制与合成演练已有；合成演练的两个 Host 只是 `--host` 标签。已有真实实验（m2-real-001/002）每一步都由 Pi 完成，不是跨 Host 证据。验收口径见 [M2_HOST_ACCEPTANCE](M2_HOST_ACCEPTANCE.md)「验收口径」 |
+| 实验 Target 按需逐个适配 | 部分 | Claude Code：真实启动过但未取得有效测量（见下）。Codex：只完成接口与合成解析，未启动真实会话，费用无来源，见 [M2_RUN_CONTROLS](M2_RUN_CONTROLS.md) §4。哪些 Target 属于“按需”必需项，文档未规定 |
+
+**m2-real-002（2026-10-29，单 Host：Pi）：** 用户批准最多 15 次 Claude Code Target 启动，并约定失败即停。实际启动 1 次：沙箱包裹与 policy Hash 核对通过；CLI 首个请求收到服务端 403 `oauth_not_allowed_for_organization`（订阅登录被拒），用量缺失，runner 写 `stop.json = pivot:telemetry_missing`；`judge` 给出 `probe_decision=pivot`。按批准未续跑剩余 14 次，该批准不覆盖重试。加载链仅部分确认：用户级 `CLAUDE.md`、hooks 未加载，但 `--strict-mcp-config` 下仍拉取了 claude.ai connectors 列表。这次 403 只说明该 Target 启动路径的认证被拒，不证明 Claude Code 作为 Host 不可用。本地报告在被忽略的 `experiments/m2-real-002/report.md`。
+
 ## 原则：历史是私人数据
 
 - 本仓库是公开的。采集产物只存**指针 + 脱敏短摘录**，不存会话全文，写在被 Git 忽略的 `episodes/`。`episodes/` 永不入库。

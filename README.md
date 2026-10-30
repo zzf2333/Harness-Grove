@@ -4,7 +4,9 @@ Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 运�
 
 ## 当前状态
 
-- 已有设计文档、实验模板和标准库评测入口 `tools/phe.py`（M0 切片 A）。
+- 已有设计文档、实验模板和标准库评测入口 `tools/phe.py`。
+- M1 已完成（盘点、登记、漂移检测、沙箱内发布/部署/回滚；接管真实环境需用户另批）。
+- M2 进行中：历史采集、结构分组、`log`/`status` 续作记录、Codex Target 最小接口已完成。真实 Claude Code Target 实验 m2-real-002 启动 1/15 次后，因服务端拒绝订阅登录（403）停在 `pivot:telemetry_missing`。两个真实 Host 续作同一提案尚无通过证据，见 [docs/M2_PLAN.md](docs/M2_PLAN.md)。
 - M-1 已完成：spike-001 判定 **go**（2026-10-28，25 次运行，7 项门槛全部通过）；真实规则信号为 inconclusive。M0 已完成：生产等价基线复验 c-002 判定 go（15 次，规则信号 inconclusive）。运行产物位于被忽略的 `experiments/`。
 
 ## 文档地图

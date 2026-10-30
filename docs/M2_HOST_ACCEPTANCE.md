@@ -4,6 +4,15 @@
 
 上位来源：[M2_PLAN](M2_PLAN.md)、[M-1_PROTOCOL](M-1_PROTOCOL.md)、[SKILL](../skill/harness-evolve/SKILL.md) §1–§3、§8。本文不修改这些契约。
 
+## 验收口径（2026-10-30）
+
+Gate“两个不同 Host 能继续同一个提案”分两类证据记录，不互相替代：
+
+- **Host 交接证据（本 Gate 的验收对象）：** 两个真实 Host 会话操作同一提案，后者只从文件读取已有状态，完成下一项合法步骤。保留 proposal 原始字节 Hash、实际会话身份和续作产物。`log --host` 不校验调用者身份，只写两个标签不算。本类验收不要求 `run` / `judge`，也不依赖 Codex Target 适配。
+- **正式实验前提：** 历史任务、加载链、适用的用量测量、冻结门槛和用户批准继续保留（下文「正式前提的具体阻塞」）。字段非 null 不等于前提成立。
+
+Host 交接证据可以先于正式前提验收；未覆盖的既定场景（正常冻结交接等）继续标“未测”，不提前宣布 M2 完成。候选 Host 组合优先 Pi + Codex，理由是验证另一种真实 Host 的续作；m2-real-002 的 Target 403 不证明 Claude Code Host 不可用。Codex Host 的可用性未核实。真实执行前须列明会话数、费用上限与停止条件，由用户本人批准。
+
 ## 保留的 CLI 演练及范围
 
 `tools/m2/rehearse_host_handoff.py` 的已审查结果继续有效，本轮不重做整套验收或更改脚本：
@@ -87,7 +96,7 @@ python3 -m unittest tests.test_prepare_host_acceptance
 | `task.provenance`、任务请求与人工确认修复 | 手写任务/实际 patch 可本地核验，但不是协议要求的历史任务与人工确认修复 | Skill §1 前置；协议前置检查 |
 | `target` 模型、提供方、CLI、设置、参数 Hash | 全为明确演练常量/合成文件；本轮不启动 Target，无法确认服务端完整模型与实际有效参数 | Skill §1 模型/权限确认、§2 |
 | `isolation_flags`、自动记忆、用户内容、有效加载链 | 帮助不能证明真实会话生效；未读取私人内容，也未执行加载链探测 | 协议隔离/前置；Skill §1 |
-| `budget.sizing_source`、时长/回合、单次/总费用 | `sizing.md` 明示未测；无 spike-000，演练常量不构成用户批准 | 协议预算；Skill §2 |
+| `budget.sizing_source`、时长/回合、单次/总费用 | 合成夹具用演练常量，不构成用户批准。本机有历史 spike-000 测量（`experiments/spike-000/sizing.md`：Claude Code、claude-opus-5-5、任务 Sutra `02136b92`，2 次，未截断），但它的 Target、任务、配置和隔离方式与本轮是否一致未核对，不自动解除本轮测量阻塞；`--max-budget-usd` 在订阅登录下是否生效仍未验证 | 协议预算；Skill §2 |
 | Token 噪声门槛与理由 | 0.25/0.30 是协议建议的演练常量，非用户确定的真实门槛 | Skill §2；协议门槛 |
 
 因此 Host A 在 Skill §1 前置确认时就必须停止，不复制 proposal，不执行 `log draft`，实验目录保持空；不得因合成结构通过而继续起草。若 B 接到已有草稿，也必须在这些前提处停止。**这只能验收阻塞分支，不能替代真实正常冻结交接。** 未满足前提前不写 `proposal.sha256` 或 `log freeze`。不能宣称正式冻结通过，也不能单凭结构校验继续。

@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-10-30 · M2 状态核对
+
+- M2_PLAN 新增 Gate 进度表，记录 m2-real-002：Claude Code Target 启动 1/15 次，服务端 403 拒绝订阅登录，停在 `pivot:telemetry_missing`，未续跑。全部步骤由 Pi 完成，不算跨 Host 证据。
+- M2_HOST_ACCEPTANCE 新增「验收口径」：Host 交接证据与正式实验前提分开记录；交接验收不要求 `run`/`judge`，`--host` 标签不算 Host 身份证据；正式前提保留不变。修正“无 spike-000”：历史测量存在，适用性未核对。
+- README「当前状态」补 M1/M2；PHE_SPEC 状态行不再写“尚未运行任何真实实验”。
+
 ## 2026-10-29 · Codex Target 最小接口
 
 - `phe.py run` 按 `proposal.target.agent` 选择 `claude-code`（旧默认）或 `codex`；`config.target_agent` 只声明同一选择，冲突时启动前拒绝；Codex 拒绝 `config.target_argv` 覆盖，正式调用只用规范 argv。
