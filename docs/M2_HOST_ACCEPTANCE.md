@@ -13,6 +13,36 @@ Gate“两个不同 Host 能继续同一个提案”分两类证据记录，不�
 
 Host 交接证据可以先于正式前提验收；未覆盖的既定场景（正常冻结交接等）继续标“未测”，不提前宣布 M2 完成。候选 Host 组合优先 Pi + Codex，理由是验证另一种真实 Host 的续作；m2-real-002 的 Target 403 不证明 Claude Code Host 不可用。Codex Host 的可用性未核实。真实执行前须列明会话数、费用上限与停止条件，由用户本人批准。
 
+## 下一轮真实验收方案：m2-handoff-001（待用户批准，未执行）
+
+两个场景按顺序做，前一个不替代后一个：
+
+| 场景 | 内容 | 能证明 | 不能证明 | 状态 |
+|---|---|---|---|---|
+| S1 阻塞交接 | Pi 在合成语料上放入草案并 `log --host pi --step draft`；用户在原生 Codex 会话中只凭文件续作，`status`、核对材料，写出缺失前提与下一步后停止 | 真实的第二个 Host 能从文件读到同一提案的阶段和阻塞，并停在边界 | 正常冻结交接；M2 Gate 通过 | 待批准 |
+| S2 正常冻结交接 | 新提案的正式前提逐项核实后，第二个 Host 按 Skill §3 合法冻结 | 两个 Host 续作同一提案 | Target 可运行 | blocked：正式前提未核实 |
+
+S1 的安排：
+
+- **输入只用合成语料。** 用 `prepare_host_acceptance.py` 在系统临时目录生成 `<corpus>`，内含本仓库工具、Skill、协议副本与手写任务。不把 Sutra 等私人任务材料交给 Codex。m2-real-002 的材料和批准（含 D2 来源偏差）不延伸到新提案。
+- **A = Pi（主控会话）。** 核对 `status` 为 `empty` 后，把 `inputs/proposal.json` 原样复制到 `<corpus>/repo/experiments/m2-handoff-001/`，`log --host pi --step draft --note "合成夹具草案，正式前提 blocked"`。这是有意偏离上文 A 提示词的停止分支：目的是让 B 有一份可读的草案，草案仍不具备冻结条件。不写 `proposal.sha256`。主控另在验收记录里记 proposal 原始字节 Hash。
+- **B = Codex，由用户本人在原生 Codex 会话中启动。** 主控不用 bash 启动 `codex exec`：用户约定不启用外部 CLI 执行器，这次没有例外授权。用户在 `<corpus>/repo` 里打开 Codex，粘贴下方 S1-B 提示词。
+- **费用与停止。** Pi 侧不调用 Target，只用主控会话自身。Codex 侧 1 个会话，占用用户现有 Codex 登录额度；一个会话可能包含多次模型请求，**没有 USD 上限来源**。停止方式：提示词要求写完报告即停；用户在 5 分钟墙钟或发现越界时手动中断。失败不重开。
+- **数据发送范围。** Codex 会把它读到的 `<corpus>` 内容发给 OpenAI：公开的工具、Skill、协议副本和手写合成任务。不含会话历史、私人配置或真实任务。
+- **写入。** B 在 S1 不冻结，也不运行 `log`，只允许写 `<corpus>/handoff-report.md`。Codex 自身会写 `~/.codex/sessions`、`history.jsonl`、`log`，这属于用户正常使用 Codex 的自身写入，需随批准一并接受；`workspace-write` 不证明其他写入被隔离。
+- **主控事后核对。** proposal 原始字节 Hash 前后一致；`host_log.jsonl` 只有 pi/draft 一条；无 `proposal.sha256`、`approval.json`、`runs.jsonl`；`<corpus>` 其他文件字节快照不变；报告列出的阻塞与 `inputs/blockers.json` 一致。Host 身份证据：用户提供的 Codex 会话 id，主控只核对 `~/.codex/sessions` 下对应文件存在及其 `cwd` 字段，不读会话正文。结果写入被忽略的 `experiments/m2-handoff-001/`。
+
+### S1-B 提示词（用户粘贴到原生 Codex 会话）
+
+```text
+你从文件续作一份 PHE 提案，5 分钟内停止。当前目录是 PHE_REPO；实验目录 experiments/m2-handoff-001；只读 ../inputs。
+先完整读 skill/harness-evolve/SKILL.md 和 docs/M-1_PROTOCOL.md。不要读本提示词以外的会话记忆。
+运行 python3 -I tools/phe.py status experiments/m2-handoff-001，核对退出 0、stage=drafted、inconsistent=false、notes=[]；异常就停下报告。
+按 Skill §1/§2/§3 独立核对 proposal.json 是否具备冻结条件，并只读核对 ../inputs/blockers.json 与 proposal 的 fixture.blockers。可以运行 python3 -I tools/m2/prepare_host_acceptance.py --check experiments/m2-handoff-001/proposal.json，它只做结构检查。
+只允许写一个文件 ../handoff-report.md：写你看到的 stage、你的核对依据、是否可以冻结、逐项缺失的前提、按 Skill §8 的下一步。
+不得：修改 proposal 或任何已有文件，写 proposal.sha256 或 approval.json，运行 phe.py log/run/judge，安装依赖，git 提交，访问网络。写完报告即停止，并在回复里给出报告路径。
+```
+
 ## 保留的 CLI 演练及范围
 
 `tools/m2/rehearse_host_handoff.py` 的已审查结果继续有效，本轮不重做整套验收或更改脚本：
