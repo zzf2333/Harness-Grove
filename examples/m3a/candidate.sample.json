@@ -1,0 +1,32 @@
+{
+  "groups": ["aaaaaaaaaaaa", "bbbbbbbbbbbb"],
+  "hypothesis": {
+    "observation": "同一会话里反复出现同类纠正",
+    "change": "把该约束写成一条更短的规则",
+    "expected_effect": "同类纠正减少，测试通过数不下降"
+  },
+  "predictions": [
+    {
+      "metric": "test_pass_v1",
+      "expected_change": "不下降",
+      "falsified_when": "处理组比基线低 2 次以上"
+    }
+  ],
+  "retired_review": {
+    "relation": "alternative",
+    "reason": "本候选用更短的规则达到同一目的，与被退役的长规则不同",
+    "entries": [
+      {
+        "retired_id": "retired-format-guard-001",
+        "relation": "alternative",
+        "reason": "目标相同，机制不同，且引用了退役之后的新证据分组",
+        "new_evidence_groups": ["aaaaaaaaaaaa"]
+      },
+      {
+        "retired_id": "retired-checklist-002",
+        "relation": "unrelated",
+        "reason": "对象不同：本候选不涉及输出前检查清单"
+      }
+    ]
+  }
+}

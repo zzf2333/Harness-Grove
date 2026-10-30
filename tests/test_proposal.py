@@ -70,7 +70,7 @@ class DraftSaveTests(RepoCopyCase):
         self.assertEqual(candidate["host_judgment"]["source"], "host_judgment_not_measurement")
         self.assertEqual(
             candidate["retired"],
-            {"status": "unavailable", "reason": "尚无Retired数据源及检索实现"},
+            {"status": "unavailable", "reason": "未提供 --retired 文件，本工具不做自动检索或扫描"},
         )
         self.assertNotIn("matches", candidate["retired"])
 

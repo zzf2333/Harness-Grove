@@ -1,6 +1,6 @@
 # M3a 计划：从经验扫描产生可证伪提案
 
-**状态（2026-10-30）：** 进行中。切片 A 完成：本地草稿 CLI `tools/proposal.py draft/check`。切片 B（Retired 真实检索）、C（reopen / alternative 处理）、D（完整预测冻结）未开始。**M3a 未完成**，不能把切片 A 的报告当作完整协议验证。
+**状态（2026-10-30）：** 进行中。切片 A 完成：本地草稿 CLI `tools/proposal.py draft/check`。切片 B1 完成：显式 Retired 检索文件的逐条列举与关系核对（`--retired`、`retired_review`）。切片 B2（真实退役数据源与自动检索）、C（独立证据判定）、D（完整预测冻结）未开始。**M3a 未完成**，不能把 A/B1 的报告当作完整协议验证。
 
 **上位文档：** [PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」「独立证据与 Retired 账本」；历史输入格式见 [M2_PLAN](M2_PLAN.md)、[M2_HISTORY_FORMATS](M2_HISTORY_FORMATS.md)。
 
@@ -11,8 +11,9 @@ M3a 的 Gate：使用固定指标、冻结预测和 Retired 检索；不自动�
 | 切片 | 内容 | 状态 | 验收边界 |
 |---|---|---|---|
 | A | `tools/proposal.py draft/check`：Host 显式选组、写假设与预测，CLI 生成 `experiments/<id>/proposal.json` 并只读检查 | 完成 | 合成 CLI 测试；不联网、不调用模型、不读会话原文 |
-| B | Retired 真实检索：负样本数据源、匹配规则、关系输出 | 未开始 | 需要先定数据源和隐私边界 |
-| C | `reopen` / `alternative` 处理：重新启用已退役方案时要求新证据或用户授权 | 未开始 | 依赖 B 的负样本 |
+| B1 | 显式 Retired 检索文件：`draft --retired <JSON>` 逐条列举、`retired_review` 关系核对、`check --retired` 显式复核来源 | 完成 | 只处理提供者给出的有限文件；不扫描目录、不推断语义相关、不截断 |
+| B2 | Retired 真实数据源与自动检索：负样本来源、匹配规则、扫描范围 | 未开始 | 需要先定数据源和隐私边界 |
+| C | 独立证据判定：重新启用已退役方案时判断新证据是否独立、是否充分 | 未开始 | 依赖 B2 的负样本 |
 | D | 完整预测冻结：候选段闭合、冻结侧文件、冻结前置检查 | 未开始 | 依赖 A–C；纳入执行层核对 |
 
 M3a 的 Gate 在 B–D 完成后才能核对。切片 A 不改变 Gate 状态。
@@ -142,8 +143,195 @@ ruff format --check .
 
 `tests/proposal_fixture.py` 提供临时仓库副本和合成输入（`tools/` 与 `examples/` 复制到临时目录），`tests/test_proposal.py` 与 `tests/test_proposal_check.py` 走真实 CLI：有效引用保存、缺假设/预测报告、未知 metric / 组不存在 / 组歧义 / 畸形输入拒绝、Retired 永远阻塞、已有或冻结目录不覆盖、目录越界拒绝；`check` 拒绝编辑后的草稿（改自己 `metrics` 放行未知指标、`count` 与指针数不符、组 ID 重复）、不回读分组文件，且 `draft`/`check` 结束后完整文件树里没有字节码缓存；旧提案不在范围。可复跑的脱敏验收记录写在仓库外的临时目录。
 
-## 不做（本切片）
+## 不做（切片 A）
 
 - 不实现 Retired 检索、`reopen` / `alternative` 关系或空 `matches` 占位。
 - 不填 M-1 专属段，不生成冻结侧文件，不批准，不运行 Target 或调用模型。
 - 不复制或提交真实会话、真实分组产物或私人实验数据。
+
+## 切片 B1：显式 Retired 检索输入与关系核对（完成）
+
+### 命令
+
+```bash
+python3 -I tools/proposal.py draft \
+    --groups <分组 JSON> \
+    --candidate <Host 候选 JSON> \
+    --retired <Retired 检索 JSON> \
+    --experiment-id <新实验 ID>
+
+python3 -I tools/proposal.py check --experiment-id <已有实验 ID>
+python3 -I tools/proposal.py check --experiment-id <已有实验 ID> --retired <Retired 检索 JSON>
+```
+
+`--retired` 在两条命令里都是可选的。`draft` 不带它时保留切片 A 的 `unavailable`。`check` 不带它时不回读任何外部输入；带它时只复核来源字节 Hash 和记录一致性，不更新 proposal。
+
+### Retired 检索输入（schema 版本 1）
+
+输入是 Host 显式给出的一个有限 JSON 文件。工具按文件里的顺序逐条列举**全部** `entries`，不推断语义相关、不排序、不截断、不选 topK，也不扫描用户目录或真实退役记录。示例见 [examples/m3a/retired.sample.json](../examples/m3a/retired.sample.json)。
+
+```json
+{
+  "schema_version": 1,
+  "scope": "合成示例：本文件只列出提供者给出的 2 条退役记录，不代表完整历史",
+  "entries": [
+    {
+      "retired_id": "retired-format-guard-001",
+      "method": "把格式要求展开成整段长规则",
+      "rejected_reason": "规则过长，同类纠正次数没有下降",
+      "retired_at": "2026-10-20T00:00:00Z",
+      "evidence_groups": ["dddddddddddd"]
+    }
+  ]
+}
+```
+
+| 字段 | 约定 |
+|---|---|
+| `schema_version` | 必须是整数 `1`；其他版本直接拒绝，不做迁移 |
+| `scope` | 必填非空字符串。它只是提供者声明的检索范围，**不表示完整历史** |
+| `entries` | 必填数组，合法空数组就是真正完成过的检索结果（`completed`），但只代表该文件为空 |
+| `retired_id` | 稳定 ID，同一文件内重复即拒绝 |
+| `method` | 被退役方法的人类可读描述 |
+| `rejected_reason` | 当初否决它的原因 |
+| `retired_at` | 退役时间，带时区的 ISO 日期时间（`Z` 或 `+08:00`）；无时区、不可解析都拒绝 |
+| `evidence_groups` | 退役时可用的证据 `correlation_group` ID 数组，可以为空；同一组 ID 重复即拒绝 |
+
+`draft --retired` 的三种输入结果：
+
+| 输入状态 | 行为 |
+|---|---|
+| 未提供 `--retired` | 保存 `candidate.retired = {"status": "unavailable", "reason": "未提供 --retired 文件，本工具不做自动检索或扫描"}` |
+| 路径存在但读不到（缺失、目录、无权限） | 照常保存草稿，`status = unavailable` 并把原因写进 `reason`；**绝不能写成 no_match** |
+| 读不到但 Host 已写 `retired_review` | 退出 1，不写产物：没有可核对的检索记录，不接受无法核验的关系声明 |
+| 可读但损坏或不合法（坏 JSON、错版本、缺字段、非法时间、重复 `retired_id`、未支持字段） | 退出 1，不写任何产物 |
+
+### `candidate.retired`
+
+```json
+{
+  "status": "completed",
+  "source": {"path": "<命令行给出的路径>", "sha256": "<文件原始字节 SHA-256>"},
+  "scope": "all_entries_in_supplied_file",
+  "supplied_scope": "<文件里的 scope>",
+  "entries": [
+    {
+      "retired_id": "retired-format-guard-001",
+      "method": "把格式要求展开成整段长规则",
+      "rejected_reason": "规则过长，同类纠正次数没有下降",
+      "retired_at": "2026-10-20T00:00:00Z",
+      "evidence_groups": ["dddddddddddd"]
+    }
+  ]
+}
+```
+
+- 状态只有判别清楚的两种：`unavailable`（只有 `status`、`reason`）和 `completed`（附来源、范围、记录）。没有 `matches`、`top_k` 或 `no_match` 之类的模糊状态。
+- `scope = all_entries_in_supplied_file` 由工具写死，表示“这份文件被完整列举”，不是语义搜索。`supplied_scope` 原样回显提供者声明。
+- `entries` 与来源逐字段一致（只保留上表字段），不复制摘录或额外元数据。`status = completed` 且 `entries = []` 只表示该文件为空。
+- `source.sha256` 只绑定来源文件的原始字节，不验证内容是否真实、是否完整或语义是否独立。
+
+### Host 候选 JSON 的 `retired_review`
+
+Host 只在候选 JSON 里声明关系，不写 `matches`、`status` 或任何检索结果字段。`unrelated` / `alternative` / `reopen` 是 Host 判断，不是检索无命中的证据。
+
+```json
+{
+  "groups": ["aaaaaaaaaaaa", "bbbbbbbbbbbb"],
+  "hypothesis": {"observation": "…", "change": "…", "expected_effect": "…"},
+  "predictions": [{"metric": "test_pass_v1", "expected_change": "不下降", "falsified_when": "处理组比基线低 2 次以上"}],
+  "retired_review": {
+    "relation": "alternative",
+    "reason": "本候选用更短的规则达到同一目的，与被退役的长规则不同",
+    "entries": [
+      {
+        "retired_id": "retired-format-guard-001",
+        "relation": "alternative",
+        "reason": "同一目标，机制不同，且用了退役之后的新证据",
+        "new_evidence_groups": ["aaaaaaaaaaaa"]
+      },
+      {
+        "retired_id": "retired-checklist-002",
+        "relation": "unrelated",
+        "reason": "对象不同：本候选不涉及输出前检查清单"
+      }
+    ]
+  }
+}
+```
+
+| 规则 | 行为 |
+|---|---|
+| 总体 `relation` / `reason` | 必须声明，缺失或空串保存为 `null` 并列入 `missing`。`entries` 为空（没有检索记录）时总体关系只能是 `unrelated`，否则拒绝 |
+| 逐条 review | 以 `retired_id` 对应每条检索记录。缺少某条记录的 review、缺少该条的 `relation` / `reason` 都保存并列入 `missing` |
+| 非法值 | `relation` 不在三个取值里、`retired_id` 不存在、review 里 `retired_id` 重复、`new_evidence_groups` 引用当前候选未选中的分组、出现未支持字段（含 `user_authorized`、`matches`、`status`）都退出 1，不写产物 |
+| `unrelated` | 不需要新证据；检索到的记录仍原样保留在 `candidate.retired.entries` 里 |
+| `alternative` / `reopen` | 必须给出 `new_evidence_groups`（至少一个当前候选已选分组）。缺了列 `retired_new_evidence_required` 阻塞 |
+| 新证据时序 | 每条引用分组必须 **不** 在该记录的 `evidence_groups` 里（否则 `retired_evidence_group_reused`），且分组里每个指针的时间都必须晚于 `retired_at`（时间未知 `retired_evidence_time_unknown`，不晚于 `retired_evidence_not_after_retirement`）。这些只列阻塞，不拒绝保存 |
+| 未提供的边界 | 只检查上述必要结构和时序：不判断新证据是否语义独立、是否充分，也不接受 `user_authorized=true` 之类的手动恢复声明（手动恢复不在本切片） |
+
+### 检查与报告
+
+`draft` 和 `check` 共用同一套结构校验（`tools/proposal_retired.py`），因此手工编辑过的 proposal 也按同一规则检查，不信任草稿里自造的枚举或模板。
+
+`freeze_ready` 在切片 B1 仍恒为 `false`：`freeze_ready_blockers` 固定包含 `prediction_freeze_not_implemented`（预测冻结和正式核验未实现），再叠加下面这些 Retired 相关项：
+
+| 阻塞标识 | 含义 |
+|---|---|
+| `retired_unavailable` | 没有可用的 Retired 检索结果（未提供、读不到，或旧草稿） |
+| `retired_review_incomplete` | 总体或逐条关系、理由缺项 |
+| `retired_new_evidence_required` | 声明 `alternative` / `reopen` 却没给新证据分组 |
+| `retired_evidence_group_reused` | 新证据引用了该记录退役时已有的分组 |
+| `retired_evidence_time_unknown` | 引用分组的时间缺失或不可解析 |
+| `retired_evidence_not_after_retirement` | 引用分组不晚于 `retired_at` |
+
+报告在切片 A 的键之外新增：
+
+| 键 | 含义 |
+|---|---|
+| `retired` | 存储的 `candidate.retired` 原样回显（检索事实） |
+| `retired_review` | 规范化的 Host 关系判断；未提供时为 `null` |
+| `retired_findings` | 逐条关系问题的可读说明（含 `retired_id`），与上面的阻塞标识对应 |
+| `retired_source_check` | `draft` 为 `not_performed`；默认 `check` 为 `not_performed` 并说明**默认 check 不回读外部输入，无法检测外部变化**；`check --retired` 为 `unchanged` / `changed` / `unavailable` |
+
+`check --retired <file>` 只读复核：重算来源字节 sha256 并与草稿绑定比对，重新解析记录并与存储的 `entries`、`supplied_scope` 比对。`changed` 或 `unavailable` 时报告 `action_required: re_search_required`、`proposal_updated: false`，退出 1；报告仍是完整 JSON（与 `draft` 输入错误不同：这是已完成的复核结论，不是输入被拒绝），proposal 字节不变。复核通过时 `status: unchanged`、退出 0。来源不可用或损坏不写成 no_match，也不自动改写草稿。草稿本身是 `unavailable`（旧切片 A 草稿）时，`check --retired` 只回 `not_performed` 并说明无需复核，不迁移、不重写。
+
+### 完整可跑示例
+
+示例文件全部手写合成，不含真实退役记录、真实路径或会话内容：
+
+- [examples/m3a/groups.sample.json](../examples/m3a/groups.sample.json)：切片 A 的分组输入
+- [examples/m3a/candidate.sample.json](../examples/m3a/candidate.sample.json)：带 `retired_review` 的 Host 候选
+- [examples/m3a/retired.sample.json](../examples/m3a/retired.sample.json)：Retired 检索输入
+
+```bash
+cd <仓库副本>
+python3 -I tools/proposal.py draft \
+    --groups examples/m3a/groups.sample.json \
+    --candidate examples/m3a/candidate.sample.json \
+    --retired examples/m3a/retired.sample.json \
+    --experiment-id m3a-b1-demo
+python3 -I tools/proposal.py check --experiment-id m3a-b1-demo \
+    --retired examples/m3a/retired.sample.json
+```
+
+示例的 `retired_review` 把一条记录判为 `alternative`（引用的分组时间晚于 `retired_at`，且不在该记录的 `evidence_groups` 里），另一条判为 `unrelated`。因此示例报告里 `retired_findings` 为空，但 `freeze_ready` 仍是 `false`。
+
+### 验证
+
+```bash
+python3 -m unittest discover -s tests -t tests
+ruff check .
+ruff format --check .
+```
+
+`tests/proposal_fixture.py` 增加合成 Retired 输入，`tests/test_proposal_retired.py`（draft）与 `tests/test_proposal_retired_check.py`（check）走真实 CLI 覆盖：未提供/不存在/目录来源保存 `unavailable` 且不是 no_match、合法空来源需要 Host 声明并保留阻塞、畸形/重复/非法字段拒绝、记录逐条列举且理由来自源、命中缺关系阻塞、`unrelated` 保留命中事实、`reopen`/`alternative` 缺新证据/旧时间/同组阻塞、有效新证据放行（仍不可冻结）、伪造 ID/字段拒绝、显式 `check --retired` 报告来源变化且文件不变、默认 `check` 不回读来源、旧 `unavailable` 草稿照常阻塞、全树无 `.pyc`。示例文件本身也由一条 CLI 测试保证可跑。
+
+### 本切片的边界
+
+- 没有自动 Retired 检索或数据源接入（B2 未做），不扫描目录，不猜相关。
+- 不判断新证据的语义独立性或充分性，不实现手动恢复授权（C 未做），`user_authorized` 之类字段直接拒绝。
+- 预测冻结、冻结侧文件、正式核验未实现（D 未做），`freeze_ready` 恒为 false。
+- 不迁移或重写切片 A 的旧 `unavailable` 草稿；它们照常列 `retired_unavailable` 阻塞。
+- 不新增目录覆盖能力：`experiments/<id>` 已存在或已冻结时仍拒绝写入。
+- 不修改 M2 文档、资产登记表或 PHE_SPEC；本轮不改 M-1 模板。

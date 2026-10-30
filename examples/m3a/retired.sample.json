@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "scope": "合成示例：本文件只列出提供者给出的 2 条退役记录，不代表完整历史",
+  "entries": [
+    {
+      "retired_id": "retired-format-guard-001",
+      "method": "把格式要求展开成整段长规则",
+      "rejected_reason": "规则过长，同类纠正次数没有下降",
+      "retired_at": "2026-10-20T00:00:00Z",
+      "evidence_groups": ["dddddddddddd"]
+    },
+    {
+      "retired_id": "retired-checklist-002",
+      "method": "每次回答前输出检查清单",
+      "rejected_reason": "增加墙钟时间，测试通过数没有提升",
+      "retired_at": "2026-10-27T00:00:00Z",
+      "evidence_groups": []
+    }
+  ]
+}

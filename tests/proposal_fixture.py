@@ -24,6 +24,9 @@ CLAUDE_PATH = "/home/alice/.claude/projects/-home-alice-proj/aaaa.jsonl"
 CODEX_PATH = "/home/alice/.codex/sessions/2026/10/28/rollout-bbbb.jsonl"
 GROUP_A = "aaaaaaaaaaaa"
 GROUP_B = "bbbbbbbbbbbb"
+OLD_GROUP = "dddddddddddd"
+RETIRED_ID_A = "retired-demo-001"
+RETIRED_ID_B = "retired-demo-002"
 EXCERPT_SENTINEL = "SENTINEL-EXCERPT-不应进入提案"
 REPO_FILES = ("tools", "examples")
 
@@ -83,6 +86,53 @@ def valid_candidate():
     }
 
 
+def retired_document():
+    """切片 B1 的合成 Retired 检索输入：两条记录都早于示例分组的时间。"""
+    return {
+        "schema_version": 1,
+        "scope": "合成示例：本文件只列出提供者给出的 2 条退役记录，不代表完整历史",
+        "entries": [
+            {
+                "retired_id": RETIRED_ID_A,
+                "method": "把格式要求展开成整段长规则",
+                "rejected_reason": "规则过长，同类纠正次数没有下降",
+                "retired_at": "2026-10-20T00:00:00Z",
+                "evidence_groups": [OLD_GROUP],
+            },
+            {
+                "retired_id": RETIRED_ID_B,
+                "method": "每次回答前输出检查清单",
+                "rejected_reason": "增加墙钟时间，测试通过数没有提升",
+                "retired_at": "2026-10-27T00:00:00Z",
+                "evidence_groups": [],
+            },
+        ],
+    }
+
+
+def candidate_with_review(review=None):
+    """完整声明：默认把第一条判为 alternative（用 GROUP_A 的新证据），第二条判为 unrelated。"""
+    candidate = valid_candidate()
+    candidate["retired_review"] = review or {
+        "relation": "alternative",
+        "reason": "目标相同，机制不同，且引用了退役之后的新证据分组",
+        "entries": [
+            {
+                "retired_id": RETIRED_ID_A,
+                "relation": "alternative",
+                "reason": "用更短的规则达到同一目标，并引用了退役之后的分组",
+                "new_evidence_groups": [GROUP_A],
+            },
+            {
+                "retired_id": RETIRED_ID_B,
+                "relation": "unrelated",
+                "reason": "对象不同：本候选不涉及输出前检查清单",
+            },
+        ],
+    }
+    return candidate
+
+
 class RepoCopyCase(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory(prefix="phe-proposal-")
@@ -98,8 +148,10 @@ class RepoCopyCase(unittest.TestCase):
         self.experiments = self.repo / "experiments"
         self.groups_path = self.tmp / "groups.json"
         self.candidate_path = self.tmp / "candidate.json"
+        self.retired_path = self.tmp / "retired.json"
         self.write_groups(groups_document())
         self.write_candidate(valid_candidate())
+        self.write_retired(retired_document())
 
     def write_groups(self, document, name="groups.json"):
         path = self.tmp / name
@@ -121,6 +173,16 @@ class RepoCopyCase(unittest.TestCase):
             self.candidate_path = path
         return path
 
+    def write_retired(self, document, name="retired.json"):
+        path = self.tmp / name
+        if isinstance(document, str):
+            path.write_text(document, encoding="utf-8")
+        else:
+            path.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        if name == "retired.json":
+            self.retired_path = path
+        return path
+
     def cli(self, *argv):
         return subprocess.run(
             [sys.executable, "-I", str(self.repo / "tools/proposal.py"), *argv],
@@ -130,19 +192,24 @@ class RepoCopyCase(unittest.TestCase):
             check=False,
         )
 
-    def draft(self, experiment_id=EXPERIMENT_ID, groups=None, candidate=None):
-        return self.cli(
+    def draft(self, experiment_id=EXPERIMENT_ID, groups=None, candidate=None, retired=None):
+        argv = [
             "draft",
             "--groups",
             str(groups or self.groups_path),
             "--candidate",
             str(candidate or self.candidate_path),
-            "--experiment-id",
-            experiment_id,
-        )
+        ]
+        if retired is not None:
+            argv.extend(["--retired", str(retired)])
+        argv.extend(["--experiment-id", experiment_id])
+        return self.cli(*argv)
 
-    def check(self, experiment_id=EXPERIMENT_ID):
-        return self.cli("check", "--experiment-id", experiment_id)
+    def check(self, experiment_id=EXPERIMENT_ID, retired=None):
+        argv = ["check", "--experiment-id", experiment_id]
+        if retired is not None:
+            argv.extend(["--retired", str(retired)])
+        return self.cli(*argv)
 
     def proposal(self, experiment_id=EXPERIMENT_ID):
         return json.loads((self.experiments / experiment_id / "proposal.json").read_text(encoding="utf-8"))

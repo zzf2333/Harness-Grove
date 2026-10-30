@@ -1,82 +1,64 @@
-"""M3a 切片 A 的候选段：从 M2 分组产物解析证据，规范化 Host 判断，并做 draft/check 共用检查。
+"""M3a 候选段：从 M2 分组产物解析证据，规范化 Host 判断，并做 draft/check 共用检查。
 
-这里只处理数据：选组、绑定指针、校验候选结构与报告缺项。写盘和路径守卫在
-`tools/proposal.py`。证据只复制 `source_path`、`line`、`ts`，不复制 `excerpt`，也不读会话原文。
+这里只处理数据：选组、绑定指针、校验候选结构、Retired 结构与 Host 判断的一致性，并报告缺项。
+写盘和路径守卫在 `tools/proposal.py`；显式 Retired 输入在 `tools/proposal_retired.py`。证据只复制
+`source_path`、`line`、`ts`，不复制 `excerpt`，也不读会话原文。
 
-本切片没有 Retired 数据源与检索：`candidate.retired` 固定为 unavailable，拒绝 Host 声明已检索，
-`freeze_ready` 永远不是 true。报告只覆盖候选段和模板区明显的 null 字段，不是完整协议验证。
+`freeze_ready` 永远不是 true：预测冻结与正式核验未实现。报告只覆盖候选段、Retired 结构和模板块明显的
+null 字段，不是完整协议验证。
 """
 
 import json
-import re
+
+from proposal_input import (
+    InputError,
+    check_keys,
+    non_empty_string,
+    parse_timestamp,
+    positive_int,
+    read_json_object,
+    sha256_hex,
+)
+from proposal_retired import (
+    REVIEW_PATH,
+    dedupe,
+    inspect_retired,
+    normalize_review,
+)
 
 EXPERIMENTS_DIR = "experiments"
-HASH = re.compile(r"^[0-9a-f]{64}$")
 HYPOTHESIS_FIELDS = ("observation", "change", "expected_effect")
 PREDICTION_FIELDS = ("expected_change", "falsified_when")
-HOST_INPUT_KEYS = {"groups", "hypothesis", "predictions"}
+HOST_INPUT_KEYS = {"groups", "hypothesis", "predictions", "retired_review"}
 CANDIDATE_KEYS = {"origin", "evidence", "host_judgment", "retired"}
 EVIDENCE_KEYS = {"groups_file", "selected_group_ids", "groups"}
 GROUPS_FILE_KEYS = {"path", "sha256"}
 GROUP_KEYS = {"correlation_group", "host", "session_id", "project", "kind", "count", "pointers"}
 POINTER_KEYS = {"source_path", "line", "ts"}
 JUDGMENT_KEYS = {"source", "hypothesis", "predictions"}
-RETIRED_KEYS = {"status", "reason"}
-
 CANDIDATE_ORIGIN = "experience_scan"
 HOST_JUDGMENT_SOURCE = "host_judgment_not_measurement"
-RETIRED_STATUS = "unavailable"
-RETIRED_REASON = "尚无Retired数据源及检索实现"
+BLOCK_PREDICTION_FREEZE = "prediction_freeze_not_implemented"
 SCOPE = "candidate_evidence_and_obvious_unfilled_fields_only"
 LEGACY_SCOPE = "legacy_proposal_out_of_scope"
 NOTES = (
-    "报告只覆盖候选段和明显的未填 null 字段，不是完整协议验证",
-    "分组文件 sha256 只绑定输入字节，不验证语义质量、证据强度或预测是否合理",
-    "hypothesis 与 predictions 是 Host 判断，不是实测",
-    "本切片没有 Retired 数据源与检索，freeze_ready 永远不是 true",
+    "报告只覆盖候选段、Retired 结构和明显的未填 null 字段，不是完整协议验证",
+    "Retired 输入是显式提供的有限文件，按整份逐条列举；不推断语义相关、不截断、不选 topK",
+    "candidate.retired 的 completed 只表示该文件已完整列举；entries 为空只表示该文件为空，不是完整历史无退役",
+    "unrelated / alternative / reopen 是 Host 判断，不是检索无命中的证据",
+    "分组与 Retired 文件的 sha256 只绑定输入字节，不验证语义质量、证据独立性或预测是否合理",
+    "预测冻结与正式核验未实现，freeze_ready 永远不是 true",
 )
-
-
-class InputError(ValueError):
-    """输入或结构不合法：调用方退出 1，不写任何产物。"""
-
-
-def read_json_object(path, label):
-    """读一个 UTF-8 JSON 对象，同时返回原始字节（分组文件的 sha256 绑定用）。"""
-    try:
-        raw = path.read_bytes()
-    except OSError as exc:
-        raise InputError(f"{label} 读不到：{path}: {exc}") from exc
-    try:
-        data = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise InputError(f"{label} 不是合法 UTF-8 JSON：{path}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise InputError(f"{label} 顶层不是对象：{path}")
-    return data, raw
-
-
-def check_keys(where, value, required, allowed=None):
-    """字段集合校验：缺必填或出现未支持字段都拒绝，不猜。"""
-    present = set(value)
-    missing = sorted(required - present)
-    if missing:
-        raise InputError(f"{where} 缺少字段：{'、'.join(missing)}")
-    unexpected = sorted(present - (required if allowed is None else allowed))
-    if unexpected:
-        raise InputError(f"{where} 含未支持字段：{'、'.join(unexpected)}")
-
-
-def non_empty_string(where, value):
-    if not isinstance(value, str) or not value.strip():
-        raise InputError(f"{where} 不是非空字符串")
-    return value
-
-
-def positive_int(where, value):
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        raise InputError(f"{where} 不是正整数")
-    return value
+DRAFT_SOURCE_CHECK = {
+    "status": "not_performed",
+    "reason": "draft 只处理本次输入，不复核既有草稿",
+    "proposal_updated": False,
+}
+DEFAULT_SOURCE_CHECK = {
+    "status": "not_performed",
+    "reason": "默认 check 不回读外部 Retired 文件，无法检测外部变化；需要复核时用 check --retired <file>",
+    "proposal_updated": False,
+}
 
 
 def normalize_group(where, group):
@@ -205,10 +187,12 @@ def read_host_candidate(path, metric_names):
     for index, selector in enumerate(selectors):
         non_empty_string(f"groups[{index}]", selector)
     judgment = build_host_judgment(data.get("hypothesis"), data.get("predictions"), metric_names)
+    if "retired_review" in data:
+        judgment["retired_review"] = normalize_review("retired_review", data["retired_review"])
     return selectors, judgment
 
 
-def build_candidate(selected, groups_sha256, groups_path, judgment):
+def build_candidate(selected, groups_sha256, groups_path, judgment, retired):
     return {
         "origin": CANDIDATE_ORIGIN,
         "evidence": {
@@ -217,7 +201,7 @@ def build_candidate(selected, groups_sha256, groups_path, judgment):
             "groups": selected,
         },
         "host_judgment": judgment,
-        "retired": {"status": RETIRED_STATUS, "reason": RETIRED_REASON},
+        "retired": retired,
     }
 
 
@@ -244,9 +228,7 @@ def inspect_evidence(evidence):
         raise InputError("candidate.evidence.groups_file 不是对象")
     check_keys("candidate.evidence.groups_file", groups_file, GROUPS_FILE_KEYS)
     non_empty_string("candidate.evidence.groups_file.path", groups_file.get("path"))
-    digest = groups_file.get("sha256")
-    if not isinstance(digest, str) or not HASH.fullmatch(digest):
-        raise InputError("candidate.evidence.groups_file.sha256 不是小写十六进制 SHA-256")
+    sha256_hex("candidate.evidence.groups_file.sha256", groups_file.get("sha256"))
     selectors = evidence.get("selected_group_ids")
     if not isinstance(selectors, list) or not selectors:
         raise InputError("candidate.evidence.selected_group_ids 不是非空数组")
@@ -256,6 +238,7 @@ def inspect_evidence(evidence):
     if not isinstance(groups, list) or not groups:
         raise InputError("candidate.evidence.groups 不是非空数组")
     group_ids = []
+    group_times = {}
     pointer_count = 0
     for index, group in enumerate(groups):
         where = f"candidate.evidence.groups[{index}]"
@@ -286,17 +269,32 @@ def inspect_evidence(evidence):
             ts = pointer.get("ts")
             if ts is not None and not isinstance(ts, str):
                 raise InputError(f"{pointer_where}.ts 不是字符串或 null")
+        group_times[group_id] = group_earliest_time(where, pointers)
         pointer_count += len(pointers)
     if group_ids != selectors:
         raise InputError("candidate.evidence.selected_group_ids 与 groups 的顺序或内容不一致")
-    return selectors, len(groups), pointer_count
+    return selectors, len(groups), pointer_count, group_times
+
+
+def group_earliest_time(where, pointers):
+    """分组里每个指针都带可解析时间时取最早一条；任一未知就返回 None，不猜。"""
+    times = []
+    for index, pointer in enumerate(pointers):
+        value = pointer.get("ts")
+        if value is None:
+            return None
+        try:
+            times.append(parse_timestamp(f"{where}.pointers[{index}].ts", value))
+        except InputError:
+            return None
+    return min(times)
 
 
 def inspect_judgment(candidate, metric_names):
     judgment = candidate.get("host_judgment")
     if not isinstance(judgment, dict):
         raise InputError("candidate.host_judgment 不是对象")
-    check_keys("candidate.host_judgment", judgment, JUDGMENT_KEYS)
+    check_keys("candidate.host_judgment", judgment, JUDGMENT_KEYS, {*JUDGMENT_KEYS, "retired_review"})
     missing = []
     if judgment.get("source") != HOST_JUDGMENT_SOURCE:
         missing.append("candidate.host_judgment.source")
@@ -335,7 +333,10 @@ def inspect_judgment(candidate, metric_names):
                 raise InputError(f"{field_where} 不是字符串或 null")
             elif not value.strip():
                 missing.append(field_where)
-    return missing
+    review = judgment.get("retired_review")
+    if review is not None:
+        review = normalize_review(REVIEW_PATH, review)
+    return missing, review
 
 
 def inspect_proposal(proposal, metric_names):
@@ -354,24 +355,13 @@ def inspect_proposal(proposal, metric_names):
     metrics = proposal.get("metrics")
     if not isinstance(metrics, dict) or not metrics:
         raise InputError("proposal 缺少 metrics 字典")
-    selectors, group_count, pointer_count = inspect_evidence(candidate.get("evidence"))
-    missing = inspect_judgment(candidate, metric_names)
-    retired = candidate.get("retired")
-    if not isinstance(retired, dict):
-        raise InputError("candidate.retired 不是对象")
-    check_keys("candidate.retired", retired, RETIRED_KEYS)
-    if retired.get("status") != RETIRED_STATUS:
-        raise InputError(
-            "candidate.retired.status 只能是 unavailable：本切片没有 Retired 数据源和检索，不接受 Host 声明已检索"
-        )
-    reason = retired.get("reason")
-    if not isinstance(reason, str):
-        raise InputError("candidate.retired.reason 不是字符串")
-    if not reason.strip():
-        missing.append("candidate.retired.reason")
+    selectors, group_count, pointer_count, group_times = inspect_evidence(candidate.get("evidence"))
+    missing, review = inspect_judgment(candidate, metric_names)
+    retired = inspect_retired(candidate.get("retired"), review, selectors, group_times)
+    missing.extend(retired["missing"])
 
     unfilled = null_fields({key: value for key, value in proposal.items() if key != "candidate"})
-    blockers = ["retired_unavailable"]
+    blockers = dedupe([*retired["blockers"], BLOCK_PREDICTION_FREEZE])
     if missing:
         blockers.append("candidate_incomplete")
     if unfilled:
@@ -381,7 +371,9 @@ def inspect_proposal(proposal, metric_names):
         "missing": missing,
         "null_fields": unfilled,
         "blockers": blockers,
-        "retired": retired,
+        "retired": retired["retired"],
+        "retired_review": retired["review"],
+        "retired_findings": retired["findings"],
         "evidence": {
             "groups_file": candidate["evidence"]["groups_file"],
             "selected_group_ids": selectors,
@@ -391,7 +383,7 @@ def inspect_proposal(proposal, metric_names):
     }
 
 
-def candidate_report(action, experiment_id, root, inspection):
+def candidate_report(action, experiment_id, root, inspection, source_check):
     report = {
         "action": action,
         "scope": SCOPE,
@@ -405,6 +397,9 @@ def candidate_report(action, experiment_id, root, inspection):
         "missing": inspection["missing"],
         "null_fields": inspection["null_fields"],
         "retired": inspection["retired"],
+        "retired_review": inspection["retired_review"],
+        "retired_findings": inspection["retired_findings"],
+        "retired_source_check": source_check,
         "evidence": inspection["evidence"],
         "notes": list(NOTES),
     }
@@ -415,7 +410,7 @@ def candidate_report(action, experiment_id, root, inspection):
     return report
 
 
-def legacy_report(experiment_id, root):
+def legacy_report(experiment_id, root, source_check):
     return {
         "action": "check",
         "scope": LEGACY_SCOPE,
@@ -430,6 +425,9 @@ def legacy_report(experiment_id, root):
         "missing": [],
         "null_fields": [],
         "retired": None,
+        "retired_review": None,
+        "retired_findings": [],
+        "retired_source_check": source_check,
         "evidence": None,
         "notes": [
             "该提案没有 candidate 段：本检查只适用于 M3a 候选草稿，不使旧提案失效",

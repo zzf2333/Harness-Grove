@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 2026-10-30 · M3a 切片 B1：显式 Retired 检索输入与关系核对
+
+- `draft` 新增可选 `--retired <JSON>`：Host 显式给出的有限文件（`schema_version: 1`、`scope`、`entries`）按原顺序逐条列举，不推断语义相关、不排序、不截断、不选 topK，也不扫描目录或真实退役记录。`candidate.retired` 只有 `unavailable`（未提供或读不到，带原因）和 `completed`（来源路径 + 原始字节 sha256、`scope=all_entries_in_supplied_file`、`entries`）两种状态；只提供路径但读不到时保存 `unavailable` 并写原因，不冒充 no_match。`entries` 为空只表示该文件为空。
+- Host 候选新增可选 `retired_review`：总体 `relation` / `reason` 加逐条 `retired_id` 关系（`unrelated` / `alternative` / `reopen`），**不接收** `matches`、`status`、`user_authorized` 等字段。缺声明/理由可保存并列入 `missing`；非法枚举、未知或重复 `retired_id`、引用当前候选未选中的分组直接拒绝。`alternative` / `reopen` 要求引用退役之后、且不在该记录 `evidence_groups` 里的分组，否则列 `retired_evidence_group_reused` / `retired_evidence_time_unknown` / `retired_evidence_not_after_retirement` 阻塞。只校验必要结构和时序，不声称新证据语义独立或充分，也不实现手动恢复。
+- `check` 默认仍不回读外部输入，报告用 `retired_source_check=not_performed` 明确说明无法检测外部变化；新增 `check --retired <file>` 显式重算来源 sha256 并比对存储的记录，变化或来源不可用时报 `re_search_required`、退出 1，且不改写 proposal。存储的 Retired 结构与 Host 判断用与 `draft` 相同的规则检查，不信任草稿自造的枚举或模板。
+- `freeze_ready` 在 B1 仍恒为 false，新增固定阻塞 `prediction_freeze_not_implemented`；旧切片 A 的 `unavailable` 草稿照常列阻塞，不迁移、不重写。目录覆盖能力不变（已有或冻结目录仍拒绝写入），`dont_write_bytecode` 保留。
+- 新增 `tools/proposal_input.py`（共用输入校验）、`tools/proposal_retired.py`（Retired 输入、关系核对、来源复核），`tools/proposal_candidate.py` 只保留候选段与报告；新增 `examples/m3a/` 三份可直接跑的合成输入示例（分组、带 `retired_review` 的候选、Retired 检索）。README、SKILL §10、`docs/M3a_PLAN.md` 同步。真实的 Retired 数据源/自动检索（B2）、独立证据判断（C）、完整预测冻结（D）未开始，**M3a 未完成**。
+
 ## 2026-10-30 · M3a 切片 A 与 M2 结项
 
 - 新增 `tools/proposal.py draft/check`（候选结构在 `tools/proposal_candidate.py`）：从 M2 分组产物生成经验候选提案。证据只复制 `source_path`/`line`/`ts` 和分组文件原始字节 sha256，不复制摘录；复用 M-1 模板完整形状与 `metrics`，只改实验身份、`status=draft` 和 artifact 路径，并追加 `candidate`。

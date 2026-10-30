@@ -130,7 +130,7 @@ rm -rf "$TMP"
 
 `run` 被拒绝说明批准绑定生效；只有拒绝发生在任何 Target 启动之前才算通过。演练期间不执行真实的 `run` 成功路径。
 
-## 10. 经验扫描草稿（M3a 切片 A）
+## 10. 经验扫描草稿（M3a 切片 A/B1）
 
 从 M2 的分组产物起草候选提案时，用 `tools/proposal.py`，不要手工复制模板：
 
@@ -138,13 +138,18 @@ rm -rf "$TMP"
 python3 -I tools/proposal.py draft \
     --groups <分组 JSON> \
     --candidate <Host 候选 JSON> \
+    [--retired <Retired 检索 JSON>] \
     --experiment-id <新实验 ID>
-python3 -I tools/proposal.py check --experiment-id <实验 ID>
+python3 -I tools/proposal.py check --experiment-id <实验 ID> [--retired <Retired 检索 JSON>]
 ```
 
-- `--candidate` 只有 `groups`、`hypothesis`、`predictions` 三个字段。证据只从 `--groups` 解析；Host 自填引用、`excerpt` 和 Retired 声明都不接收。
-- stdout 是 JSON：`saved` / `checked` 只表示保存或检查成功，`freeze_ready` 单独报告。`missing`、`null_fields`、`freeze_ready_blockers` 要逐项处理；不能把“保存成功”当成“可以冻结”。
-- 带 `candidate` 的草稿在进入 §3 冻结前必须先运行 `check`；`freeze_ready` 为 false 或有阻塞项时不得冻结。这是流程约束：本切片没有 Retired 数据源和检索，`freeze_ready` 永远不是 true，工具也不阻止宿主手工写 `proposal.sha256`。
-- 报告只覆盖候选段和明显的未填项，不是完整协议验证。分组文件 sha256 只绑定输入字节，不验证语义质量、证据强度或预测是否合理。
+- `--candidate` 只有 `groups`、`hypothesis`、`predictions`、`retired_review` 四个字段。证据只从 `--groups` 解析；Host 自填引用、`excerpt` 和检索结果字段都不接收。
+- `--retired` 传入的是 Host 显式给出的**有限** JSON 文件（`schema_version: 1`、`scope`、`entries`），不是工具或模型的自动检索。工具逐条列举文件里的全部记录，不猜相关、不截断、不扫描目录。没有 `--retired`、或文件读不到时，`candidate.retired` 为 `unavailable` 并带原因，不能当成“没有退役记录”。
+- `retired_review` 是 Host 自己的判断：总体 `relation` / `reason` 加逐条 `retired_id` 关系。`unrelated` 也要写理由；`alternative` / `reopen` 必须引用当前候选已选分组、不得使用该记录退役时的旧证据组，且时间必须晚于 `retired_at`。不填或填不全可以保存，但会出现在 `missing` 和 `retired_evidence_*` / `retired_review_incomplete` 阻塞里。不要写 `user_authorized`、`matches`、`status` 这类字段，工具会直接拒绝；手动恢复不在本切片。
+- stdout 是 JSON：`saved` / `checked` 只表示保存或检查成功，`freeze_ready` 单独报告。`missing`、`null_fields`、`freeze_ready_blockers`、`retired_findings` 要逐项处理；不能把“保存成功”当成“可以冻结”。
+- 带 `candidate` 的草稿在进入 §3 冻结前必须先运行 `check`；`freeze_ready` 为 false 或有阻塞项时不得冻结。这是流程约束：工具不会阻止宿主手工写 `proposal.sha256`。
+- 默认 `check` 不回读外部输入，`retired_source_check` 会是 `not_performed`，所以它**无法发现退役来源后来变了**。需要复核时显式传 `check --retired <文件>`：来源变化或不可用会报 `re_search_required`、退出 1，需要重新检索并新建草稿，不要手改已保存的 `candidate.retired`。
+- `freeze_ready` 在 B1 恒为 false：预测冻结与正式核验未实现，剩余阻塞里一定有 `prediction_freeze_not_implemented`。
+- 报告只覆盖候选段、Retired 结构和明显的未填项，不是完整协议验证。分组文件与 Retired 文件的 sha256 只绑定输入字节，不验证语义质量、证据独立性或预测是否合理；关系是否真的 `unrelated` 是 Host 的判断责任。
 - 没有 `candidate` 的旧提案不在 `check` 范围内，不被判为失效。
-- 契约、示例和未完成的切片见 [docs/M3a_PLAN.md](../../docs/M3a_PLAN.md)。
+- 可跑的合成示例在 [examples/m3a/](../../examples/m3a/)；契约、示例和未完成的切片见 [docs/M3a_PLAN.md](../../docs/M3a_PLAN.md)。
