@@ -6,8 +6,8 @@
 - `review --execution x0001 --record <JSON> --phe-home` 只追加一条 `kind=review` 事实：记录内容、记录文件路径与原始字节 sha256、`at`。`verdict` 只有 `keep` / `adjust` / `revert` / `observe`，`prediction_met` 只有 `met` / `not_met` / `unknown`；`observations` 是证据指针列表（可为空），`next` 写下一步或缺什么。工具只记录、不判断效果：不改 `applied`/`restored` 状态、不调用 `restore`、不碰配置和发布；同一执行可多次 review，旧行不改写。`status` 每个执行增加 `latest_review`（无则 `null`）。守卫只查 `--phe-home`，不需要 `--home`。
 - 语义写进文档：`verdict=revert` 只是建议，用户批准后才 `restore`，已恢复的执行不重复恢复；`observe` 表示证据不足，对已恢复执行表述为“待补证据”；`prediction_met` 只说原预测是否达到，不是因果证明；写入临时配置 ≠ Host 已加载。
 - `tests/test_change.py` 增加一条正常链路用例：apply → review（`observe`/`unknown`）→ review（`keep`/`met`），两条历史保留、`latest_review` 为后者；`review-plan` 回显原预测、证据、报告引用与观察窗；`restore` 后 `review-plan` 与 `status` 仍读得到 review，且 review 前后目标文件 sha256、发布链接和执行状态不变。
-- 新增 `tools/rehearse_review.py`：复制切片 2 的 `experiments/loop-apply-001/phe/` 到 `experiments/loop-review-001/phe`（原目录不改），对真实演练执行 `x0001` 写 `observe`/`unknown` 的 review，并在明确标注【合成】的会话 JSONL 上按 P1 的 `prediction.verify` 手工计数，把合成 review 写进单独的账本副本 `experiments/loop-review-001/synthetic/phe`，不混入真实演练账本；36 条断言全部成立，工件不清理。合成样例只证明复盘流程可运行，不证明规则有效。
-- 边界：没有自动取样、自动统计或自动判定，观察窗与计数由宿主给出；review 记录不构成效果证据。切片 2 两个执行的 `applied_at` 与 `restored_at` 同秒，观察窗退化为一个时刻，真实复盘要在应用后、恢复前取样。畸形 record、并发写入、权限与攻击场景不在本轮范围。
+- 新增 `tools/rehearse_review.py`（合成样例在 `tools/rehearse_review_synthetic.py`）：复制切片 2 的 `experiments/loop-apply-001/phe/` 到 `experiments/loop-review-001/phe`（原目录不改），对真实演练执行 `x0001` 写 `observe`/`unknown` 的 review；另在 `experiments/loop-review-001/synthetic/` 下建一套独立【合成】沙箱（小 base + 三个软链入口 + 全新 PHE_HOME），apply 合成条目 `S1` 后不 restore，观察窗因此是 `[应用时刻, 至今)`，合成会话时间戳按相对实际 `applied_at` 的偏移生成，按窗口两端取样后手算 `cwd does not exist` 次数，结论按窗口内计数推导（本例窗口前 2 次、窗口内 2 次 → `adjust`/`not_met`）；另用零宽窗口样例证明切片 2 `x0001` 的窗口内观察数为 0、结论只能是 `observe`/`unknown`。45 条断言全部成立，工件不清理；合成产物与真实演练账本分开，只证明复盘流程可运行，不证明规则有效。
+- 边界：没有自动取样、自动统计或自动判定，观察窗与计数由宿主给出；review 记录不构成效果证据。取样按源记录自身的 `ts` 核对观察窗两端（`from` 与 `to`），`history.py --since` 只到日期粒度、只能粗筛。切片 2 两个执行的 `applied_at` 与 `restored_at` 同秒，观察窗退化为一个时刻，真实复盘要在应用后、恢复前取样。畸形 record、并发写入、权限与攻击场景不在本轮范围。
 
 ## 2026-10-30 · 闭环切片 2：批准、应用与逆序恢复（仅临时配置）
 

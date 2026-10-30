@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""闭环切片 3 演练：在切片 2 的账本副本上读观察窗、写 review，并跑一份【合成】观察样例。
+"""闭环切片 3 演练：在切片 2 的账本副本上读观察窗、写 review，并跑【合成】的观察窗取样样例。
 
 只读 `--source`（切片 2 演练的 `<phe>` 目录），把它复制到 `--out/phe`，原目录不改。复制后先
 `review-plan` 列出两个已恢复执行的观察窗、原预测和证据，再对真实演练执行 `x0001` 写一条
 `verdict=observe` / `prediction_met=unknown` 的 review：它只在临时沙箱 home 应用过，真实 Host 从未加载，
-也没有基线。然后在一份明确标注【合成】的会话 JSONL 上按 P1 的 `prediction.verify` 手工计数，把合成
-review 写进单独的账本副本 `--out/synthetic/phe`，不混入真实演练账本。全部工件留在 `--out`，不清理。
+也没有基线。然后在一套【合成】沙箱（`rehearse_review_synthetic.py`）里 apply 一条合成条目后不 restore，
+观察窗是 `[应用时刻, 至今)`；合成会话的时间戳按相对实际 `applied_at` 的偏移生成，按窗口两端取样后手算
+P1 口径的 `cwd does not exist` 次数，把合成 review 写进合成账本。零宽窗口样例证明窗口外的命中不计入观察。
+合成产物与真实演练账本分开，都标注【合成】，只证明复盘流程可运行。工件留在 `--out`，不清理。
 不写真实 `~/.pi`、`~/.codex`、`~/.claude` 或 temper。
 """
 
@@ -19,17 +21,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from rehearse_change import REPO, Rehearsal, git, ledger, sha256, write
-
-# 【合成】会话：不是真实会话，只为演示 P1 的 verify 计数方法。时间与应用时刻同日、同格式，可直接比字符串。
-SYNTHETIC_SESSION = [
-    {"ts": "2026-10-30T09:10:00Z", "session_id": "synthetic-001", "text": "派发子代理：交接写明工作树路径"},
-    {"ts": "2026-10-30T09:40:00Z", "session_id": "synthetic-001", "text": "worker 完成后后续派发报 cwd does not exist"},
-    {"ts": "2026-10-30T10:30:00Z", "session_id": "synthetic-001", "text": "应用前另一次派发：cwd does not exist"},
-    {"ts": "2026-10-30T11:20:00Z", "session_id": "synthetic-001", "text": "worker 完成后后续派发：cwd does not exist"},
-    {"ts": "2026-10-30T11:50:00Z", "session_id": "synthetic-001", "text": "审查交接写明有效 cwd 与提交范围"},
-    {"ts": "2026-10-30T12:30:00Z", "session_id": "synthetic-001", "text": "应用后第二次派发：cwd does not exist"},
-]
-PHRASE = "cwd does not exist"
+from rehearse_review_synthetic import (
+    SYNTHETIC_ITEM,
+    SYNTHETIC_SESSION,
+    ZERO_WIDTH_SESSION,
+    build_sandbox,
+    phrase_lines,
+    report_lines,
+    sample_phrase,
+    session_rows,
+    write_session,
+)
 
 
 def copy_source(run: Rehearsal, source: Path) -> str:
@@ -40,29 +42,13 @@ def copy_source(run: Rehearsal, source: Path) -> str:
     return before
 
 
-def count_phrase(session: Path, applied_at: str) -> tuple[int, int, list[int]]:
-    """P1 的 verify 是数 `cwd does not exist` 次数；这里按时间戳分应用前/后各数一次，不判断因果。"""
-    before = after = 0
-    after_lines = []
-    for number, line in enumerate(session.read_text(encoding="utf-8").splitlines(), start=1):
-        row = json.loads(line)
-        if PHRASE not in row["text"]:
-            continue
-        if row["ts"] > applied_at:
-            after += 1
-            after_lines.append(number)
-        else:
-            before += 1
-    return before, after, after_lines
-
-
-def write_record(run: Rehearsal, name: str, record: dict) -> Path:
-    path = run.out / f"inputs/{name}"
+def write_record(directory: Path, name: str, record: dict) -> Path:
+    path = directory / name
     write(path, json.dumps(record, ensure_ascii=False, indent=2) + "\n")
     return path
 
 
-def run_rehearsal(run: Rehearsal, source: Path) -> None:
+def run_rehearsal(run: Rehearsal, source: Path) -> dict:
     out = run.out
     source_ledger = copy_source(run, source)
     phe = out / "phe"
@@ -106,7 +92,7 @@ def run_rehearsal(run: Rehearsal, source: Path) -> None:
             "并抽查审查交接是否写明有效 cwd 与提交范围；先补基线再判断"
         ),
     }
-    path = write_record(run, "review-x0001-observe.json", record)
+    path = write_record(out / "inputs", "review-x0001-observe.json", record)
     row = run.cli_json(
         "review x0001", "change.py", "review", "--execution", "x0001", "--record", path, "--phe-home", phe
     )
@@ -137,29 +123,54 @@ def run_rehearsal(run: Rehearsal, source: Path) -> None:
     plan = run.cli_json("review-plan（review 后）", "change.py", "review-plan", "--phe-home", phe)
     run.check(plan["executions"][0]["latest_review"] == row, "review-plan 列出该执行的 review 并标为最新")
 
-    # c. 【合成】观察样例：按 P1 的 verify 手算计数，写进单独的账本副本。
+    # c. 【合成】独立沙箱：apply S1 后不 restore，观察窗 = [应用时刻, 至今)。
     synthetic = out / "synthetic"
-    session = synthetic / "session.jsonl"
-    write(session, "\n".join(json.dumps(line, ensure_ascii=False) for line in SYNTHETIC_SESSION) + "\n")
-    before_count, after_count, after_lines = count_phrase(session, applies["x0001"]["at"])
-    run.check((before_count, after_count) == (2, 2), f"合成会话按应用前/后计数（实际 {before_count}/{after_count}）")
-    run.check(after_lines == [4, 6], f"应用后命中的行号（实际 {after_lines}）")
-    verdict = "keep" if after_count == 0 else "adjust"
+    synthetic.mkdir()
+    paths = build_sandbox(run, synthetic)
+    applied = run.cli_json(
+        "【合成】apply S1",
+        "change.py",
+        "apply",
+        "--change",
+        paths["change"],
+        "--item",
+        SYNTHETIC_ITEM,
+        "--approval",
+        paths["approval"],
+        "--registry",
+        paths["registry"],
+        "--phe-home",
+        paths["phe"],
+        "--home",
+        paths["home"],
+    )
+    run.check(applied["execution_id"] == "x0001", f"【合成】S1 的执行 ID=x0001（实际 {applied['execution_id']}）")
+    applied_at = next(fact["at"] for fact in ledger(paths["phe"]) if fact["kind"] == "apply")
+    synthetic_plan = run.cli_json("【合成】review-plan", "change.py", "review-plan", "--phe-home", paths["phe"])
+    window = synthetic_plan["executions"][0]["observation_window"]
+    run.check(window == {"from": applied_at, "to": None}, f"【合成】未恢复，观察窗从应用时刻到至今（实际 {window}）")
+    write_session(paths["session"], session_rows(window["from"], SYNTHETIC_SESSION))
+    sampled = sample_phrase(paths["session"], window)
+    expected_before, expected_inside = phrase_lines(SYNTHETIC_SESSION)
+    run.check(sampled["before"] == expected_before, f"【合成】窗口前的命中行号（实际 {sampled['before']}）")
+    run.check(sampled["inside"] == expected_inside, f"【合成】窗口内的命中行号（实际 {sampled['inside']}）")
+    run.check(sampled["after"] == [], "【合成】未恢复时窗口没有上界，应用后的命中都算窗口内")
+    inside = len(sampled["inside"])
+    verdict = "keep" if inside == 0 else "adjust"
+    prediction_met = "met" if inside == 0 else "not_met"
     synthetic_record = {
         "verdict": verdict,
-        "prediction_met": "not_met" if after_count else "met",
+        "prediction_met": prediction_met,
         "reason": (
-            f"【合成】按 P1 的 verify 手工计数：应用前 {before_count} 次、应用后 {after_count} 次 cwd does not exist"
+            f"【合成】按 prediction.verify 在观察窗内统计：窗口前 {len(sampled['before'])} 次、"
+            f"窗口内 {inside} 次 cwd does not exist；合成数据只证明取样与记账能跑通，不证明规则有效"
         ),
-        "observations": [f"{session}:L{number}" for number in after_lines],
-        "next": "【合成】只证明复盘流程可运行，不证明规则有效；真实判断要用户批准真实应用后在观察窗内统计",
+        "observations": [f"{paths['session']}:L{number}" for number in sampled["inside"]],
+        "next": "【合成】真实判断要用户批准真实应用后按同一口径统计，并抽查审查交接是否写明有效 cwd 与提交范围",
     }
-    run.check(verdict == "adjust", "合成计数非 0，verdict 取 adjust")
-    synthetic_path = write_record(run, "review-synthetic-adjust.json", synthetic_record)
-    shutil.copytree(phe, synthetic / "phe", symlinks=True)
-    synthetic_phe = synthetic / "phe"
+    synthetic_path = write_record(synthetic / "inputs", "review-synthetic.json", synthetic_record)
     synthetic_row = run.cli_json(
-        "review x0001（合成账本）",
+        "【合成】review x0001",
         "change.py",
         "review",
         "--execution",
@@ -167,26 +178,57 @@ def run_rehearsal(run: Rehearsal, source: Path) -> None:
         "--record",
         synthetic_path,
         "--phe-home",
-        synthetic_phe,
+        paths["phe"],
     )
-    run.check(synthetic_row["record"]["verdict"] == "adjust", "合成 review 写进合成账本副本")
-    run.check(len(ledger(synthetic_phe)) == len(after_facts) + 1, "合成账本比真实演练账本多一条 review")
+    run.check(
+        (synthetic_row["record"]["verdict"], synthetic_row["record"]["prediction_met"]) == (verdict, prediction_met),
+        f"【合成】review 按窗口内计数推导：{len(sampled['before'])} 前 / {inside} 内 → {verdict} / {prediction_met}",
+    )
+    run.check(
+        [fact["kind"] for fact in ledger(paths["phe"])] == ["approval", "apply", "review"],
+        "【合成】合成账本只有 approval / apply / review 三条事实",
+    )
     run.check(ledger(phe) == after_facts, "合成 review 不混入真实演练账本")
 
-    # d. 合成账本的 status 显示 latest_review，restored 状态仍未变。
-    synthetic_status = run.cli_json("status（合成账本）", "change.py", "status", "--phe-home", synthetic_phe)
+    # d. 合成账本的 status 显示 latest_review，applied 状态不变。
+    synthetic_status = run.cli_json("status（合成账本）", "change.py", "status", "--phe-home", paths["phe"])
     run.check(
-        synthetic_status["executions"][0]["latest_review"]["record"]["verdict"] == "adjust",
+        synthetic_status["executions"][0]["latest_review"]["record"]["verdict"] == verdict,
         "合成账本的 status 显示最新 review",
     )
     run.check(
-        [entry["state"] for entry in synthetic_status["executions"]] == ["restored", "restored"],
-        "合成 review 也没改变 restored 状态",
+        [entry["state"] for entry in synthetic_status["executions"]] == ["applied"],
+        "合成 review 没改变 applied 状态（本例未恢复）",
+    )
+
+    # e. 零宽窗口边界：切片 2 的 x0001 应用与恢复在同一秒，窗口内观察数只能是 0。
+    zero_window = {"from": applies["x0001"]["at"], "to": restores["x0001"]["at"]}
+    run.check(zero_window["from"] == zero_window["to"], "切片 2 的 x0001 应用与恢复在同一秒，观察窗零宽")
+    zero_session = synthetic / "session-zero-width.jsonl"
+    write_session(zero_session, session_rows(zero_window["from"], ZERO_WIDTH_SESSION))
+    zero = sample_phrase(zero_session, zero_window)
+    run.check(
+        zero["inside"] == [] and len(zero["before"]) + len(zero["after"]) == len(ZERO_WIDTH_SESSION),
+        f"零宽窗口内观察数为 0（窗口外命中 {len(zero['before'])} 前 / {len(zero['after'])} 后）",
+    )
+    run.check(
+        (record["verdict"], record["prediction_met"]) == ("observe", "unknown"),
+        "零宽窗口没有窗口内观察，结论只能是 observe / unknown",
     )
     run.check(sha256((source / "ledger.jsonl").read_bytes()) == source_ledger, "切片 2 账本原目录字节不变（只读）")
+    return {
+        "window": window,
+        "before": len(sampled["before"]),
+        "inside": inside,
+        "verdict": verdict,
+        "prediction_met": prediction_met,
+        "zero_window": zero_window,
+        "zero_before": len(zero["before"]),
+        "zero_after": len(zero["after"]),
+    }
 
 
-def render_report(run: Rehearsal, source: Path, head: str, status: str) -> str:
+def render_report(run: Rehearsal, source: Path, head: str, status: str, summary: dict | None) -> str:
     failed = [check for check in run.checks if not check["ok"]]
     if run.aborted is not None:
         verdict = f"演练中断（{run.aborted}）：只保存已执行的命令与部分断言，其余步骤未执行。"
@@ -203,7 +245,7 @@ def render_report(run: Rehearsal, source: Path, head: str, status: str) -> str:
         return " ".join(str(arg).replace(str(REPO), "$REPO").replace(str(run.out), "$OUT") for arg in shown)
 
     lines = [
-        "# 闭环切片 3 演练：读账本观察窗、写 review 与合成观察样例",
+        "# 闭环切片 3 演练：读账本观察窗、写 review 与合成观察窗样例",
         "",
         f"**结论：** {verdict}",
         "",
@@ -215,7 +257,7 @@ def render_report(run: Rehearsal, source: Path, head: str, status: str) -> str:
         f"- 切片 2 账本（只读复制）：`{source / 'ledger.jsonl'}`，SHA-256 `{sha256((source / 'ledger.jsonl').read_bytes())}`。",
         (
             "- 工件根：`$OUT`（本目录）。`$OUT/phe` 是切片 2 的 phe 副本（账本、发布、journal 原样复制），"
-            "`$OUT/synthetic/phe` 是写合成 review 的独立账本副本。"
+            "`$OUT/synthetic/` 是另一套【合成】沙箱（自己的 home、小 base 与独立 PHE_HOME）。"
         ),
         (
             "- 复制的账本保留切片 2 的绝对路径事实（`home`、`phe_home`、`target.paths`、`report.path`）；"
@@ -226,17 +268,11 @@ def render_report(run: Rehearsal, source: Path, head: str, status: str) -> str:
             "该执行只在临时沙箱 home 应用，真实 Host 从未加载，也没有基线。"
         ),
         "",
-        "## 合成观察样例（不证明规则有效）",
+        "## 合成观察窗样例（不证明规则有效）",
         "",
-        (
-            f"- 合成会话：`$OUT/synthetic/session.jsonl`，{len(SYNTHETIC_SESSION)} 行手写 JSONL，"
-            "明确标注 `synthetic-001`，不含真实会话内容。"
-        ),
-        (
-            "- 计数方法取自 P1 的 `prediction.verify`（数 `cwd does not exist` 次数），脚本按时间戳把命中行分到"
-            "应用前/应用后各数一次，不做统计推断。"
-        ),
-        "- 合成 review 写进 `$OUT/synthetic/phe`，不混入 `$OUT/phe`；合成数据的结论只说明计数与记账能跑通。",
+    ]
+    lines += report_lines(summary)
+    lines += [
         "",
         "## 断言明细",
         "",
@@ -258,7 +294,7 @@ def render_report(run: Rehearsal, source: Path, head: str, status: str) -> str:
         ("- 真实 review 的 `observations` 为空：本演练没有可指向的观察证据；合成 review 的指针只指向合成文件的行号。"),
         (
             "- 切片 2 的两个执行 `applied_at` 与 `restored_at` 落在同一秒，观察窗退化为一个时刻；"
-            "真实复盘要在应用后、恢复前取样。"
+            "真实复盘要按源记录时间戳核对窗口两端（应用后、恢复前），`history.py --since` 只到日期粒度，只能粗筛。"
         ),
         "- `verdict=revert` 只是建议：用户批准后才走 `restore`，已恢复的执行不重复恢复；本轮没有触发 revert。",
         "- 畸形 record、并发写入、权限与攻击场景不在本轮范围，未测。",
@@ -291,8 +327,9 @@ def main() -> int:
     porcelain = git("status", "--porcelain").stdout.decode().strip()
     status = "clean" if not porcelain else f"dirty（{len(porcelain.splitlines())} 项）"
     run = Rehearsal(out)
+    summary = None
     try:
-        run_rehearsal(run, source)
+        summary = run_rehearsal(run, source)
     except (Exception, KeyboardInterrupt) as exc:  # noqa: BLE001 - 中断也要先落盘现场
         run.aborted = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
         print(traceback.format_exc(), file=sys.stderr)
@@ -312,7 +349,7 @@ def main() -> int:
         )
         + "\n",
     )
-    write(out / "report.md", render_report(run, source, head, status))
+    write(out / "report.md", render_report(run, source, head, status, summary))
     failed = [check for check in run.checks if not check["ok"]]
     for check in run.checks:
         print(f"{'pass' if check['ok'] else 'fail'}: {check['message']}")
