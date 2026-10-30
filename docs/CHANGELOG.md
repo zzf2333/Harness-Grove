@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026-10-30 · 闭环切片 2：批准、应用与逆序恢复（仅临时配置）
+
+- 新增 `tools/change.py apply/status/restore`。`apply` 读宿主显式准备的机读变更包（报告路径与 sha256、条目 ID、证据、预测/验证方法、目标 asset id、patch）和批准记录（`change_sha256` 绑定确定版本的变更包、`items` 绑定获批条目、`source` 只有 `user` 与 `sandbox_rehearsal`），从目标入口当前实际生效的内容起算，用 `git apply` 打 patch，按 `release import` 的同一 `asset.json` 格式重建资产，再复用既有 `release` 与逐 Agent `deploy`；三个入口全部完成后才追加事实。`status` 从事实推导 `applied`/`restored` 与生效栈，并读文件核对生效发布和 sha256；`restore` 按 journal 逆序恢复。
+- 账本 `<phe-home>/ledger.jsonl` 只追加 `approval`/`apply`/`restore` 事实：执行 ID（`x0001` 高水位，与提案 ID 不同）、批准来源、报告与变更包 sha256、预测、实际发布号、相对 journal 路径、前后内容 sha256、恢复后生效发布。不存可推导的状态，恢复不表示提案无效或 retired。
+- 每次 apply 从当前生效内容重建资产，避免“rollback 只退链接、下一次 release 把已撤销内容带回”；同一资产只支持按执行逆序恢复，不实现保留 B 单独撤销 A，也不做补丁重排。
+- 修一个正常路径缺口：既有 `rollback` 会 `unbind`，恢复到的若是更早一次 PHE 发布，下一次 `deploy` 的漂移预检会把它当成 `ExternalChange` 中止（已实测复现）。`restore` 在 rollback 后按 journal 的 `old_target` 重新绑定到本 PHE_HOME 的发布；没有绕过或放宽既有保护。
+- 新增 `tests/test_change.py`：合成两条改动 + 三个 Agent 入口，一次顺序 E2E 覆盖只批准 P1 → 批准并应用 P2 → 恢复 P2 保留 P1 → 从当前版本应用 P3（hunk 以 P2 改过的行作上下文）→ 逆序恢复回原字节，并断言账本来源/执行 ID/前后 hash、`status` 与文件一致、逆序与批准覆盖范围的拒绝。
+- 新增 `tools/rehearse_change.py` 与 `tools/rehearse_change_input.py`：用真实切片 1 报告 `reports/2026-10-30.md` 的 P1/P2，在真实 `config/AGENTS.md` 的只读副本上跑同一流程，64 条断言全部成立；工件（输入变更包、演练批准、发布、journal、账本、命令日志、断言报告）留在 `experiments/loop-apply-001/`（被 Git 忽略）。演练批准写 `source=sandbox_rehearsal`，不是用户批准。
+- 边界：只覆盖单个 instructions 资产 + 三个 Agent 的临时软链入口，只在临时沙箱跑；skill 资产、普通文件入口、多资产发布、写真实 `~/.pi`/`~/.codex`/`~/.claude`/temper 都不在本轮。效果未验证：P1/P2 的预测基线仍是“待观察”，没有对照实验；三入口是否被对应 Host 实际加载也未验证。
+
 ## 2026-10-30 · 闭环切片 1：真实会话摘要入口
 
 - 新增 `history.py digest` 与 `tools/history_digest.py`，复用来源遍历、时间窗、Host 解析、脱敏和输出守卫，按会话生成约 40KB 的 Markdown 分块与索引。正文只列真人用户发言、工具失败、retry 标注，带源文件绝对路径和 `L行号`；无真人发言的会话只在索引计数。`Session.human_message` 提供普通真人消息，`collect/group` 的三种 kind 保持不变。

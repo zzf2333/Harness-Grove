@@ -1,6 +1,6 @@
 # M3a 计划：从经验扫描产生可证伪提案
 
-**状态（2026-10-30）：** 进行中。切片 A 完成：本地草稿 CLI `tools/proposal.py draft/check`。切片 B1 完成：显式 Retired 检索文件的逐条列举与关系核对（`--retired`、`retired_review`）。切片 B2（真实退役数据源与自动检索）、C（独立证据判定）暂停（2026-10-30 调整，见 [AGENTS.md](../AGENTS.md)）；D 缩小为改前写预测和验证方法。当前优先跑通经验复盘闭环，切片 1 的 `history.py digest` 已提供摘要入口，可审批报告的诊断与合并由宿主按 Skill 编排。**M3a 未完成**，不能把 A/B1 的报告当作完整协议验证。
+**状态（2026-10-30）：** 进行中。切片 A 完成：本地草稿 CLI `tools/proposal.py draft/check`。切片 B1 完成：显式 Retired 检索文件的逐条列举与关系核对（`--retired`、`retired_review`）。切片 B2（真实退役数据源与自动检索）、C（独立证据判定）暂停（2026-10-30 调整，见 [AGENTS.md](../AGENTS.md)）；D 缩小为改前写预测和验证方法。当前优先跑通经验复盘闭环：切片 1 的 `history.py digest` 已提供摘要入口，可审批报告的诊断与合并由宿主按 Skill 编排；切片 2 的 `tools/change.py apply/status/restore` 已在临时配置上跑通批准、应用与逆序恢复，真实配置仍未写入。**M3a 未完成**，不能把 A/B1 的报告当作完整协议验证。
 
 **上位文档：** [PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」「独立证据与 Retired 账本」；历史输入格式见 [M2_PLAN](M2_PLAN.md)、[M2_HISTORY_FORMATS](M2_HISTORY_FORMATS.md)。
 
@@ -38,6 +38,87 @@ python3 -I tools/history.py digest --host claude --root ~/.claude \
 报告写到 `reports/<YYYY-MM-DD>.md`，每条包含：编号、问题、证据指针与判断依据、目标文件、实际 diff、预期效果、验证方法；基线取不到就写“待观察”，不编造实测改善。Retired 检索和独立性由宿主显式说明依据，L2 实验只在有争议的改动上选用。切片 1 只读诊断，不改配置、不批准、不应用；用户逐条批准与账本/恢复留给切片 2。
 
 验收：对真实最近 7 天三家 Host 各跑一次；记录会话数、入选数、块数和总字节；抽查报告引用能按源文件路径与行号回到原文，并核对诊断所需上下文。摘要 CLI 冒烟只证明采集可运行，不代表诊断报告已完成，也不证明建议有效。流程见 [Skill §11](../skill/harness-evolve/SKILL.md#11-经验复盘闭环切片-1)。
+
+## 闭环切片 2：批准、应用与恢复（仅临时配置）
+
+切片 1 的报告只读。切片 2 把报告条目显式翻译成机读变更包，按批准应用到临时配置，并留下可恢复的事实记录。真实 `~/.pi`、`~/.codex`、`~/.claude` 与 temper 仍未写入。
+
+### 命令
+
+```bash
+python3 -I tools/change.py apply --change <变更包 JSON> --item P1 --approval <批准 JSON> \
+    --registry <登记表> --phe-home <临时 PHE_HOME> --home <临时 home>
+python3 -I tools/change.py status --phe-home <临时 PHE_HOME>
+python3 -I tools/change.py restore --execution x0001 --phe-home <临时 PHE_HOME> --home <临时 home>
+```
+
+`--home`、`--phe-home` 沿用 release 的沙箱守卫：必填，等于真实 home、是其祖先或落在 `~/.claude`、`~/.codex`、`~/.pi`、`~/.phe`、`~/.agents`、`~/AI/temper` 之内时在任何写入前退出 2。`status` 只读，不需要 `--home`。
+
+### 输入工件
+
+变更包由宿主显式准备，工具不解析 Markdown：
+
+```json
+{
+  "schema_version": 1,
+  "report": {"path": "<报告绝对路径>", "sha256": "<报告原始字节>"},
+  "items": [
+    {"item_id": "P1", "evidence": ["<源文件绝对路径>:L804"],
+     "prediction": {"expected": "...", "verify": "...", "baseline": "待观察"},
+     "target": {"asset_id": "asset-0001"},
+     "patch": "--- a/config/AGENTS.md\n+++ b/config/AGENTS.md\n@@ ..."}
+  ]
+}
+```
+
+`apply` 会重算 `report.sha256`，不一致就退出 1：变更包必须引用当前这一版报告。
+
+批准记录绑定确定版本的变更包和获批条目：
+
+```json
+{"schema_version": 1, "approval_id": "...", "source": "user",
+ "change_sha256": "<变更包原始字节>", "items": ["P1"], "note": "用户原话或演练说明"}
+```
+
+`source` 只有 `user` 和 `sandbox_rehearsal`。演练批准必须写 `sandbox_rehearsal`，账本照原样记录，不能拿它冒充用户批准。`--item` 不在 `items` 里，或 `change_sha256` 与当前变更包不符，`apply` 退出 1，不改文件、不追加事实。
+
+### 一次 apply 做什么
+
+1. 从登记表取目标资产，读它 `observed` 第一个入口当前**实际生效**的文件（入口是软链时按真实路径取），作为这次应用的基础内容。
+2. 在 `<phe-home>/staging/<执行 ID>/` 里用 `git apply` 把该条目的 patch 打到这份内容上；打不上就退出 1，不写资产、不建发布。
+3. 按 `release import` 的同一 `asset.json` 格式重建 `assets/<asset_id>/content/`，再走既有 `release` 构建不可变发布。
+4. 对资产的每个 Agent 入口各 `deploy` 一次（本机是 `claude`、`codex`、`pi` 三个软链入口），三份 journal 记为**一次应用**。
+5. 三个入口都完成后才向 `<phe-home>/ledger.jsonl` 追加 `approval` 和 `apply` 两条事实。中途失败按既有 deploy 行为保留 journal、发布和已完成的绑定，不自动重试、不回滚已成功的 Agent。
+
+不从 `release import` 起步的原因：它拒绝覆盖已有资产，且固定从登记表的 `resolved_path` 复制；那条路径在部署后已不是实际生效的内容。每次 apply 都从当前生效内容重建资产，已撤销的内容才不会随下一次发布被带回。
+
+### 账本与状态
+
+`<phe-home>/ledger.jsonl` 只追加事实，一行一条 JSON：
+
+- `approval`：`execution_id`、`approval_id`、`source`、`proposal_id`、`approved_items`、`change_path`、`change_sha256`、`at`。
+- `apply`：`execution_id`、`proposal_id`、`source`、`report`、`evidence`、`prediction`、`target`（asset id、`resolved_path`、三个入口路径）、`release`、`journals`（相对 `phe-home`）、`before_sha256`、`after_sha256`、`at`。
+- `restore`：`execution_id`、`proposal_id`、`journals`、`restored_sha256`、恢复后生效的 `release`（回到原文件时为 `null`）、`at`。
+
+执行 ID 是 `x0001` 起的高水位，和提案 ID（`P1`）不同：同一提案可以先后有多次应用。`journals` 存相对路径，账本跟着 `<phe-home>` 走，不把临时绝对路径当永久证据。`status` 从事实推导每个执行是 `applied` 还是 `restored`、当前生效的执行栈，并读文件给出每个入口现在的生效发布和 sha256；它不写任何东西，也不存重复可推导的状态。
+
+### 恢复语义
+
+- 同一资产只支持**逆序恢复**：只能恢复当前最后一条生效的执行。恢复 `B` 保留 `A`（链接回到 `A` 的发布），再恢复 `A` 回到原文件。不实现“保留 B 单独撤销 A”，也不做补丁重排。
+- 恢复只追加一条 `restore` 事实，不改写历史行，也不表示提案无效或 retired；效果结论留给切片 3 对照预测。
+- 最小修正：既有 `rollback` 会 `unbind` 这些路径，恢复到的若是更早一次 PHE 发布，`bindings.json` 就与实际链接不一致，下一次 `deploy` 的漂移预检会把它当成 `ExternalChange` 中止（已实测复现）。`restore` 在 rollback 之后按 journal 的 `old_target` 重新绑定到本 `phe-home` 的发布，正常路径因此可以连续 apply / restore。
+
+### 边界
+
+- 只覆盖单个 `instructions` 资产 + 三个 Agent 的临时软链入口；skill 资产、普通文件入口、多资产发布不支持，`phe-home` 里只放这一个资产。
+- 只在临时沙箱跑。写真实 `~/.pi`、`~/.codex`、`~/.claude` 或 temper 仍需用户按具体 diff、目标路径和恢复方式单独批准，本轮未做。
+- 依赖 `git apply` 打 patch，不自带 diff 解析。
+- 畸形输入、并发 apply、权限与攻击场景不在本轮范围，未测。
+
+### 验收
+
+- `tests/test_change.py`：合成两条不同改动 + 三个 Agent 入口，一次顺序 E2E 覆盖 只批准 P1 → P1 生效 P2 不生效 → 批准并应用 P2 → 恢复 P2 后 P1 保留 → 从当前版本应用 P3（hunk 以 P2 改过的行作上下文，复用陈旧暂存内容会打不上）→ 逆序恢复 P3、P1 回到原字节；并断言账本来源、执行 ID、前后 hash、`status` 与文件一致，以及逆序恢复和批准覆盖范围的拒绝。
+- `tools/rehearse_change.py`：用真实切片 1 报告 `reports/2026-10-30.md` 的 P1/P2，在真实 `config/AGENTS.md` 的只读副本上跑同一流程。输入变更包、批准记录、发布、journal、账本、命令日志和断言报告全部留在 `experiments/loop-apply-001/`（被 Git 忽略），恢复所需文件不清理。演练批准写 `source=sandbox_rehearsal`。
 
 ## 切片 A：本地草稿（完成）
 
