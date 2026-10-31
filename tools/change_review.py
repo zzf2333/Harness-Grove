@@ -77,24 +77,28 @@ def read_review(path: Path) -> tuple[dict, str]:
     return record, sha256_bytes(data)
 
 
+def build_review_row(facts: list[dict], execution_id: str, record: dict, record_sha: str, record_path: str) -> dict:
+    """一条 review 事实的字段：沙箱入口与产品批准入口共用同一账本行形状。"""
+    execution = next((item for item in executions(facts) if item["execution_id"] == execution_id), None)
+    if execution is None:
+        raise ValueError(f"账本里没有执行：{execution_id}")
+    return {
+        "kind": "review",
+        "at": utc_now(),
+        "execution_id": execution_id,
+        "proposal_id": execution["proposal_id"],
+        "record": record,
+        "record_path": record_path,
+        "record_sha256": record_sha,
+    }
+
+
 def cmd_review(args: argparse.Namespace, roots: list[Path]) -> int:
     """只追加一条 review 事实：不改写旧行，不改执行状态，不调用 restore，不碰配置和发布。"""
     sandbox = Sandbox(roots)
     phe = args.phe_home
-    facts = read_ledger(phe)
-    execution = next((item for item in executions(facts) if item["execution_id"] == args.execution), None)
-    if execution is None:
-        raise ValueError(f"账本里没有执行：{args.execution}")
     record, record_sha = read_review(args.record)
-    row = {
-        "kind": "review",
-        "at": utc_now(),
-        "execution_id": args.execution,
-        "proposal_id": execution["proposal_id"],
-        "record": record,
-        "record_path": str(args.record),
-        "record_sha256": record_sha,
-    }
+    row = build_review_row(read_ledger(phe), args.execution, record, record_sha, str(args.record))
     append_ledger(sandbox, phe, row)
     print(json.dumps(row, ensure_ascii=False, indent=2))
     return 0

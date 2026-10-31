@@ -19,6 +19,7 @@ from release_deploy import (
     GUARD_EXIT_CODE,
     GuardError,
     Sandbox,
+    Writer,
     deploy,
     inside,
     read_registry,
@@ -41,15 +42,15 @@ def walk_error(error: OSError) -> None:
     raise error
 
 
-def copy_tree(sandbox: Sandbox, source: Path, destination: Path) -> None:
+def copy_tree(writer: Writer, source: Path, destination: Path) -> None:
     """逐项复制并逐项过守卫；资产内容里出现软链或特殊文件就拒绝，避免把链接目标混进发布。"""
     if not source.is_dir():
         raise ValueError(f"资产来源不是可用的目录：{source}")
-    sandbox.makedirs(destination)
+    writer.makedirs(destination)
     for directory, dirnames, filenames in os.walk(source, followlinks=False, onerror=walk_error):
         dirnames.sort()
         target = destination / Path(directory).relative_to(source)
-        sandbox.makedirs(target)
+        writer.makedirs(target)
         for name in dirnames:
             if os.path.islink(Path(directory) / name):
                 raise ValueError(f"资产内容含软链，拒绝导入：{Path(directory) / name}")
@@ -57,7 +58,7 @@ def copy_tree(sandbox: Sandbox, source: Path, destination: Path) -> None:
             item = Path(directory) / name
             if os.path.islink(item) or not item.is_file():
                 raise ValueError(f"资产内容含软链或特殊文件，拒绝导入：{item}")
-            sandbox.write_bytes(target / name, item.read_bytes())
+            writer.write_bytes(target / name, item.read_bytes())
 
 
 def selected_assets(data: dict, asset_ids: list[str]) -> list[dict]:
@@ -152,7 +153,7 @@ def file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def freeze(sandbox: Sandbox, release_dir: Path) -> None:
+def freeze(writer: Writer, release_dir: Path) -> None:
     """发布不可变：文件和目录都去掉写权限。
 
     用 lstat 判类型，不跟随软链：发布里出现软链说明内容被污染，chmod 会改到链接目标上。
@@ -161,8 +162,8 @@ def freeze(sandbox: Sandbox, release_dir: Path) -> None:
         mode = os.lstat(item).st_mode
         if stat.S_ISLNK(mode):
             raise ValueError(f"发布内容含软链，拒绝冻结：{item}")
-        sandbox.chmod(item, 0o555 if stat.S_ISDIR(mode) else 0o444)
-    sandbox.chmod(release_dir, 0o555)
+        writer.chmod(item, 0o555 if stat.S_ISDIR(mode) else 0o444)
+    writer.chmod(release_dir, 0o555)
 
 
 def discard_release(release_dir: Path) -> None:
@@ -177,12 +178,12 @@ def discard_release(release_dir: Path) -> None:
     shutil.rmtree(release_dir)
 
 
-def collect_release(sandbox: Sandbox, phe: Path, release_id: str, release_dir: Path, assets: list[dict]) -> dict:
+def collect_release(writer: Writer, phe: Path, release_id: str, release_dir: Path, assets: list[dict]) -> dict:
     manifest = {"release": release_id, "created_at": utc_now(), "assets": {}, "files": {}}
     for asset in assets:
         content = phe / "assets" / asset["asset_id"] / "content"
         destination = release_dir / "files" / asset["asset_id"]
-        copy_tree(sandbox, content, destination)
+        copy_tree(writer, content, destination)
         manifest["assets"][asset["asset_id"]] = {
             "kind": asset["kind"],
             "name": asset["name"],
@@ -198,20 +199,20 @@ def collect_release(sandbox: Sandbox, phe: Path, release_id: str, release_dir: P
     return manifest
 
 
-def build_release(sandbox: Sandbox, phe: Path, assets: list[dict]) -> str:
+def build_release(writer: Writer, phe: Path, assets: list[dict]) -> str:
     """构建不可变发布；任何一步失败都删掉本次 rNNNN，不留半成品和有效 manifest。"""
     number = next_release_number(phe)
     release_id = f"r{number:04d}"
     release_dir = phe / "releases" / release_id
     if os.path.lexists(release_dir):
         raise ValueError(f"发布编号已存在，拒绝覆盖：{release_dir}")
-    sandbox.makedirs(phe / "releases")
-    sandbox.write_json(phe / "releases" / "high_water.json", {"next_release_number": number + 1})
+    writer.makedirs(phe / "releases")
+    writer.write_json(phe / "releases" / "high_water.json", {"next_release_number": number + 1})
     try:
-        sandbox.makedirs(release_dir)
-        manifest = collect_release(sandbox, phe, release_id, release_dir, assets)
-        sandbox.write_json(release_dir / "manifest.json", manifest)
-        freeze(sandbox, release_dir)
+        writer.makedirs(release_dir)
+        manifest = collect_release(writer, phe, release_id, release_dir, assets)
+        writer.write_json(release_dir / "manifest.json", manifest)
+        freeze(writer, release_dir)
     except BaseException:
         discard_release(release_dir)
         raise

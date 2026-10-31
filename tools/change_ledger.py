@@ -32,9 +32,9 @@ def read_ledger(phe: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def append_ledger(sandbox, phe: Path, row: dict) -> None:
+def append_ledger(writer, phe: Path, row: dict) -> None:
     path = phe / LEDGER
-    sandbox.check(path)
+    writer.check(path)
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 

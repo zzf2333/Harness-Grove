@@ -31,6 +31,7 @@ from release_deploy import (
     GUARD_EXIT_CODE,
     GuardError,
     Sandbox,
+    Writer,
     bind,
     deploy,
     read_registry,
@@ -120,23 +121,28 @@ def patch_target(patch: str) -> str:
     raise ValueError("patch 里没有 +++ 目标路径")
 
 
-def apply_patch(sandbox: Sandbox, staging: Path, patch: str, base: bytes) -> bytes:
-    """在暂存区把 patch 打到当前生效内容上；打不上就失败，不写资产、不建发布。"""
-    path = staging / patch_target(patch)
-    sandbox.write_bytes(path, base)
+def git_apply(directory: Path, patch: str) -> None:
+    """在 directory 里把 patch 打到已有文件上；打不上就抛 ValueError，不继续写资产或发布。"""
     result = subprocess.run(
-        ["git", "apply", "-p1", "-"], cwd=staging, input=patch, text=True, capture_output=True, check=False
+        ["git", "apply", "-p1", "-"], cwd=directory, input=patch, text=True, capture_output=True, check=False
     )
     if result.returncode != 0:
         raise ValueError(f"patch 打不上当前生效内容：{result.stderr.strip()}")
+
+
+def apply_patch(writer: Writer, staging: Path, patch: str, base: bytes) -> bytes:
+    """在暂存区把 patch 打到当前生效内容上；打不上就失败，不写资产、不建发布。"""
+    path = staging / patch_target(patch)
+    writer.write_bytes(path, base)
+    git_apply(staging, patch)
     return path.read_bytes()
 
 
-def write_asset(sandbox: Sandbox, phe: Path, asset: dict, name: str, content: bytes, source: Path, at: str) -> None:
+def write_asset(writer: Writer, phe: Path, asset: dict, name: str, content: bytes, source: Path, at: str) -> None:
     """按 release import 的同一格式重建资产内容；不复用 import（它拒绝覆盖且固定从 resolved_path 复制）。"""
     directory = phe / "assets" / asset["asset_id"]
-    sandbox.write_bytes(directory / "content" / name, content)
-    sandbox.write_json(
+    writer.write_bytes(directory / "content" / name, content)
+    writer.write_json(
         directory / "asset.json",
         {
             "asset_id": asset["asset_id"],
@@ -274,14 +280,14 @@ def cmd_apply(args: argparse.Namespace, roots: list[Path]) -> int:
     return 0
 
 
-def rebind_restored(sandbox: Sandbox, phe: Path, journals: list[Path]) -> None:
+def rebind_restored(writer: Writer, phe: Path, journals: list[Path]) -> None:
     """rollback 会解除绑定；恢复到的若是本 PHE_HOME 的发布，重新绑定，下一次 deploy 才认它是自己的部署。"""
     for journal_path in journals:
         journal = read_json(journal_path)
         for entry in journal["entries"]:
             release_id = release_of(phe, entry["old_target"])
             if release_id is not None:
-                bind(sandbox, phe, journal["agent"], [entry["path"]], release_id)
+                bind(writer, phe, journal["agent"], [entry["path"]], release_id)
 
 
 def cmd_restore(args: argparse.Namespace, roots: list[Path]) -> int:

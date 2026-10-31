@@ -97,19 +97,16 @@ def block_markdown(host, index, total, window_text, sections):
     return header + "".join(sections)
 
 
-def digest(host, root, out_dir, since_value, extra_excludes):
-    """读时间窗内的会话，写 `<host>-<n>.md` 与 `<host>-index.json`。返回退出码。"""
+def build_digest(host, root, since_value, extra_excludes):
+    """生成摘要块与索引文档，不写盘也不做输出守卫；返回 `(blocks, index_document)`。
+
+    `blocks` 是 `[(文件名, Markdown 文本)]`，索引里的 `blocks` 与它一一对应。沙箱入口
+    `digest` 与产品入口 `tools/personalize.py digest` 共用这份纯生成逻辑，落盘位置各管各的。
+    """
     since = parse_since(since_value)
     root = root.resolve()
-    reason = refusal_reason(out_dir)
-    if reason is not None:
-        print(f"history: 拒绝写入：{reason}", file=sys.stderr)
-        return REFUSAL_EXIT
     if not root.is_dir():
         raise ValueError(f"--root 不是可用的目录：{root}")
-    if out_inside_root(out_dir, root):
-        print(f"history: 拒绝写入：{out_dir} 位于 --root {root} 之内", file=sys.stderr)
-        return REFUSAL_EXIT
     excludes = tuple(DEFAULT_EXCLUDES.get(host, ())) + tuple(extra_excludes)
     sections, unavailable = [], []
     total = skipped = 0
@@ -126,11 +123,11 @@ def digest(host, root, out_dir, since_value, extra_excludes):
     blocks = split_blocks(sections)
     window_start = since.isoformat() if since is not None else None
     window_text = f"{window_start} 起" if window_start else "不限（未给 --since）"
-    block_entries = []
+    rendered, block_entries = [], []
     for index, block in enumerate(blocks, 1):
         name = f"{host}-{index}.md"
         text = block_markdown(host, index, len(blocks), window_text, block)
-        write_atomic(out_dir / name, text)
+        rendered.append((name, text))
         block_entries.append({"file": name, "sessions": len(block), "bytes": len(text.encode("utf-8"))})
     index_document = {
         "host": host,
@@ -145,10 +142,29 @@ def digest(host, root, out_dir, since_value, extra_excludes):
         "blocks": block_entries,
         "unavailable_sources": unavailable,
     }
+    return rendered, index_document
+
+
+def digest(host, root, out_dir, since_value, extra_excludes):
+    """读时间窗内的会话，写 `<host>-<n>.md` 与 `<host>-index.json`。返回退出码。"""
+    reason = refusal_reason(out_dir)
+    if reason is not None:
+        print(f"history: 拒绝写入：{reason}", file=sys.stderr)
+        return REFUSAL_EXIT
+    root = root.resolve()
+    if not root.is_dir():
+        raise ValueError(f"--root 不是可用的目录：{root}")
+    if out_inside_root(out_dir, root):
+        print(f"history: 拒绝写入：{out_dir} 位于 --root {root} 之内", file=sys.stderr)
+        return REFUSAL_EXIT
+    rendered, index_document = build_digest(host, root, since_value, extra_excludes)
+    for name, text in rendered:
+        write_atomic(out_dir / name, text)
     write_atomic(out_dir / f"{host}-index.json", json.dumps(index_document, ensure_ascii=False, indent=2) + "\n")
     print(
-        f"history: {host} 入选 {len(sections)}/{total} 个会话，{len(blocks)} 块，"
-        f"跳过 {skipped}，不可用 {len(unavailable)}",
+        f"history: {host} 入选 {index_document['sessions_included']}/{index_document['sessions_total']} 个会话，"
+        f"{len(rendered)} 块，跳过 {index_document['sessions_skipped']}，"
+        f"不可用 {index_document['sessions_unavailable']}",
         file=sys.stderr,
     )
     return 0

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""沙箱写入层与 deploy / rollback（标准库）。
+"""写入层与 deploy / rollback（标准库）。
 
 四层守卫都在代码里：`--home`、`--phe-home` 必填（在 release.py 的参数定义里）、真实 home 拒绝、
-每次写入前的 guarded_write_path、单测覆盖。deploy 和 rollback 都只用这里的 Sandbox 写盘。
+每次写入前的 guarded_write_path、单测覆盖。deploy 和 rollback 都只用这里的 `Sandbox` 写盘；
+`Writer` 是同一写盘的策略可替换版本，只有产品批准入口（tools/personalize.py）用另一套策略。
 """
 
 import contextlib
@@ -172,14 +173,18 @@ def guarded_write_path(path: Path, roots: list[Path]) -> None:
     raise GuardError(f"拒绝写入沙箱之外的路径：{path}")
 
 
-class Sandbox:
-    """所有写入都从这里过一遍 guarded_write_path，再调用 os 的写函数。"""
+class Writer:
+    """所有写入的唯一入口：`policy(path)` 决定能不能写，其余写函数共用。
 
-    def __init__(self, roots: list[Path]) -> None:
-        self.roots = roots
+    策略由调用方给：旧入口用 `Sandbox`（沙箱根 + 真实环境守卫），产品批准入口用计划列明的
+    写入范围（见 tools/personalize.py）。两者不共用判定，只共用写盘。
+    """
+
+    def __init__(self, policy) -> None:
+        self.policy = policy
 
     def check(self, path: Path) -> Path:
-        guarded_write_path(path, self.roots)
+        self.policy(path)
         return path
 
     def mkdir(self, path: Path) -> None:
@@ -230,6 +235,17 @@ class Sandbox:
     def chmod(self, path: Path, mode: int) -> None:
         self.check(path)
         os.chmod(path, mode)
+
+
+class Sandbox(Writer):
+    """沙箱写入层：每次写入前过 guarded_write_path（沙箱根 + 第 2 层守卫的结果）。"""
+
+    def __init__(self, roots: list[Path]) -> None:
+        self.roots = roots
+        super().__init__(self.guarded)
+
+    def guarded(self, path: Path) -> None:
+        guarded_write_path(path, self.roots)
 
 
 def inside(path: Path, roots: list[Path]) -> bool:
@@ -285,14 +301,14 @@ def link_plan(data: dict, manifest: dict, agent: str, home: Path, phe: Path) -> 
     return plans
 
 
-def inspect_links(plans: list[dict], sandbox: Sandbox) -> list[dict]:
+def inspect_links(plans: list[dict], writer: Writer) -> list[dict]:
     """写之前的全部检查：目标在发布里、父目录存在、守卫通过、不覆盖普通文件。"""
     entries = []
     for plan in plans:
         path = plan["path"]
         if not os.path.lexists(plan["target"]):
             raise ValueError(f"发布里没有目标：{plan['target']}")
-        sandbox.check(path)
+        writer.check(path)
         if not path.parent.is_dir():
             raise ValueError(f"链接的父目录不存在：{path.parent}")
         state, old_target = current_state(path)
@@ -302,16 +318,16 @@ def inspect_links(plans: list[dict], sandbox: Sandbox) -> list[dict]:
     return entries
 
 
-def write_journal(sandbox: Sandbox, phe: Path, agent: str, release_id: str, entries: list[dict]) -> Path:
+def write_journal(writer: Writer, phe: Path, agent: str, release_id: str, entries: list[dict]) -> Path:
     directory = phe / "journal"
-    sandbox.makedirs(directory)
+    writer.makedirs(directory)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     path = directory / f"{stamp}.json"
     suffix = 1
     while os.path.lexists(path):
         path = directory / f"{stamp}-{suffix}.json"
         suffix += 1
-    sandbox.write_json(
+    writer.write_json(
         path,
         {
             "created_at": utc_now(),
@@ -340,7 +356,7 @@ def temp_link_path(path: Path) -> Path:
     return path.parent / f".{path.name}.phe-tmp-{secrets.token_hex(4)}"
 
 
-def atomic_symlink(sandbox: Sandbox, target: str, path: Path) -> None:
+def atomic_symlink(writer: Writer, target: str, path: Path) -> None:
     """先建同目录临时链接再 os.replace：替换是原子的，不会留下半条链接。
 
     撞名就换名字重试；只清理本次创建成功的临时链接，绝不 unlink 不是自己创建的对象。
@@ -349,7 +365,7 @@ def atomic_symlink(sandbox: Sandbox, target: str, path: Path) -> None:
     for _ in range(TEMP_LINK_ATTEMPTS):
         candidate = temp_link_path(path)
         try:
-            sandbox.symlink(target, candidate)
+            writer.symlink(target, candidate)
         except FileExistsError:
             continue
         temporary = candidate
@@ -357,29 +373,29 @@ def atomic_symlink(sandbox: Sandbox, target: str, path: Path) -> None:
     if temporary is None:
         raise OSError(f"{TEMP_LINK_ATTEMPTS} 次都没能建出临时链接：{path}")
     try:
-        sandbox.replace(temporary, path)
+        writer.replace(temporary, path)
     except BaseException:
         with contextlib.suppress(FileNotFoundError):
-            sandbox.unlink(temporary)
+            writer.unlink(temporary)
         raise
 
 
-def restore_entry(sandbox: Sandbox, entry: dict) -> None:
+def restore_entry(writer: Writer, entry: dict) -> None:
     path = Path(entry["path"])
-    sandbox.check(path)
+    writer.check(path)
     if entry["state"] == "absent":
         if os.path.lexists(path):
-            sandbox.unlink(path)
+            writer.unlink(path)
         return
-    atomic_symlink(sandbox, entry["old_target"], path)
+    atomic_symlink(writer, entry["old_target"], path)
 
 
-def restore_entries(sandbox: Sandbox, entries: list[dict]) -> list[str]:
+def restore_entries(writer: Writer, entries: list[dict]) -> list[str]:
     """按给定顺序恢复；单条失败不中断其余恢复，返回失败说明。"""
     failures = []
     for entry in entries:
         try:
-            restore_entry(sandbox, entry)
+            restore_entry(writer, entry)
         except (GuardError, OSError) as exc:
             failures.append(f"{entry['path']}: {exc}")
     return failures
@@ -392,22 +408,45 @@ def read_bindings(phe: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def bind(sandbox: Sandbox, phe: Path, agent: str, paths: list[str], release_id: str) -> None:
+def bind(writer: Writer, phe: Path, agent: str, paths: list[str], release_id: str) -> None:
     data = read_bindings(phe)
     entries = data.setdefault(agent, {})
     for path in paths:
         entries[path] = release_id
-    sandbox.write_json(phe / "bindings.json", data)
+    writer.write_json(phe / "bindings.json", data)
 
 
-def unbind(sandbox: Sandbox, phe: Path, agent: str, paths: list[str]) -> None:
+def unbind(writer: Writer, phe: Path, agent: str, paths: list[str]) -> None:
     data = read_bindings(phe)
     entries = data.get(agent, {})
     for path in paths:
         entries.pop(path, None)
     if not entries:
         data.pop(agent, None)
-    sandbox.write_json(phe / "bindings.json", data)
+    writer.write_json(phe / "bindings.json", data)
+
+
+def deploy_paths(writer: Writer, phe: Path, agent: str, release_id: str, plans: list[dict]) -> Path:
+    """把已发布资产的链接写到给定入口：检查、journal、原子链接、绑定；写哪些路径由调用方决定。"""
+    entries = inspect_links(plans, writer)
+    journal = write_journal(writer, phe, agent, release_id, entries)
+    applied: list[dict] = []
+    try:
+        for entry in entries:
+            atomic_symlink(writer, str(entry["target"]), entry["path"])
+            applied.append(entry)
+        bind(writer, phe, agent, [str(entry["path"]) for entry in entries], release_id)
+    except BaseException as exc:
+        failures = restore_entries(writer, list(reversed(applied)))
+        for failure in failures:
+            print(f"rollback_failed {failure}", file=sys.stderr)
+        if failures:
+            raise RollbackIncomplete(
+                f"部署 {release_id} 失败（{exc}），且 {len(failures)} 条链接未能恢复：{'；'.join(failures)}"
+            ) from exc
+        raise
+    print(f"deployed {release_id} -> {agent}: {len(entries)} 条链接，journal {journal}")
+    return journal
 
 
 def deploy(args, roots: list[Path]) -> int:
@@ -433,24 +472,7 @@ def deploy(args, roots: list[Path]) -> int:
     plans = link_plan(data, manifest, args.agent, home, phe)
     if not plans:
         raise ValueError(f"{args.agent} 在 {args.release} 里没有可部署的链接")
-    entries = inspect_links(plans, sandbox)
-    journal = write_journal(sandbox, phe, args.agent, args.release, entries)
-    applied: list[dict] = []
-    try:
-        for entry in entries:
-            atomic_symlink(sandbox, str(entry["target"]), entry["path"])
-            applied.append(entry)
-        bind(sandbox, phe, args.agent, [str(entry["path"]) for entry in entries], args.release)
-    except BaseException as exc:
-        failures = restore_entries(sandbox, list(reversed(applied)))
-        for failure in failures:
-            print(f"rollback_failed {failure}", file=sys.stderr)
-        if failures:
-            raise RollbackIncomplete(
-                f"部署 {args.release} 失败（{exc}），且 {len(failures)} 条链接未能恢复：{'；'.join(failures)}"
-            ) from exc
-        raise
-    print(f"deployed {args.release} -> {args.agent}: {len(entries)} 条链接，journal {journal}")
+    deploy_paths(sandbox, phe, args.agent, args.release, plans)
     return 0
 
 
