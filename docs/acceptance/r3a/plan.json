@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "kind": "phe_product_plan",
+  "cycle": "c1",
+  "created_at": "2026-10-31T05:23:09+00:00",
+  "phe_home": "/private/tmp/phe-r3a-SEMx9r/phe",
+  "report": {
+    "path": "/private/tmp/phe-r3a-SEMx9r/out/report.md",
+    "sha256": "50158c567edc2d0a577150130a515764e343f397c9e4ccc3decf559ebd550e61"
+  },
+  "change": {
+    "path": "/private/tmp/phe-r3a-SEMx9r/out/change.json",
+    "sha256": "3026480bbb52df4f8516cb2ca5b52f643004ff6c30beeab31ead9068d2144e23"
+  },
+  "asset": {
+    "asset_id": "asset-0001",
+    "kind": "skill",
+    "resolved_path": "/private/tmp/phe-r3a-SEMx9r/skill/demo",
+    "shared": true,
+    "entries": [
+      {
+        "agent": "pi",
+        "path": "/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo",
+        "state": "symlink",
+        "target": "/private/tmp/phe-r3a-SEMx9r/skill/demo",
+        "sha256": "9b7d5b4a6ef218500a46e24cac5452694bc589ed3c8197d5fc71f7565eb1e985",
+        "files": {
+          "SKILL.md": "5c991a2754bc53e29e6e92c0f66def2439e6fde1c8873b97302442a67351285e",
+          "references/draft.md": "0b31800b70d192a62421b97520ef39d0ea9a4601cdc2fd01cd134d94c307d669",
+          "references/notes.md": "671a34437fc77fcf8638770b5f8eb93e5e7d684c73d9b56011a268878b2a3b4d"
+        },
+        "writable": true,
+        "note": null
+      },
+      {
+        "agent": "shared",
+        "path": "/private/tmp/phe-r3a-SEMx9r/home/.agents/skills/r3a-demo",
+        "state": "symlink",
+        "target": "/private/tmp/phe-r3a-SEMx9r/skill/demo",
+        "sha256": "9b7d5b4a6ef218500a46e24cac5452694bc589ed3c8197d5fc71f7565eb1e985",
+        "files": {
+          "SKILL.md": "5c991a2754bc53e29e6e92c0f66def2439e6fde1c8873b97302442a67351285e",
+          "references/draft.md": "0b31800b70d192a62421b97520ef39d0ea9a4601cdc2fd01cd134d94c307d669",
+          "references/notes.md": "671a34437fc77fcf8638770b5f8eb93e5e7d684c73d9b56011a268878b2a3b4d"
+        },
+        "writable": true,
+        "note": null
+      }
+    ]
+  },
+  "items": [
+    {
+      "item_id": "P1",
+      "evidence": [
+        "$WORK 合成报告：示例偏好"
+      ],
+      "prediction": {
+        "why": "合成证据要求正文与引用文件一起更新",
+        "expected": "两个入口读到同一份新发布，草稿引用文件消失",
+        "verify": "读两个入口的文件集合与每个文件字节；Host 加载与收益记 unknown"
+      },
+      "patch_targets": [
+        "SKILL.md",
+        "references/notes.md",
+        "references/extra.md"
+      ],
+      "current_sha256": "9b7d5b4a6ef218500a46e24cac5452694bc589ed3c8197d5fc71f7565eb1e985",
+      "current_files": {
+        "SKILL.md": "5c991a2754bc53e29e6e92c0f66def2439e6fde1c8873b97302442a67351285e",
+        "references/draft.md": "0b31800b70d192a62421b97520ef39d0ea9a4601cdc2fd01cd134d94c307d669",
+        "references/notes.md": "671a34437fc77fcf8638770b5f8eb93e5e7d684c73d9b56011a268878b2a3b4d"
+      },
+      "state": "applicable",
+      "expected_sha256": "1ccb9472a9b079e3d2ea8e54fed65d6452075f7a18ec1a4ede0b5dccef5078f2",
+      "expected_files": {
+        "SKILL.md": "c29f428e4324d00817869cc9e0b00252bbb0117070fc7163fbaa07f797755e35",
+        "references/extra.md": "80bfef542d5de6f53789006b492eba1e0e7a0221ae6eab6d9b366823193a8569",
+        "references/notes.md": "e074a67663202aed428b8ba9a579cc16055e18e892758d3dbecf1ce2bd26e5f8"
+      },
+      "diffs": [
+        {
+          "path": "SKILL.md",
+          "state": "modified",
+          "before_sha256": "5c991a2754bc53e29e6e92c0f66def2439e6fde1c8873b97302442a67351285e",
+          "after_sha256": "c29f428e4324d00817869cc9e0b00252bbb0117070fc7163fbaa07f797755e35",
+          "diff": "--- a/SKILL.md\n+++ b/SKILL.md\n@@ -5,4 +5,4 @@\n \n # r3a-demo\n \n-回答前先读 references/notes.md。\n+回答前先读 references/notes.md 与 references/extra.md。\n"
+        },
+        {
+          "path": "references/draft.md",
+          "state": "deleted",
+          "before_sha256": "0b31800b70d192a62421b97520ef39d0ea9a4601cdc2fd01cd134d94c307d669",
+          "after_sha256": null,
+          "diff": "--- a/references/draft.md\n+++ b/references/draft.md\n@@ -1 +0,0 @@\n-草稿：这条引用没有被 SKILL.md 用到。\n"
+        },
+        {
+          "path": "references/extra.md",
+          "state": "added",
+          "before_sha256": null,
+          "after_sha256": "80bfef542d5de6f53789006b492eba1e0e7a0221ae6eab6d9b366823193a8569",
+          "diff": "--- a/references/extra.md\n+++ b/references/extra.md\n@@ -0,0 +1,2 @@\n+补充笔记：先复述问题。\n+结论放在最前面。\n"
+        },
+        {
+          "path": "references/notes.md",
+          "state": "modified",
+          "before_sha256": "671a34437fc77fcf8638770b5f8eb93e5e7d684c73d9b56011a268878b2a3b4d",
+          "after_sha256": "e074a67663202aed428b8ba9a579cc16055e18e892758d3dbecf1ce2bd26e5f8",
+          "diff": "--- a/references/notes.md\n+++ b/references/notes.md\n@@ -1 +1 @@\n-笔记：先给结论。\n+笔记：先给结论，再复述问题。\n"
+        }
+      ],
+      "diff": "--- a/SKILL.md\n+++ b/SKILL.md\n@@ -5,4 +5,4 @@\n \n # r3a-demo\n \n-回答前先读 references/notes.md。\n+回答前先读 references/notes.md 与 references/extra.md。\n--- a/references/draft.md\n+++ b/references/draft.md\n@@ -1 +0,0 @@\n-草稿：这条引用没有被 SKILL.md 用到。\n--- a/references/extra.md\n+++ b/references/extra.md\n@@ -0,0 +1,2 @@\n+补充笔记：先复述问题。\n+结论放在最前面。\n--- a/references/notes.md\n+++ b/references/notes.md\n@@ -1 +1 @@\n-笔记：先给结论。\n+笔记：先给结论，再复述问题。\n"
+    }
+  ],
+  "host_writes": [
+    "/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo",
+    "/private/tmp/phe-r3a-SEMx9r/home/.agents/skills/r3a-demo"
+  ],
+  "phe_writes": [
+    "assets/asset-0001/content/（整棵替换）",
+    "目录资产整棵重建（含引用文件）",
+    "assets/asset-0001/asset.json",
+    "releases/<下一个编号>/ 与 releases/high_water.json",
+    "staging/<执行 ID>/",
+    "journal/<时间戳>.json",
+    "bindings.json",
+    "ledger.jsonl"
+  ],
+  "restore": {
+    "method": "journal",
+    "note": "恢复把每个入口链接指回应用前的目标（journal 记录）；共享来源文件本身不改，原字节不变"
+  },
+  "missing": []
+}

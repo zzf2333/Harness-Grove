@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 2026-10-31 · R3a 交付：目录型 Skill 的多文件闭环 + 隔离 Host 的发现与显式展开
+
+- 背景：R2 把闭环做成了产品入口（`tools/personalize.py`），但只覆盖单个 instructions 文件；Skill 是目录资产（`SKILL.md` 加它引用的文件），旧 `change.py` 写死 `kind=instructions` 与单文件 patch，改一个引用文件就无从预览、应用与恢复。Host 是否发现 Skill 也一直只有“文件存在”这一层。
+- 共享内容层：新增 `tools/asset_content.py`（`sha256_bytes`/`sha256_file`/`content_files`/`content_digest`/`content_sha`/`effective_file`/`asset_kind`/`patch_targets`/`patch_target`/`git_apply`/`stage_patch`/`discard_content`/`write_asset`/`read_text`/`file_diffs`），由旧沙箱 `change.py` 与产品入口 `personalize*` 共用；`change.py` 守卫、写入政策与 CLI 一行未改，只换成用整棵内容取摘要与 diff。
+- 目录资产语义：内容版本 = 逐文件「相对路径 + 文件 sha256」的整棵摘要（不是 `SKILL.md` 的单一 hash）；预览逐文件给出增/删/改与应用前后的文件集合；`apply` 按整棵树重建内容并核对 `expected_files`，账本行带 `asset_kind`、`before_files`/`after_files`；`restore` 还原文件集合与每个文件的字节，恢复计划两侧都带 `files` 并在执行前复核。
+- 未受管入口：登记的入口是普通文件或普通目录时，预览把它标成 `other`（“PHE 不覆盖”）、不纳入写入范围，`apply` 退出 1 报 `入口是普通文件或目录`；不迁移、不覆盖、不加 fallback。
+- 发现报告：`tools/workspace.py` 的 Skill 条目改成 `sandbox_managed`，目录显示为“目录（指纹取 SKILL.md）”，说明里写明整树重建、只支持软链入口、未在 Host 中验证加载与触发。
+- Host 探针（新增 `tools/r3a/skill_host_probe.py` 驱动 + `skill_host_probe.mjs`）：在隔离 HOME 里用真实 Pi 1.4.0 的 `DefaultResourceLoader` 取技能列表、`createAgentSession` + `session.prompt("/skill:<名字> …")` 拿展开后的模型输入；模型层是本地 faux provider（零网络、零费用、不执行工具）。十项检查覆盖发现、`<skills>` 段、`filePath`/`baseDir` 指向入口、展开正文与发布一致、保留用户参数、入口文件与发布逐文件一致、无工具执行。`pi-ai` 包没有 `exports` main，探针按文件路径导入它的 `dist/index.js`；提交的探针工件只记 SDK 版本号，不写安装路径。
+- 测试：新增 `tests/skill_asset.py`（合成 Skill、四类改动的 patch、软链入口）、`tests/test_personalize_skill.py`（预览逐文件 diff 且不改 Host、预览后改引用文件要重新预览、未受管目录不被覆盖、只批准项生效且两入口共享发布、恢复原始链接/文件/字节、相对软链字符串保留）、`tests/test_change_skill.py`（旧沙箱入口多文件 patch、双入口共享发布、恢复、陈旧 patch 失败且不写入口与账本）。在 base `5000e23` 上先跑：6 项与 2 项全失败，`test_workspace.py` 2 项失败；实现后转绿。
+- 文档：新增 [docs/acceptance/r3a.md](acceptance/r3a.md)（环境与隔离、合成输入、可机械提取的命令序列、逐块退出码、预览/应用/恢复断言、Host 探针十项检查、`~/.agents/skills` 读取者事实、红→绿、剩余缺口、工件路径）与 `docs/acceptance/r3a/` 下的计划、预览、恢复预览、账本与两次探针记录；README 新增「R3a：更新一个 Skill（正文 + 引用文件）」与目录约定、文档地图、当前状态；ROADMAP R3a 现状/缺口/验收/完成口径与现状矩阵同步；AGENTS 当前阶段、SPEC §5 目录型资产内容契约（版本 v0.11）、Skill §14 第 8 条同步。
+- 验证：`python3 -m unittest discover -s tests -t tests` → 405 tests OK（exit 0）；`ruff check .` → All checks passed（exit 0）；`ruff format --check .` → 106 files already formatted（exit 0）；隔离环境端到端运行（init → inventory → adopt → 变更包 → preview → 夹具批准 → apply → 两次 Host 探针 → restore-preview → restore → 账本）逐块 exit 0；`docs/acceptance/r3a.md` 的 bash 块机械提取执行 exit 0。日志在仓库外。
+- 未验证：模型自主选用该 Skill 与任务执行效果（`review` 仍只能记 `observe`/`unknown`）；Codex 是否读 `~/.agents/skills`（Pi 已核实）；产品入口没有 import 子命令（资产内容由 `apply` 首次写出）；未读真实 Host 配置、未调用真实模型、未部署、未推送；仓库无类型检查配置，未跑 typecheck。
+
 ## 2026-10-31 · R2 第 1 轮审查修复：执行前绑定核对、共享入口一致性、README 与文档可执行
 
 - 依据：R2 候选（`86fe094` + `f0f7083`）第 1 轮独立审查的 6 项 P1 与 1 项 P2。七项都先用会失败的用例或机械提取复现，再改最小代码；没有新增防护框架、锁或重试。

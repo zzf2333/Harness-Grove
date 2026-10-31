@@ -280,6 +280,12 @@ python3 -I "$T" restore --phe-home "$PHE_HOME" --execution x0001 --plan <恢复�
    里重复上一周期处理过的证据直接退出 1。
 7. **收益仍要按 §13 的观察窗与 `prediction.verify` 核对。** 应用成功只说明入口指向了 PHE 发布；没有 Host 加载或行为
    证据时记 `observe` / `unknown`。`keep` / `adjust` / `revert` 是建议，`revert` 经再次批准才 `restore`。
+8. **Skill 是一个目录资产（R3a 起）。** 一条逻辑 Skill = `SKILL.md` + 它引用的文件，走同一套命令：`preview` 逐文件列出
+   增 / 删 / 改和应用前后的文件集合，内容版本是「相对路径 + 每个文件 sha256」的整棵摘要；`apply` 按整棵树重建内容，两个
+   Host 技能入口（例如 `~/.pi/agent/skills/<名字>` 与共享的 `~/.agents/skills/<名字>`）都指向同一份发布；`restore` 还原
+   集合与每个文件的字节。预览之后引用文件变了同样要重新预览。入口只支持软链：未受管的普通目录不迁移、不覆盖，把它从
+   登记里移出或换成软链之后才能继续。文件集合对得上**不代表** Host 发现了它，也不代表会触发——`review` 仍记 `observe` /
+   `unknown`；隔离 Host 的发现与显式展开证据见 [docs/acceptance/r3a.md](../../docs/acceptance/r3a.md)。
 
-边界与演练入口相同：只覆盖单个 instructions 资产 + 多个 Host 软链入口，不碰普通文件入口、skill、MCP、Hooks（R3）。
-验收记录见 [docs/acceptance/r2.md](../../docs/acceptance/r2.md)。
+边界：一次只处理一个资产（单个 instructions 文件或一个 Skill 目录）+ 多个 Host 软链入口，不碰未受管的普通文件或目录，
+MCP、Hooks、扩展与工具配置留给 R3b–R3e。R2 的验收记录见 [docs/acceptance/r2.md](../../docs/acceptance/r2.md)。

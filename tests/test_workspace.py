@@ -98,7 +98,7 @@ class DiscoverTests(WorkspaceFixture):
         records = self.records_by_path()
         expected = {
             self.host / ".claude/CLAUDE.md": "sandbox_managed",
-            self.host / ".claude/skills/demo": "sandbox_partial",
+            self.host / ".claude/skills/demo": "sandbox_managed",
             self.host / ".pi/agent/mcp.json": "observe_only",
             self.host / ".claude/rules/style.md": "observe_only",
         }
@@ -141,6 +141,8 @@ class DiscoverTests(WorkspaceFixture):
         self.assertIn("## 发现条目", self.md)
         self.assertIn(str(self.host / ".claude" / "CLAUDE.md"), self.md)
         self.assertIn(f"`{self.host / '.claude/skills'}` · 入口 claude/user · 目录", self.md)
+        # Skill 条目是目录，指纹取它里面的 SKILL.md：报告不能把它显示成实体文件。
+        self.assertIn(f"`{self.host / '.claude/skills/demo'}` · 入口 claude/user · 目录（指纹取 SKILL.md）", self.md)
         self.assertIn("load_chain unverified", self.md)
         self.assertIn("未登记", self.md)
         self.assertTrue(

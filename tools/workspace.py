@@ -59,8 +59,12 @@ KIND_ROWS = (
     (
         "skill",
         "Skills",
-        "sandbox_partial",
-        "沙箱可用 import/release/deploy；更新、复盘与撤销未支持；是否被 Host 发现与触发未验证。",
+        "sandbox_managed",
+        (
+            "沙箱与产品入口可用 import/release/deploy 与预览→批准→apply/review/restore；目录内容（含引用文件）整棵重建，"
+            "只覆盖软链入口，普通目录入口不迁移、不覆盖；Pi 的发现与显式展开已在一次性隔离 Host 里验证，"
+            "模型自主选用与任务执行未验证。"
+        ),
     ),
     ("mcp", "MCP", "observe_only", "只记文件 Hash 与顶层键名，读不到 server 条目；没有渲染或合并。"),
     (
@@ -275,6 +279,9 @@ def source_text(record: dict) -> str:
     """盘点的来源形态：软链只看指向；没有 sha256 与 size 的是目录记录。"""
     if record["is_symlink"]:
         return f"软链 → `{record['symlink_target']}`"
+    if record["kind"] == "skill" and record["sha256"] is not None:
+        # Skill 条目是目录，指纹取它里面的 SKILL.md，不是目录本身。
+        return "目录（指纹取 SKILL.md）"
     if record["sha256"] is None and record["size"] is None and "access_error" not in record:
         return "目录"
     return "实体文件"

@@ -12,7 +12,6 @@ sha256、每个入口的当前形态与内容 sha256、每条目的当前/预期
 """
 
 import argparse
-import difflib
 import json
 import os
 import sys
@@ -22,6 +21,7 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import change
+from asset_content import asset_kind, content_files, content_sha, file_diffs, patch_targets, stage_patch
 from change_ledger import require
 from release_deploy import (
     GuardError,
@@ -41,6 +41,7 @@ workspace_tool = load_sibling("workspace")
 SCHEMA_VERSION = 1
 PLAN_KIND = "phe_product_plan"
 RESTORE_PLAN_KIND = "phe_restore_plan"
+DIFF_LABELS = {"added": "新增", "deleted": "删除", "modified": "修改"}
 
 
 class ApprovedScope:
@@ -94,8 +95,8 @@ def write_document(writer: Writer, path: Path, text: str) -> str:
 
 
 def sha_of(path: Path) -> str | None:
-    real = Path(os.path.realpath(path))
-    return change.sha256_file(real) if real.is_file() else None
+    """入口或恢复目标的当前内容 sha256：单文件取文件字节，目录（skill）取整棵摘要。"""
+    return content_sha(path)
 
 
 def workspace(phe_home: Path) -> Path:
@@ -116,22 +117,30 @@ def read_plan(path: Path, kind: str) -> tuple[dict, str]:
     return plan, change.sha256_bytes(data)
 
 
-# 应用预览：只读输入，预期的发布内容在系统临时目录里算。
+# 应用预览：只读输入，预期内容在系统临时目录里整棵预演。
 
 
-def patched_content(patch: str, base: bytes) -> bytes:
-    """在系统临时目录里把 patch 打到当前内容上，只用于预览：不写 PHE_HOME，也不写 Host。"""
+def preview_writer() -> Writer:
+    """预览暂存只落系统临时目录：不在 PHE_HOME 也不在 Host，因此不套产品写入范围。"""
+    return Writer(lambda path: None)
+
+
+def preview_item(patch: str, base: Path) -> dict:
+    """在系统临时目录里预演这条 patch：只算预期内容 sha256、文件集合与逐文件 diff。
+
+    目录资产先整棵复制再打 patch，所以预览包含引用文件的新增与删除；不写 PHE_HOME，也不写 Host。
+    """
     with tempfile.TemporaryDirectory(prefix="phe-preview-") as directory:
-        root = Path(directory)
-        path = root / change.patch_target(patch)
-        path.parent.mkdir(parents=True)
-        path.write_bytes(base)
-        change.git_apply(root, patch)
-        return path.read_bytes()
+        staged = stage_patch(preview_writer(), Path(directory), patch, base)
+        return {
+            "expected_sha256": content_sha(staged),
+            "expected_files": content_files(staged),
+            "diffs": file_diffs(base, staged),
+        }
 
 
 def entry_rows(asset: dict) -> list[dict]:
-    """每个 Host 入口的当前形态：软链或缺失才可写；普通文件不覆盖。"""
+    """每个 Host 入口的当前形态：软链或缺失才可写；普通文件与普通目录不覆盖。"""
     rows = []
     for observed in asset["observed"]:
         path = Path(observed["path"])
@@ -143,6 +152,7 @@ def entry_rows(asset: dict) -> list[dict]:
                 "state": state,
                 "target": target,
                 "sha256": sha_of(path),
+                "files": content_files(path),
                 "writable": state != "other",
                 "note": "入口是普通文件或目录：PHE 不覆盖，这条入口不在本次写入范围" if state == "other" else None,
             }
@@ -203,41 +213,48 @@ def build_plan(phe: Path, args: argparse.Namespace) -> dict:
     registry = read_registry(registry_path(phe, args.registry))
     asset = single_asset(package, registry)
     content_file = change.effective_file(asset)
-    base = content_file.read_bytes()
+    kind = asset_kind(phe, asset)
+    base_sha = sha_of(content_file)
+    if base_sha is None:
+        raise ValueError(f"入口内容读不到（断链或缺失），先恢复入口再预览：{content_file}")
+    base_files = content_files(content_file)
     entries = entry_rows(asset)
-    require_same_content(entries, change.sha256_bytes(base))
+    require_same_content(entries, base_sha)
     items, missing = [], []
     for item in require(package, "items", "变更包"):
         item_id = require(item, "item_id", "变更包条目")
         patch = require(item, "patch", f"条目 {item_id}")
         missing.extend(missing_notes(item_id, item))
+        targets = patch_targets(patch)
         row = {
             "item_id": item_id,
             "evidence": require(item, "evidence", f"条目 {item_id}"),
             "prediction": require(item, "prediction", f"条目 {item_id}"),
-            "patch_target": change.patch_target(patch),
-            "current_sha256": change.sha256_bytes(base),
+            "patch_targets": targets,
+            "current_sha256": base_sha,
+            "current_files": base_files,
         }
         try:
-            expected = patched_content(patch, base)
+            # 每条目都按入口当前内容预演：同一资产的多条目各自独立，只有当前打得上的一条可应用。
+            preview = preview_item(patch, content_file)
         except ValueError as error:
-            # 连续 apply 同一个资产时，上一轮已改的条目打不上当前内容：标成不适用，不挡同包其他条目。
+            # 打不上当前内容：标成不适用，不挡同包其他条目。
             row.update(state="not_applicable", reason=str(error).splitlines()[0])
         else:
             row.update(
                 state="applicable",
-                expected_sha256=change.sha256_bytes(expected),
-                diff="".join(
-                    difflib.unified_diff(
-                        base.decode("utf-8").splitlines(keepends=True),
-                        expected.decode("utf-8").splitlines(keepends=True),
-                        fromfile=f"a/{change.patch_target(patch)}",
-                        tofile=f"b/{change.patch_target(patch)}",
-                    )
-                ),
+                expected_sha256=preview["expected_sha256"],
+                expected_files=preview["expected_files"],
+                diffs=preview["diffs"],
+                diff="".join(entry["diff"] for entry in preview["diffs"]),
             )
         items.append(row)
-    name = Path(asset["resolved_path"]).name
+    kind_note = "目录资产整棵重建（含引用文件）" if kind == "skill" else "单文件资产"
+    content_entry = (
+        f"assets/{asset['asset_id']}/content/（整棵替换）"
+        if kind == "skill"
+        else f"assets/{asset['asset_id']}/content/{Path(asset['resolved_path']).name}"
+    )
     return {
         "schema_version": SCHEMA_VERSION,
         "kind": PLAN_KIND,
@@ -248,6 +265,7 @@ def build_plan(phe: Path, args: argparse.Namespace) -> dict:
         "change": {"path": str(Path(args.change)), "sha256": change_sha},
         "asset": {
             "asset_id": asset["asset_id"],
+            "kind": kind,
             "resolved_path": asset["resolved_path"],
             "shared": len(entries) > 1,
             "entries": entries,
@@ -255,7 +273,8 @@ def build_plan(phe: Path, args: argparse.Namespace) -> dict:
         "items": items,
         "host_writes": [entry["path"] for entry in entries if entry["writable"]],
         "phe_writes": [
-            f"assets/{asset['asset_id']}/content/{name}",
+            content_entry,
+            kind_note,
             f"assets/{asset['asset_id']}/asset.json",
             "releases/<下一个编号>/ 与 releases/high_water.json",
             "staging/<执行 ID>/",
@@ -287,13 +306,14 @@ def render_preview(plan: dict, plan_sha: str) -> str:
         "",
         "## 入口与当前内容",
         "",
-        "| Agent | 入口 | 当前形态 | 当前 sha256 | 应用后 |",
-        "|---|---|---|---|---|",
+        "| Agent | 入口 | 当前形态 | 当前文件 | 当前 sha256 | 应用后 |",
+        "|---|---|---|---|---|---|",
     ]
     for entry in entries:
         current = f"软链 → `{entry['target']}`" if entry["state"] == "symlink" else entry["state"]
         after = "指向新发布" if entry["writable"] else f"不改（{entry['note']}）"
-        lines.append(f"| {entry['agent']} | `{entry['path']}` | {current} | `{entry['sha256']}` | {after} |")
+        files = f"{len(entry['files'])} 个" if entry["files"] else "无"
+        lines.append(f"| {entry['agent']} | `{entry['path']}` | {current} | {files} | `{entry['sha256']}` | {after} |")
     lines.extend(
         [
             "",
@@ -321,6 +341,7 @@ def render_preview(plan: dict, plan_sha: str) -> str:
             continue
         prediction = item["prediction"] if isinstance(item["prediction"], dict) else {}
         evidence = item["evidence"]
+        changed = "、".join(f"`{row['path']}`（{DIFF_LABELS[row['state']]}）" for row in item["diffs"])
         lines.extend(
             [
                 "",
@@ -331,12 +352,11 @@ def render_preview(plan: dict, plan_sha: str) -> str:
                 f"- 凭什么判断：{prediction.get('verify', '（未写）')}",
                 f"- 证据：{'、'.join(evidence) if isinstance(evidence, list) else evidence}",
                 f"- 当前内容 sha256：`{item['current_sha256']}` → 应用后 `{item['expected_sha256']}`",
-                "",
-                "```diff",
-                item["diff"].rstrip("\n"),
-                "```",
+                f"- 改动文件：{changed}",
             ]
         )
+        for row in item["diffs"]:
+            lines.extend(["", f"`{row['path']}`", "", "```diff", row["diff"].rstrip("\n"), "```"])
     lines.extend(["", "## 缺项清单（正常契约，补全后再批准更稳）", ""])
     if plan["missing"]:
         lines.extend(f"- {note['item_id']}：缺 {'、'.join(note['missing'])}" for note in plan["missing"])

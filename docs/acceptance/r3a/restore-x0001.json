@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "kind": "phe_restore_plan",
+  "cycle": "c2",
+  "created_at": "2026-10-31T05:23:10+00:00",
+  "phe_home": "/private/tmp/phe-r3a-SEMx9r/phe",
+  "execution_id": "x0001",
+  "proposal_id": "P1",
+  "release": "r0001",
+  "journals": [
+    "journal/20261031T052309Z.json",
+    "journal/20261031T052309Z-1.json"
+  ],
+  "entries": [
+    {
+      "agent": "shared",
+      "path": "/private/tmp/phe-r3a-SEMx9r/home/.agents/skills/r3a-demo",
+      "current": {
+        "state": "symlink",
+        "target": "/private/tmp/phe-r3a-SEMx9r/phe/releases/r0001/files/asset-0001",
+        "sha256": "1ccb9472a9b079e3d2ea8e54fed65d6452075f7a18ec1a4ede0b5dccef5078f2",
+        "files": {
+          "SKILL.md": "c29f428e4324d00817869cc9e0b00252bbb0117070fc7163fbaa07f797755e35",
+          "references/extra.md": "80bfef542d5de6f53789006b492eba1e0e7a0221ae6eab6d9b366823193a8569",
+          "references/notes.md": "e074a67663202aed428b8ba9a579cc16055e18e892758d3dbecf1ce2bd26e5f8"
+        }
+      },
+      "restore": {
+        "state": "symlink",
+        "old_target": "/private/tmp/phe-r3a-SEMx9r/skill/demo",
+        "content_sha256": "9b7d5b4a6ef218500a46e24cac5452694bc589ed3c8197d5fc71f7565eb1e985",
+        "files": {
+          "SKILL.md": "5c991a2754bc53e29e6e92c0f66def2439e6fde1c8873b97302442a67351285e",
+          "references/draft.md": "0b31800b70d192a62421b97520ef39d0ea9a4601cdc2fd01cd134d94c307d669",
+          "references/notes.md": "671a34437fc77fcf8638770b5f8eb93e5e7d684c73d9b56011a268878b2a3b4d"
+        }
+      }
+    },
+    {
+      "agent": "pi",
+      "path": "/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo",
+      "current": {
+        "state": "symlink",
+        "target": "/private/tmp/phe-r3a-SEMx9r/phe/releases/r0001/files/asset-0001",
+        "sha256": "1ccb9472a9b079e3d2ea8e54fed65d6452075f7a18ec1a4ede0b5dccef5078f2",
+        "files": {
+          "SKILL.md": "c29f428e4324d00817869cc9e0b00252bbb0117070fc7163fbaa07f797755e35",
+          "references/extra.md": "80bfef542d5de6f53789006b492eba1e0e7a0221ae6eab6d9b366823193a8569",
+          "references/notes.md": "e074a67663202aed428b8ba9a579cc16055e18e892758d3dbecf1ce2bd26e5f8"
+        }
+      },
+      "restore": {
+        "state": "symlink",
+        "old_target": "/private/tmp/phe-r3a-SEMx9r/skill/demo",
+        "content_sha256": "9b7d5b4a6ef218500a46e24cac5452694bc589ed3c8197d5fc71f7565eb1e985",
+        "files": {
+          "SKILL.md": "5c991a2754bc53e29e6e92c0f66def2439e6fde1c8873b97302442a67351285e",
+          "references/draft.md": "0b31800b70d192a62421b97520ef39d0ea9a4601cdc2fd01cd134d94c307d669",
+          "references/notes.md": "671a34437fc77fcf8638770b5f8eb93e5e7d684c73d9b56011a268878b2a3b4d"
+        }
+      }
+    }
+  ],
+  "host_writes": [
+    "/private/tmp/phe-r3a-SEMx9r/home/.agents/skills/r3a-demo",
+    "/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo"
+  ],
+  "phe_writes": [
+    "bindings.json",
+    "ledger.jsonl"
+  ],
+  "restore_note": "恢复按 journal 逆序把入口链接指回应用前的目标；恢复后要核对文件集合与每个文件的字节；应用前的共享来源文件本身从未被改过"
+}

@@ -15,16 +15,24 @@
 
 import argparse
 import contextlib
-import hashlib
 import io
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import release as release_tool
+from asset_content import (
+    asset_kind,
+    content_files,
+    content_sha,
+    effective_file,
+    sha256_bytes,
+    sha256_file,
+    stage_patch,
+    write_asset,
+)
 from change_ledger import append_ledger, executions, latest_reviews, next_execution_id, read_json, read_ledger, require
 from change_review import cmd_review, cmd_review_plan, phe_roots
 from release_deploy import (
@@ -43,14 +51,6 @@ from release_deploy import (
 SCHEMA_VERSION = 1
 # 演练批准必须显式写 sandbox_rehearsal，不能拿它冒充用户批准。
 APPROVAL_SOURCES = ("user", "sandbox_rehearsal")
-
-
-def sha256_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def sha256_file(path: Path) -> str:
-    return sha256_bytes(path.read_bytes())
 
 
 def read_change(path: Path) -> tuple[dict, str]:
@@ -106,52 +106,6 @@ def target_asset(registry: dict, asset_id: str) -> dict:
         if asset["asset_id"] == asset_id:
             return asset
     raise ValueError(f"登记表里没有资产：{asset_id}")
-
-
-def effective_file(asset: dict) -> Path:
-    """当前实际生效的文件：入口是软链时按真实路径取内容，不用登记表里的旧路径。"""
-    return Path(os.path.realpath(asset["observed"][0]["path"]))
-
-
-def patch_target(patch: str) -> str:
-    for line in patch.splitlines():
-        if line.startswith("+++ "):
-            path = line[4:].split("\t")[0].strip()
-            return path.removeprefix("b/")
-    raise ValueError("patch 里没有 +++ 目标路径")
-
-
-def git_apply(directory: Path, patch: str) -> None:
-    """在 directory 里把 patch 打到已有文件上；打不上就抛 ValueError，不继续写资产或发布。"""
-    result = subprocess.run(
-        ["git", "apply", "-p1", "-"], cwd=directory, input=patch, text=True, capture_output=True, check=False
-    )
-    if result.returncode != 0:
-        raise ValueError(f"patch 打不上当前生效内容：{result.stderr.strip()}")
-
-
-def apply_patch(writer: Writer, staging: Path, patch: str, base: bytes) -> bytes:
-    """在暂存区把 patch 打到当前生效内容上；打不上就失败，不写资产、不建发布。"""
-    path = staging / patch_target(patch)
-    writer.write_bytes(path, base)
-    git_apply(staging, patch)
-    return path.read_bytes()
-
-
-def write_asset(writer: Writer, phe: Path, asset: dict, name: str, content: bytes, source: Path, at: str) -> None:
-    """按 release import 的同一格式重建资产内容；不复用 import（它拒绝覆盖且固定从 resolved_path 复制）。"""
-    directory = phe / "assets" / asset["asset_id"]
-    writer.write_bytes(directory / "content" / name, content)
-    writer.write_json(
-        directory / "asset.json",
-        {
-            "asset_id": asset["asset_id"],
-            "kind": "instructions",
-            "name": name,
-            "source": str(source),
-            "imported_at": at,
-        },
-    )
 
 
 # 发布与部署：复用 release 的构建与 release_deploy 的逐 Agent 部署。
@@ -215,16 +169,19 @@ def cmd_apply(args: argparse.Namespace, roots: list[Path]) -> int:
         read_registry(args.registry), require(item["target"], "asset_id", f"条目 {args.item} 的 target")
     )
     content_file = effective_file(asset)
-    base = content_file.read_bytes()
+    before_sha = content_sha(content_file)
+    before_files = content_files(content_file)
     execution_id = next_execution_id(read_ledger(phe))
     patch = require(item, "patch", f"条目 {args.item}")
-    content = apply_patch(sandbox, phe / "staging" / execution_id, patch, base)
+    staged = stage_patch(sandbox, phe / "staging" / execution_id, patch, content_file)
+    kind = asset_kind(phe, asset)
     at = utc_now()
-    write_asset(sandbox, phe, asset, Path(asset["resolved_path"]).name, content, content_file, at)
+    write_asset(sandbox, phe, asset, staged, content_file, at)
     release_id = release_tool.build_release(sandbox, phe, release_tool.asset_entries(phe))
     journals = deploy_agents(roots, args.registry, asset, release_id)
     paths = [observed["path"] for observed in asset["observed"]]
-    after_sha = sha256_file(Path(os.path.realpath(paths[0])))
+    after_sha = content_sha(Path(os.path.realpath(paths[0])))
+    after_files = content_files(Path(os.path.realpath(paths[0])))
     append_ledger(
         sandbox,
         phe,
@@ -244,6 +201,7 @@ def cmd_apply(args: argparse.Namespace, roots: list[Path]) -> int:
     )
     row = {
         "kind": "apply",
+        "asset_kind": kind,
         "at": at,
         "execution_id": execution_id,
         "approval_id": approval["approval_id"],
@@ -255,8 +213,10 @@ def cmd_apply(args: argparse.Namespace, roots: list[Path]) -> int:
         "target": {"asset_id": asset["asset_id"], "resolved_path": asset["resolved_path"], "paths": paths},
         "release": release_id,
         "journals": journals,
-        "before_sha256": sha256_bytes(base),
+        "before_sha256": before_sha,
+        "before_files": before_files,
         "after_sha256": after_sha,
+        "after_files": after_files,
         "home": str(home),
         "phe_home": str(phe),
     }
@@ -270,7 +230,9 @@ def cmd_apply(args: argparse.Namespace, roots: list[Path]) -> int:
                 "asset_id": asset["asset_id"],
                 "release": release_id,
                 "before_sha256": row["before_sha256"],
+                "before_files": before_files,
                 "after_sha256": after_sha,
+                "after_files": after_files,
                 "journals": journals,
             },
             ensure_ascii=False,
@@ -312,14 +274,15 @@ def cmd_restore(args: argparse.Namespace, roots: list[Path]) -> int:
         print(captured.getvalue().strip(), file=sys.stderr)
     rebind_restored(sandbox, phe, journals)
     paths = fact["target"]["paths"]
-    restored_sha = sha256_file(Path(os.path.realpath(paths[0])))
+    restored = Path(os.path.realpath(paths[0]))
     row = {
         "kind": "restore",
         "at": utc_now(),
         "execution_id": args.execution,
         "proposal_id": fact["proposal_id"],
         "journals": fact["journals"],
-        "restored_sha256": restored_sha,
+        "restored_sha256": content_sha(restored),
+        "restored_files": content_files(restored),
         "release": link_release(phe, paths[0]),
     }
     append_ledger(sandbox, phe, row)
@@ -343,7 +306,8 @@ def cmd_status(args: argparse.Namespace) -> int:
                 {
                     "path": path,
                     "release": link_release(phe, path),
-                    "sha256": sha256_file(real) if real.is_file() else None,
+                    "sha256": content_sha(real),
+                    "files": content_files(real),
                 }
             )
     print(

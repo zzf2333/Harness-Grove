@@ -1,0 +1,40 @@
+{
+  "sdk_package": "pi-coding-agent",
+  "sdk_version": "1.4.0",
+  "home": "/private/tmp/phe-r3a-SEMx9r/home",
+  "agent_dir": "/private/tmp/phe-r3a-SEMx9r/home/.pi/agent",
+  "cwd": "/private/tmp/phe-r3a-SEMx9r/elsewhere",
+  "entry": "/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo",
+  "release": "/private/tmp/phe-r3a-SEMx9r/skill/demo",
+  "skill_name": "r3a-demo",
+  "args": "请按技能执行",
+  "checks": {
+    "one_skill_discovered": true,
+    "description_advertised": true,
+    "file_path_is_entry": true,
+    "base_dir_is_entry": true,
+    "skills_section_lists_skill": true,
+    "expanded_body_matches_release": true,
+    "expanded_base_dir_matches_entry": true,
+    "expanded_keeps_user_args": true,
+    "files_match_release": true,
+    "no_tool_execution": true
+  },
+  "record": {
+    "agent_dir": "/private/tmp/phe-r3a-SEMx9r/home/.pi/agent",
+    "cwd": "/private/tmp/phe-r3a-SEMx9r/elsewhere",
+    "skills": [
+      {
+        "name": "r3a-demo",
+        "description": "合成演示技能：验证多文件更新、逐项批准与恢复。",
+        "filePath": "/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo/SKILL.md",
+        "baseDir": "/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo"
+      }
+    ],
+    "diagnostics": [],
+    "skills_section": "<skills>\nThe following skills provide specialized instructions for specific tasks.\nUse the read tool to load a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n  <skill>\n    <name>r3a-demo</name>\n    <description>合成演示技能：验证多文件更新、逐项批准与恢复。</description>\n    <location>/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo/SKILL.md</location>\n  </skill>\n</available_skills>\n</skills>",
+    "expanded": "<skill name=\"r3a-demo\" location=\"/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo/SKILL.md\">\nReferences are relative to /private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo.\n\n# r3a-demo\n\n回答前先读 references/notes.md。\n</skill>\n\n请按技能执行",
+    "model_calls": 1,
+    "tool_results": 0
+  }
+}

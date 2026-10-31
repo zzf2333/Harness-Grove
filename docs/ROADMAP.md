@@ -10,7 +10,7 @@
 
 **重排原因：** 旧排程把评测能力和沙箱样例当成了产品完成（M1 只到沙箱、M2 只到历史采集、M3a 只到草稿检查），而真正的产品主线——用户如何开始用、如何覆盖完整 Harness 资产、如何跨周期累积——没有排进去。本版把主线写成 R1–R4，历史阶段只作为证据和契约来源。
 
-**事实与规划的标记：** 本文标为“已实现/验证”的只指当前代码与已有证据；“未支持”是缺口。R1–R4 是排程，其中 R1 的初始化与只读发现入口已交付并在沙箱验收（2026-10-31，证据见 [acceptance/r1.md](acceptance/r1.md)）；R1 剩余的安装包与默认路径，以及 R2–R4 全部仍是规划，也没有真实配置写入或 Host 加载验证。
+**事实与规划的标记：** 本文标为“已实现/验证”的只指当前代码与已有证据；“未支持”是缺口。R1–R4 是排程。已交付：R1 的初始化与只读发现入口（沙箱验收，[acceptance/r1.md](acceptance/r1.md)）、R2 的产品入口（文件层验收，[acceptance/r2.md](acceptance/r2.md)）、R3a 的 Skills 文件层闭环与一次隔离 Host 的发现/显式展开（[acceptance/r3a.md](acceptance/r3a.md)）。仍缺：安装包与默认 `~/.phe`、真实 Host 加载验证、R3b–R3e、R4，以及模型自主选用与收益证据。
 
 ---
 
@@ -63,7 +63,7 @@
 | 逻辑资产类型 | 设计要求（SPEC） | 已实现 | 验证 | 未支持 |
 |---|---|---|---|---|
 | 共享指令（instructions） | 软链、原生加载或 `@` 引用；版本、优先级、是否重复加载要验证 | `inventory` 发现用户级/项目级；`registry adopt/drift`；`release import/release/deploy` 三 Agent 软链；`change.py apply/status/restore` 与 `review-plan/review` | 沙箱：字节、链接、账本、逆序恢复；`examples/lightweight-loop` 按文档复跑（15 个 bash 块 exit 0，2026-10-31） | 真实 Host 是否加载与优先级；`@` 引用式部署（只有软链）；多资产同时更新与复盘（`release` 能发布多个资产，`change.py` 每次只处理一个 instructions 资产） |
-| Skills | 共享目录软链或原生搜索路径；必须验证被发现和触发 | `inventory` 记 skill 目录、子目录、`SKILL.md` 指纹；`import` 整目录复制；release 逐文件 sha256；deploy 目录级软链 | 沙箱：skill 目录导入、发布、部署链接有测试 | `change.py` 不支持 skill（写死 `kind=instructions`、单文件 patch）；skill 的更新/复盘/撤销；发现与触发验证；`~/.agents/skills` 的 readers 是本机观察 |
+| Skills | 共享目录软链或原生搜索路径；必须验证被发现和触发 | `inventory` 记 skill 目录与 `SKILL.md` 指纹；`import` 整目录复制；release 逐文件 sha256；deploy 目录级软链；产品入口与旧沙箱入口都能预览/应用/恢复多文件 skill（`asset_kind=skill`，内容按整棵树记账） | 沙箱：逐文件预览、选择性应用、双入口共享发布、逆序恢复（文件集合与字节）；隔离 Host：Pi 1.4.0 发现 + `/skill:` 显式展开（模型是 faux provider，见 [acceptance/r3a.md](acceptance/r3a.md)） | 模型自主选用与效果（`unknown`）；Codex 是否读 `~/.agents/skills`（本机观察）；安装用户导入 skill 目录的产品入口 |
 | MCP | 统一逻辑 Catalog，按平台渲染；不覆盖未托管条目、不写密钥 | 把 `settings*.json`、`.mcp.json`、`mcp.json`、`config.toml` 当**文件**记 Hash 与顶层键名 | 盘点/漂移的文件级测试 | 条目级模型（server 标识、命令/URL、传输、启用状态）；渲染与合并；只记键名导致现在根本读不到条目，谈不上语义管理 |
 | Hooks | 底层脚本共享，按平台包装；权限与事件语义差异 | `kind=hook` 枚举存在，但没有候选路径（hooks 写在 `settings.json` 里），盘点不会产出 hook 记录 | 无 | 事件模型、平台包装、加载验证 |
 | 扩展 / 插件 / prompts / 子代理定义 | 底层脚本共享，按平台包装 | `inventory` 记录 `.pi/agent/extensions`、`.pi/agent/prompts`、`.claude/plugins`、`.claude/agents`、`.pi/agent/agents` 的一层条目 | 盘点有单测；目录型条目在发布部署里只按通用 skill 路径验证过 | 逻辑类型：`import` 按物理形状分类（目录→`skill`、文件→`instructions`），这些条目会被导入成错误的 kind；启用状态与宿主加载规则也没有模型 |
@@ -169,20 +169,33 @@
 
 **场景：** 用户的 6 个 Skill 散在 `~/.claude/skills` 和 `~/.agents/skills`（Codex 与 Pi 共享），其中一个总是触发不了。他想统一到一份逻辑源，改一次，并确认它真的会被发现和触发。
 
-**现状：** 目录导入、逐文件发布、目录软链部署在沙箱有测试；`change.py` 不支持 skill。
+**现状（2026-10-31）：** 文件层闭环与一次隔离 Host 的发现/显式展开已交付，证据见
+[acceptance/r3a.md](acceptance/r3a.md)。目录型 Skill 的预览、应用、账本与逆序恢复走同一套产品入口
+（`tools/personalize.py`）与同一份账本；两个 Host 技能入口指向同一发布，未托管的普通目录不被覆盖。Host 层用
+真实 Pi 1.4.0 的 loader 与 `session.prompt("/skill:…")` 验证了发现与展开，模型层是 faux provider。原先四项缺口的状态：
+
+1. 已做：`tools/asset_content.py` 提供目录资产的内容层（逐文件清单、整棵摘要、`git apply` 试打、按类型写回）；旧沙箱
+   `change.py` 与产品入口共用它，`change.py` 的守卫不变。
+2. 已做：skill 的更新、复盘、撤销与单文件指令走同一账本；`apply` / `restore` 行带 `asset_kind` 与前后文件集合。
+3. 部分：Pi 读 `~/.agents/skills` 已在隔离 HOME 里核实；Codex 是否读同一目录仍未核实，盘点里的 `readers` 仍是本机观察。
+4. 已做（显式触发）：隔离 Host 里 `/skill:` 展开的内容与发布逐字节一致、`baseDir` 指向入口、无工具执行。
+   **未验证**：模型自主选用该 Skill、任务执行效果与收益。
 
 **缺口与交付物：**
 
-1. `change.py` 支持 skill 资产：多文件内容，patch 落到 `SKILL.md` 或引用文件。
-2. skill 的更新、复盘、撤销走同一账本。
-3. 共享目录 readers 的事实核实（`~/.agents/skills` 目前是本机观察）。
-4. Skill 被发现/触发的 Host 层验证，单独一项。
+1. Codex 读 `~/.agents/skills` 的事实核实（隔离环境启动 Codex，或找到可引用的官方说明）。
+2. 模型自主选用与效果：需要在有争议的改动上按可选项做 L2 对照（不是本切片的完成前提）。
 
-**验收：** 沙箱 import 一个 skill → 部署到两个 Host 的 skill 目录 → 改 `SKILL.md` → apply → review → restore 回原字节，manifest 逐文件 sha256 前后一致；同一 skill 的两个入口指向同一发布，未托管的新 skill 不被覆盖。Host 层再加一项：隔离 Host 启动后的加载/触发证据（一次性隔离环境，不等于 L2 对照）。
+**验收：** 已在隔离环境按本段口径跑完：合成 Skill → 两个 Host 技能入口软链 → 改 `SKILL.md` 并增删改引用文件 →
+`preview` 逐文件 diff → 逐条批准 → `apply` → `status` → 逆序 `restore`；恢复后文件集合与每个文件字节回到应用前，
+两个入口指向同一发布。产品入口没有 import 子命令，资产内容由 `apply` 首次写出；旧沙箱入口用同一份内容层验证了
+`change.py apply` 也能打多文件 patch。Host 层证据是一次性隔离环境的发现与显式展开，不等于 L2 对照。
 
 **依赖：** R1/R2 已在用的共享布局。与 R3b–e 无阻塞关系，可并行。
 
-**完成 / 停止：** 文件层闭环 + 至少一次隔离 Host 的发现/触发证据才算完成；只有文件层时标 partial，不宣称触发有效；建不起隔离 Host 时标受阻，不拿开发者日常环境替代。
+**完成 / 停止：** 本切片按“文件层闭环 + 至少一次隔离 Host 的发现/显式触发证据”判定完成（2026-10-31）；自主选用、
+效果与收益不在本切片的完成条件内，仍记 `unknown`。Codex 读取事实是后续项，不阻塞本切片。只有文件层时标 partial，
+不宣称触发有效；建不起隔离 Host 时标受阻，不拿开发者日常环境替代。
 
 #### R3b MCP
 
@@ -268,7 +281,7 @@
 | 看清自己机器的 Harness 与可管理范围 | R1 | 已交付 `workspace.py init/discover`：沙箱里生成发现报告（文件层）；真实 Host 加载未验证 |
 | 用会话与偏好得到带证据、可逐条批准的改动 | R2 | 产品入口 `tools/personalize.py` 已交付（文件层验收）；Host 加载与收益未验证 |
 | 下次复盘对照预测，结论跨次延续 | R2（指令）、R4（多周期） | 合成两周期已跑通（`cycle-record` / `cycle-plan`）；真实多周期与 Host 行为未验证 |
-| 完整 Harness（Skills、MCP、Hooks、扩展、工具配置）同样可管 | R3a–R3e | Skills 只有发布/部署零件；其余只有盘点或未支持 |
+| 完整 Harness（Skills、MCP、Hooks、扩展、工具配置）同样可管 | R3a–R3e | Skills 已到文件层闭环 + 一次隔离 Host 的发现/显式展开；MCP/Hooks/扩展/工具配置只有盘点或未支持 |
 | 换模型/改工具/Host 升级后仍可维护 | R4 | 未开始；外部变更只在 deploy 中止时报出 |
 
 **真实依赖：**

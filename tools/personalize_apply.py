@@ -10,6 +10,7 @@
 import argparse
 import contextlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -90,6 +91,9 @@ def check_restore_entries(entries: list[dict]) -> None:
         restored_sha = planning.sha_of(restore_target) if restore_target is not None else None
         if restored_sha != entry["restore"]["content_sha256"]:
             raise ValueError(f"恢复目标的内容在恢复预览之后变了（{path} → {restore_target}）：请重新预览")
+        restored_files = change.content_files(restore_target) if restore_target is not None else {}
+        if restored_files != entry["restore"]["files"]:
+            raise ValueError(f"恢复目标的文件集合在恢复预览之后变了（{path} → {restore_target}）：请重新预览")
 
 
 def deploy_planned(writer, phe: Path, plan: dict, release_id: str) -> list[str]:
@@ -131,19 +135,18 @@ def cmd_apply(args: argparse.Namespace) -> int:
     item = change.select_item(package, args.item)
     asset = change.target_asset(read_registry(planning.registry_path(phe, args.registry)), plan["asset"]["asset_id"])
     content_file = change.effective_file(asset)
-    base = content_file.read_bytes()
-    if change.sha256_bytes(base) != item_plan["current_sha256"]:
-        raise ValueError("入口当前内容在预览之后变了：请重新预览，不要用旧计划执行另一份 diff")
     check_entries(plan["asset"]["entries"], item_plan["current_sha256"])
     targets = [Path(entry["path"]) for entry in plan["asset"]["entries"]]
     writer = planning.product_writer(phe, targets, source)
     execution_id = next_execution_id(read_ledger(phe))
     patch = require(item, "patch", f"条目 {args.item}")
-    content = change.apply_patch(writer, phe / "staging" / execution_id, patch, base)
-    if change.sha256_bytes(content) != item_plan["expected_sha256"]:
+    staged = change.stage_patch(writer, phe / "staging" / execution_id, patch, content_file)
+    if change.content_sha(staged) != item_plan["expected_sha256"]:
         raise ValueError("打出来的内容和预览的 diff 不一致：请重新预览")
+    if change.content_files(staged) != item_plan["expected_files"]:
+        raise ValueError("打出来的文件集合与预览不一致：请重新预览")
     at = utc_now()
-    change.write_asset(writer, phe, asset, Path(asset["resolved_path"]).name, content, content_file, at)
+    change.write_asset(writer, phe, asset, staged, content_file, at)
     release_id = release_tool.build_release(writer, phe, release_tool.asset_entries(phe))
     # 共享部署函数会打人读进度；产品入口的 stdout 只留一份机读结果，进度转到 stderr。
     with contextlib.redirect_stdout(sys.stderr):
@@ -179,6 +182,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
         "report": report,
         "evidence": require(item, "evidence", f"条目 {args.item}"),
         "prediction": require(item, "prediction", f"条目 {args.item}"),
+        "asset_kind": plan["asset"]["kind"],
         "target": {
             "asset_id": asset["asset_id"],
             "resolved_path": asset["resolved_path"],
@@ -186,8 +190,10 @@ def cmd_apply(args: argparse.Namespace) -> int:
         },
         "release": release_id,
         "journals": journals,
-        "before_sha256": change.sha256_bytes(base),
+        "before_sha256": item_plan["current_sha256"],
+        "before_files": item_plan["current_files"],
         "after_sha256": after_sha,
+        "after_files": item_plan["expected_files"],
         "plan_path": str(args.plan),
         "plan_sha256": plan_sha,
         "cycle": plan["cycle"],
@@ -203,7 +209,9 @@ def cmd_apply(args: argparse.Namespace) -> int:
                 "asset_id": asset["asset_id"],
                 "release": release_id,
                 "before_sha256": row["before_sha256"],
+                "before_files": row["before_files"],
                 "after_sha256": after_sha,
+                "after_files": row["after_files"],
                 "journals": journals,
                 "host_writes": [str(path) for path in targets],
                 "ledger": str(phe / "ledger.jsonl"),
@@ -236,6 +244,10 @@ def cmd_restore(args: argparse.Namespace) -> int:
         journal = read_json(journal_path)
         unbind(writer, phe, journal["agent"], [entry["path"] for entry in journal["entries"]])
     change.rebind_restored(writer, phe, journal_paths)
+    restored_files = change.content_files(Path(os.path.realpath(plan["entries"][0]["path"])))
+    expected_files = plan["entries"][0]["restore"]["files"]
+    if restored_files != expected_files:
+        raise ValueError(f"恢复后的文件集合与恢复预览不一致：{sorted(restored_files)} != {sorted(expected_files)}")
     row = {
         "kind": "restore",
         "at": utc_now(),
@@ -243,6 +255,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
         "proposal_id": fact["proposal_id"],
         "journals": fact["journals"],
         "restored_sha256": planning.sha_of(targets[0]),
+        "restored_files": restored_files,
         "release": change.link_release(phe, plan["host_writes"][0]),
         "approval_id": require(approval, "approval_id", "恢复批准记录"),
         "approval_path": str(args.approval),

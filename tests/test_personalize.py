@@ -179,7 +179,7 @@ class ApplyTests(PersonalizeFixture):
         write(self.shared, changed)
         result = self.apply_cli(self.plan_path("c1"), "P1", approval)
         self.assertEqual(result.returncode, 1)
-        self.assertIn("入口当前内容在预览之后变了", result.stderr)
+        self.assertIn("的内容在预览之后变了", result.stderr)
         self.assertEqual(self.shared.read_bytes(), changed.encode())
 
     def test_approval_is_bound_to_the_current_plan_bytes(self):

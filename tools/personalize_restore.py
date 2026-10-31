@@ -12,6 +12,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from asset_content import content_files
 from change_ledger import executions, read_json, read_ledger
 from personalize_plan import (
     RESTORE_PLAN_KIND,
@@ -62,11 +63,12 @@ def build_restore_plan(phe: Path, execution_id: str, cycle: str) -> dict:
                 {
                     "agent": journal["agent"],
                     "path": str(path),
-                    "current": {"state": state, "target": target, "sha256": sha_of(path)},
+                    "current": {"state": state, "target": target, "sha256": sha_of(path), "files": content_files(path)},
                     "restore": {
                         "state": entry["state"],
                         "old_target": entry["old_target"],
                         "content_sha256": sha_of(restore_target) if restore_target is not None else None,
+                        "files": content_files(restore_target) if restore_target is not None else {},
                     },
                 }
             )
@@ -83,7 +85,8 @@ def build_restore_plan(phe: Path, execution_id: str, cycle: str) -> dict:
         "entries": entries,
         "host_writes": [entry["path"] for entry in entries],
         "phe_writes": ["bindings.json", "ledger.jsonl"],
-        "restore_note": "恢复按 journal 逆序把入口链接指回应用前的目标；应用前的共享来源文件本身从未被改过",
+        "restore_note": "恢复按 journal 逆序把入口链接指回应用前的目标；恢复后要核对文件集合与每个文件的字节；"
+        "应用前的共享来源文件本身从未被改过",
     }
 
 
@@ -96,8 +99,8 @@ def render_restore_preview(plan: dict, plan_sha: str) -> str:
         f"- 恢复计划 sha256：`{plan_sha}`（恢复批准绑定这份计划的原始字节）",
         f"- journal：{'、'.join(f'`{path}`' for path in plan['journals'])}",
         "",
-        "| Agent | 入口 | 当前形态 | 当前 sha256 | 恢复后 | 恢复后内容 sha256 |",
-        "|---|---|---|---|---|---|",
+        "| Agent | 入口 | 当前形态 | 当前文件 | 当前 sha256 | 恢复后 | 恢复后文件 | 恢复后内容 sha256 |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for entry in plan["entries"]:
         current, restore = entry["current"], entry["restore"]
@@ -106,8 +109,8 @@ def render_restore_preview(plan: dict, plan_sha: str) -> str:
             f"指向 `{restore['old_target']}`" if restore["state"] == "symlink" else "删除入口（应用前不存在）"
         )
         lines.append(
-            f"| {entry['agent']} | `{entry['path']}` | {current_text} | `{current['sha256']}` | "
-            f"{restore_text} | `{restore['content_sha256']}` |"
+            f"| {entry['agent']} | `{entry['path']}` | {current_text} | {len(current['files'])} 个 | "
+            f"`{current['sha256']}` | {restore_text} | {len(restore['files'])} 个 | `{restore['content_sha256']}` |"
         )
     lines.extend(
         [
