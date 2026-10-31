@@ -39,12 +39,15 @@ def project_object(text: str, project_key: str) -> tuple[list[tuple[str, int, in
     raise ValueError(f"projects 里没有项目键 {project_key}：本片不创建项目条目，请先在这个工作目录启动一次 Claude Code")
 
 
-def _removal_span(elements: list[tuple[int, int]], index: int) -> tuple[int, int]:
-    """删掉第 `index` 个元素（连同一个逗号）的跨度；其他元素与行外空白不动。"""
+def _removal_span(text: str, elements: list[tuple[int, int]], index: int) -> tuple[int, int]:
+    """删掉第 `index` 个元素（连同一个逗号）的跨度；其他元素与行外空白不动。
+
+    首项只删到它后面的逗号为止：下一项前的换行与缩进属于下一项，不能一起吃进去。
+    """
     if index > 0:
         return (elements[index - 1][1], elements[index][1])
     if len(elements) > 1:
-        return (elements[0][0], elements[1][0])
+        return (elements[0][0], text.index(",", elements[0][1], elements[1][0]) + 1)
     return elements[0]
 
 
@@ -67,13 +70,27 @@ def toggle_edit(adapter: str, text: str, project_key: str, server: str, disabled
     )
     if index is not None:
         if not disabled:
-            return _result(True, True, len(elements) - 1, disabled, _removal_span(elements, index), "", text)
+            return _result(True, True, len(elements) - 1, disabled, _removal_span(text, elements, index), "", text)
         return _result(True, True, len(elements) - 1, disabled, (elements[index][1], elements[index][1]), "", text)
     if not disabled:
         return _result(False, True, len(elements), disabled, (bracket, bracket), "", text)
     if elements:
         return _result(False, True, len(elements), disabled, (elements[-1][1], elements[-1][1]), f', "{server}"', text)
     return _result(False, True, 0, disabled, (bracket, bracket), f'"{server}"', text)
+
+
+def managed_edit(
+    adapter: str, text: str, project_key: str, server: str, definition: dict, manage_enabled: bool
+) -> dict:
+    """计划 / 执行里一个启停目标要替换的跨度：只有这次 patch 改的就是启停时才读定义里的 `enabled`。
+
+    `manage_enabled` 为 False（普通参数更新）时不读定义里的 `enabled`、不按缺字段推断当前状态，返回零长度跨度与
+    空替换：Host 里的启停保持原字节。为 True 时才按定义增删绑定的名字。
+    """
+    if not manage_enabled:
+        return {"managed": False, "span": (0, 0), "replacement": "", "before_fragment": "", "change": False}
+    edit = toggle_edit(adapter, text, project_key, server, disabled=not definition["enabled"])
+    return {"managed": True, **edit}
 
 
 def _result(
@@ -109,6 +126,17 @@ def toggle_drift(adapter: str, definition: dict, text: str, project_key: str, se
 def toggle_diff(adapter: str, edit: dict, project_key: str) -> str:
     """启停改动的文字 diff：只报绑定的 server 与「数组另有几项」，不复制其他名字。"""
     array_name = TOGGLE_ARRAYS[adapter]
+    if not edit["managed"]:
+        return (
+            "\n".join(
+                [
+                    f"--- 项目启停：项目键 {project_key} 的 {array_name}",
+                    "+++ 应用后",
+                    " 本次只改条目参数：启停保持当前状态，不写字节",
+                ]
+            )
+            + "\n"
+        )
     others = f"数组另有 {edit['others']} 项原样保留" if edit["array_present"] else "原本没有这个列表"
     current = "有这个名字（禁用）" if edit["present"] else "没有这个名字（启用）"
     desired = "有这个名字（禁用）" if edit["disabled"] else "没有这个名字（启用）"

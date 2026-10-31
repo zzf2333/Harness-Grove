@@ -304,12 +304,14 @@ python3 -I "$T" mcp-drift --phe-home "$PHE_HOME" [--asset-id <id>]
    `disabledMcpServers` 里这个 server 名；只增删这个名字，其他名字、其他项目键与外围字节不动，审批
    （`disabledMcpjsonServers` / `enabledMcpjsonServers`）、信任（`hasTrustDialogAccepted`）和默认关闭的内置 server 不碰，
    “启用”也不等于 Host 会加载或能连上。有 Claude 条目却没给启停目标时，改启停的整包标 `not_applicable`，不退化成只
-   改 Pi；只改 Pi 一个目标仍然可以登记与启停。
+   改 Pi；登记与普通参数更新仍可执行，`mcp-drift` 把 Claude 条目报成 `toggle_unbound`（启停未管理），不报成整体同步。
+   只改 Pi 一个目标仍然可以登记与启停。
    凭证口径：`env` / `headers` 的值只能是 `${NAME}` 引用，`url` 不带内联认证；其他字面值或 `oauth` / `timeout` /
    `exposure` / `description` / `headersHelper` / `!command` 等字段让条目不可托管并报出字段名，工具不读值、不脱敏后写回。
    `mcpServers` 里没有这个 server、或要新增 / 删除条目时不适用，计划标 `not_applicable`；Codex 的 `config.toml`
    不在本片。普通参数更新保留每个目标现在写的启停与显式 `"type": "stdio"`；改 `server` 标识标 `not_applicable`。
-   恢复先按账本核对逆序、执行身份与 journal，旧计划不会因为文件内容回到旧值而被接受。
+   恢复先按账本核对逆序、执行身份与 journal，旧计划不会因为文件内容回到旧值而被接受；第一片生成的 MCP 恢复计划
+   （`entries[]` 没有 `span`）仍可执行，条目目标按当前绑定定位，启停目标缺跨度直接拒绝。
    文件对得上**不代表** Host 加载了这个 server，也不代表连得上。
 
 边界：一次只处理一个资产（单个 instructions 文件、一个 Skill 目录或一个 MCP 条目）+ 多个 Host 入口，不碰未受管的普通

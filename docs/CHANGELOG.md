@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-10-31 · R3b 启停切片第 1 轮审查修复：普通更新不动启停、未绑定启停状态、首项排版与旧恢复计划
+
+- 依据：R3b 启停切片候选 `7d59330` + `3674607`（`archive/r3b-enable-candidate-3674607`）的第 1 轮独立审查：2 项 P1 与 2 项同源 P2，主控与 advisor 裁定四项都按正常契约修（批准的启停补丁、字节口径与兼容性，不是新增防护）。四项都先用真实 CLI 序列写成失败用例，在候选内容上跑出 6 项失败，再做最小修复；没有新增锁、重试、fallback 或防御分支，旧 `change.py` / `release*.py` 守卫与旧 instructions / Skill 路径未回退。
+- 普通参数更新不动启停（P1）：`personalize_mcp_plan.target_row` 与 `personalize_mcp_apply.prepare_target` 改用 `mcp_toggle.managed_edit`，只有这次 patch 改的就是 `enabled` 时才读定义里的启停；否则启停目标返回零长度跨度、空替换，计划里写明“本次只改条目参数”，整份文件 sha256 仍绑定当前字节。修前 `claude-toggle` 无条件读 `definition["enabled"]`：定义没有这个字段时普通 args 更新直接退出 1，定义里写着 `enabled: false` 而用户在 Claude 里手动启用过时，普通更新会把它重新禁用回去。
+- 未绑定启停的状态（P1）：`personalize_mcp.target_state` 加 `toggle_bound` 参数（`has_toggle_target` 从同资产的绑定算出）；定义声明了 `enabled`、而 Claude 条目没有对应 `claude-toggle` 绑定时，条目参数一致也报 `toggle_unbound`，`DRIFT_STATES` 写“启停未管理，整体不算同步”。登记与普通参数更新仍可执行，改启停的补丁仍整组 `not_applicable`（不缺启停目标就静默跳过）。修前 `mcp-adopt` / `mcp-drift` 把这种资产报成两个 `in_sync`。
+- 删启停数组首项（P2）：`mcp_toggle._removal_span` 的首项分支改成删到这个元素后面的逗号为止，下一项前的换行与缩进归下一项保留；输入 `["demo",\n  "legacy-disabled"]` 启用 `demo` 后得到 `[\n  "legacy-disabled"]`，批准后恢复回原字节。只改这一个数组的删除跨度，不做通用 JSON 编辑器。
+- 旧恢复计划兼容（P2）：`personalize_mcp_apply.restore` 改用新增 `plan_restore_span`：计划里记了 `span` 就用记下的；第一片（`5a7ba99`）生成的 MCP 恢复计划只有条目目标、`entries[]` 没有 `span`，那种条目按当前绑定定位运行时跨度；启停目标缺 `span` 直接拒绝，不按名字猜。通用批准 / PHE_HOME / 执行 ID / 逆序 / journal / 两侧 sha256 的核对顺序不变，内容变了仍拒绝；执行不修改计划或批准字节，也不要求原操作无变化即可重新批准。
+- 测试：`tests/test_personalize_mcp_toggle.py` 加三组（普通更新缺 `enabled`、手动开关后普通更新不回改、删首项排版与恢复、启停恢复计划缺跨度）；`tests/test_personalize_mcp_review.py` 的“Pi 带 `enabled: false` 先登记”按契约改成 `["in_sync", "toggle_unbound"]` 并补 `mcp-drift` 断言；新增 `tests/test_personalize_mcp_legacy.py` 与 `tests/legacy_mcp_restore/`（恢复计划由 `5a7ba99` 真实生成，只做 `@ROOT@` / `@JOURNAL@` 两处替换，批准按替换后的字节重写，不是从新版计划删字段模拟）。红：候选内容上 6 项失败（`personalize: 'enabled'`、两个 `in_sync`、首项吞掉换行、`personalize: 'span'`）；修后 `-k test_personalize_mcp` → 29 tests OK。
+- 文档：README 的 R3b 启停 / drift / 恢复三段、ROADMAP 的 R3b 现状与顶部已交付清单、Skill §14 第 9 条、[docs/acceptance/r3b-enable.md](acceptance/r3b-enable.md) 的契约表与新增“第 1 轮审查修复（红 → 绿）”一节同步；预览里“本次不改”的字段列从“无（与逻辑定义一致）”改成“无（本次不改）”。
+- 验证：`python3 -m unittest discover -s tests -t tests` → 441 tests OK（exit 0）；`-k test_personalize_mcp` → 29 tests OK；`ruff check .` → All checks passed；`ruff format --check .` → 124 files already formatted；`docs/acceptance/r3b-enable.md` 的 `bash` 块从最终文件机械提取，在 HEAD 副本与无关 cwd 里用 `bash -e` 顺序执行，退出 0，三份配置 `cmp` 与 drift 状态核对通过；临时工作区已删除。
+- 未验证：Claude Code 是否真的按 `disabledMcpServers` 启停（仍是静态格式依据）、Host 是否加载条目、能否连上 server、启停有没有收益；新增 / 删除条目、Codex `config.toml`、审批与信任开关的写入仍未支持；未读真实 Host 配置或凭证、未启动 MCP 连接、未调用付费服务、未推送；仓库无类型检查配置，未跑 typecheck。
+
 ## 2026-10-31 · R3b 启停：Pi 条目 `enabled` 与 Claude 项目 `disabledMcpServers`
 
 - 背景：第一片把 MCP 收紧到条目级跨度，但启停一直没落实——“启用 / 禁用”是用户最常要的一层开关，第一片只能靠普通参数更新“保留原值”。本片只做这一层：逻辑定义里的 `enabled` 渲染到各 Host 的真实落点，不动项目审批、信任与默认关闭的内置 server，也不把“启用”当成“会连上”。

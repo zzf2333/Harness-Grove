@@ -122,11 +122,16 @@ class McpPreserveEnabledTest(McpFixture):
         self.assertEqual(self.poke_files()["claude"], self.original[self.claude_project])
 
     def test_adopt_accepts_a_disabled_pi_entry_as_the_first_target(self):
-        """Pi 条目带 `enabled: false` 时先登记也能通过：Claude 的 `.mcp.json` 没有启停字段，不因此拒绝登记。"""
+        """Pi 条目带 `enabled: false` 时先登记也能通过：Claude 的 `.mcp.json` 没有启停字段，不因此拒绝登记。
+
+        条目参数一致，但定义声明了启停又没有 `claude-toggle` 目标：Claude 那一行报 `toggle_unbound`，
+        不能报成整体同步（普通参数更新仍然可执行）。
+        """
         self.init()
         payload = json.loads(self.adopt(f"pi={self.pi_user}", f"claude={self.claude_project}").stdout)
         self.asset_id = payload["asset_id"]
-        self.assertEqual([row["state"] for row in payload["targets"]], ["in_sync", "in_sync"])
+        self.assertEqual([row["state"] for row in payload["targets"]], ["in_sync", "toggle_unbound"])
+        self.assertEqual(payload["targets"][1]["fields"], ["enabled"])
         definition = json.loads(self.definition().read_text(encoding="utf-8"))
         self.assertIs(definition["enabled"], False)
         self.change = self.package()
@@ -135,6 +140,10 @@ class McpPreserveEnabledTest(McpFixture):
         self.assertEqual([row["drift"] for row in plan["items"][0]["targets"]], [["args"], ["args"]])
         self.assertEqual(self.apply().returncode, 0)
         self.assertIs(json.loads(self.poke_files()["pi"])["mcpServers"]["demo"]["enabled"], False)
+        drift = self.drift()
+        self.assertEqual([row["state"] for row in drift["targets"]], ["in_sync", "toggle_unbound"])
+        self.assertEqual(drift["targets"][1]["fields"], ["enabled"])
+        self.assertIn("启停", drift["targets"][1]["state_note"])
 
     def test_enabled_change_without_a_claude_toggle_target_is_not_applicable(self):
         """改启停要有 Claude 的启停目标：没有就整组不可执行，不退化成只改 Pi、把定义标成一致。"""

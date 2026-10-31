@@ -211,8 +211,11 @@
 修复后（第一片）：普通更新保留各目标当前写的启停与显式 stdio `type`，改 `server` 标识标 `not_applicable`，恢复先
 核对逆序、执行身份与 journal 再看内容 hash。第二片（启停）只改这一层：Pi 写条目的 `enabled`，Claude 写
 `~/.claude.json` 项目条目的 `disabledMcpServers`（`claude-toggle` 目标 + `--project-key`，只增删绑定的名字）；有
-Claude 条目却没有启停目标时，改启停的整包标 `not_applicable`，不退化成只改 Pi。Claude 的启停格式依据是安装的
-2.1.312 二进制里的产品说明与读写函数（静态证据，不在 Host 里实跑）。原先四项缺口的状态：
+Claude 条目却没有启停目标时，改启停的整包标 `not_applicable`，不退化成只改 Pi。启停片第 1 轮审查修复后：普通参数更新不读
+定义里可能缺的 `enabled`、也不改回手动开关过的那一侧；定义声明了启停却没有 `claude-toggle` 绑定时，条目目标报
+`toggle_unbound`（登记与普通更新仍可执行）；删启停数组首项保留下一项前的换行与缩进；第一片生成的 MCP 恢复计划（没有
+`span`）仍能执行，启停目标缺跨度则直接拒绕。Claude 的启停格式依据是安装的 2.1.312 二进制里的产品说明与读写函数
+（静态证据，不在 Host 里实跑）。原先四项缺口的状态：
 
 1. 已做（第一片）：条目级模型与两份配置的识别/比对。模型含 server 标识、transport、`command` / `args` / `env` /
    `cwd` / `url` / `headers`，**不含凭证值**（`env` / `headers` 只接受 `${NAME}` 引用）。

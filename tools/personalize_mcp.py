@@ -43,6 +43,7 @@ DRIFT_STATES = {
     "missing": "配置文件里没有这个条目",
     "unsupported": "条目里有本片不支持的字段或值",
     "not_managed": "逻辑定义没有声明启停（enabled）：这一项不比对",
+    "toggle_unbound": "条目参数一致，但这个 Claude 项目没有 claude-toggle 绑定：启停未管理，整体不算同步",
 }
 
 
@@ -177,19 +178,34 @@ def project_definition(server: str, targets: list[dict]) -> dict:
 
 
 # `target_state` 同时用于登记与 `mcp-drift`，两边口径一致。
-def target_state(target: dict, definition: dict) -> dict:
-    """单个目标相对逻辑定义的漂移：条目目标比渲染后的字段名，启停目标比项目启停列表里有没有这个名字。"""
+def has_toggle_target(targets: list[dict]) -> bool:
+    """这个资产有没有 `claude-toggle` 目标：没有的话，定义里的启停就没有对应的写入落点。"""
+    return any(target["adapter"] in mcp_config.TOGGLE_ARRAYS for target in targets)
+
+
+def target_state(target: dict, definition: dict, toggle_bound: bool) -> dict:
+    """单个目标相对逻辑定义的漂移：条目目标比渲染后的字段名，启停目标比项目启停列表里有没有这个名字。
+
+    `toggle_bound` 表示这个资产有 `claude-toggle` 目标。Claude 的 `.mcp.json` 条目没有启停字段：定义声明了
+    `enabled` 却没有绑定启停目标时，条目参数一致也不报 `in_sync`，改报 `toggle_unbound`。
+    """
     _data, text = read_config(Path(target["config_path"]))
     if target["adapter"] in mcp_config.TOGGLE_ARRAYS:
         return mcp_toggle.toggle_drift(target["adapter"], definition, text, target["project_key"], target["server"])
-    return mcp_config.drift(target["adapter"], definition, text)
+    state = mcp_config.drift(target["adapter"], definition, text)
+    if state["state"] == "in_sync" and "enabled" in definition and target["adapter"] == "claude" and not toggle_bound:
+        return {**state, "state": "toggle_unbound", "fields": ["enabled"]}
+    return state
 
 
 def register(writer, phe: Path, args: argparse.Namespace, registry_path: Path) -> dict:
     """把已存在的 server 条目登记成一条 MCP 资产，并写出逻辑定义与目标绑定。"""
     targets = parse_targets(args.target, args.project_key)
     definition = project_definition(args.server, targets)
-    states = [target_state(dict(target, server=args.server), definition) for target in targets]
+    states = [
+        target_state(dict(target, server=args.server), definition, toggle_bound=has_toggle_target(targets))
+        for target in targets
+    ]
     try:
         registry = registry_tool.read_registry(registry_path)
     except FileNotFoundError:
@@ -285,8 +301,10 @@ def drift_rows(phe: Path, asset_id: str) -> dict:
     meta = metadata(phe, asset_id)
     definition = load_definition(phe, asset_id)
     rows = []
-    for target in target_bindings(meta, asset_id):
-        result = target_state(target, definition)
+    targets = target_bindings(meta, asset_id)
+    bound = has_toggle_target(targets)
+    for target in targets:
+        result = target_state(target, definition, toggle_bound=bound)
         rows.append(
             {
                 "adapter": target["adapter"],

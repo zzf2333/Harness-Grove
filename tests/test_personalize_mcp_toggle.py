@@ -90,6 +90,28 @@ class McpToggleLoopTest(McpToggleFixture):
         self.assertEqual(self.home_mode(), 0o600)
 
 
+class McpToggleFirstElementTest(McpToggleFixture):
+    """删启停数组首项只删这个名字和它后面的逗号：下一项前的换行与缩进保留。"""
+
+    project_toggle = '["demo",\n      "legacy-disabled"]'
+
+    def test_removing_the_first_name_keeps_the_next_entry_layout_and_restores_bytes(self):
+        self.set_up_project()
+        self.change = self.package([self.item("P1", self.definition_with(enabled=True))])
+        self.assertEqual(self.preview().returncode, 0)
+        applied = self.apply()
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        expected = self.claude_home_text().replace('["demo",\n      "legacy-disabled"]', '[\n      "legacy-disabled"]')
+        self.assertEqual(self.claude_home.read_text(encoding="utf-8"), expected)
+        self.assertEqual(self.project_bucket()["disabledMcpServers"], ["legacy-disabled"])
+        execution = self.ledger()[-1]["execution_id"]
+        restore_plan = self.restore_plan(execution, "c2")
+        restored = self.restore(execution, restore_plan, self.approve_restore(restore_plan, execution))
+        self.assertEqual(restored.returncode, 0, restored.stderr)
+        self.assertEqual(self.claude_home.read_bytes(), self.home_original)
+        self.assertEqual(self.project_bucket()["disabledMcpServers"], ["demo", "legacy-disabled"])
+
+
 class McpToggleExistingEntriesTest(McpToggleFixture):
     """已有禁用项：别的名字保留，另一个项目键里的同名条目不动，已禁用时禁用补丁不写字节。"""
 
@@ -137,6 +159,77 @@ class McpToggleExistingEntriesTest(McpToggleFixture):
         )
         self.assertEqual(self.claude_home.read_bytes(), self.home_original)
         self.assertEqual(self.pi_user.read_bytes(), self.original[self.pi_user])
+
+
+class McpTogglePlainUpdateTest(McpToggleFixture):
+    """普通参数更新不改启停：定义没有 `enabled`、或目标被手动开关过，都不读缺字段、也不改回目标字节。"""
+
+    def test_plain_args_update_without_enabled_in_the_definition_keeps_all_three_targets(self):
+        self.set_up_project()
+        self.assertNotIn("enabled", json.loads(self.definition().read_text(encoding="utf-8")))
+        before_home = self.claude_home.read_bytes()
+        self.assertEqual(self.preview().returncode, 0)
+        item = json.loads(self.plan().read_text(encoding="utf-8"))["items"][0]
+        self.assertEqual(item["state"], "applicable", item.get("reason"))
+        toggle = next(row for row in item["targets"] if row["adapter"] == "claude-toggle")
+        self.assertEqual(toggle["drift"], [])
+        self.assertEqual(toggle["current_file_sha256"], toggle["expected_file_sha256"])
+        applied = self.apply()
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertEqual(self.claude_home.read_bytes(), before_home)
+        pi_entry = json.loads(self.pi_user.read_text(encoding="utf-8"))["mcpServers"]["demo"]
+        self.assertEqual(pi_entry["args"], ["-y", "demo-mcp", "--verbose"])
+        self.assertNotIn("enabled", pi_entry)
+        self.assertEqual([row["state"] for row in self.drift()["targets"]], ["in_sync", "in_sync", "not_managed"])
+        execution = self.ledger()[-1]["execution_id"]
+        restore_plan = self.restore_plan(execution, "c2")
+        restored = self.restore(execution, restore_plan, self.approve_restore(restore_plan, execution))
+        self.assertEqual(restored.returncode, 0, restored.stderr)
+        self.assertEqual(self.claude_home.read_bytes(), self.home_original)
+        self.assertEqual(self.pi_user.read_bytes(), self.original[self.pi_user])
+        self.assertEqual(self.claude_project.read_bytes(), self.original[self.claude_project])
+
+    def test_plain_args_update_keeps_a_hand_switched_toggle(self):
+        self.set_up_project()
+        self.change = self.package([self.item("P1", self.definition_with(enabled=False))])
+        self.assertEqual(self.preview().returncode, 0)
+        self.assertEqual(self.apply().returncode, 0)
+        self.assertEqual(self.project_bucket()["disabledMcpServers"], ["demo"])
+        # 用户在 Claude 里手动启用：普通操作，不弹任何提示，之后的参数更新也不该把它改回去。
+        home = self.poke_home()
+        home["projects"][self.project_key]["disabledMcpServers"] = []
+        write(self.claude_home, json.dumps(home, ensure_ascii=False, indent=2) + "\n")
+        switched = self.claude_home.read_bytes()
+        self.change = self.package([self.item("P2", self.definition_with_args("--second"))])
+        self.assertEqual(self.preview("c2").returncode, 0)
+        second = self.apply("P2", self.approve(self.plan("c2"), ["P2"]), cycle="c2")
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(self.claude_home.read_bytes(), switched)
+        pi_entry = json.loads(self.pi_user.read_text(encoding="utf-8"))["mcpServers"]["demo"]
+        self.assertEqual(pi_entry["args"], ["-y", "demo-mcp", "--second"])
+        self.assertIs(pi_entry["enabled"], False)
+        # 手动开关与定义不一致是 mcp-drift 的事：普通更新只改参数，不顺带纠正。
+        self.assertEqual([row["state"] for row in self.drift()["targets"]], ["in_sync", "in_sync", "drifted"])
+
+
+class McpToggleRestoreSpanTest(McpToggleFixture):
+    """启停恢复只认生成计划时记下的跨度：缺了就拒绝，不按名字猜。"""
+
+    def test_toggle_restore_plan_without_its_span_is_refused(self):
+        self.set_up_project()
+        self.change = self.package([self.item("P1", self.definition_with(enabled=False))])
+        self.assertEqual(self.preview().returncode, 0)
+        self.assertEqual(self.apply().returncode, 0)
+        execution = self.ledger()[-1]["execution_id"]
+        plan_path = self.restore_plan(execution, "c2")
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        toggle = next(entry for entry in plan["entries"] if entry["adapter"] == "claude-toggle")
+        toggle.pop("span")
+        write(plan_path, json.dumps(plan, ensure_ascii=False, indent=2) + "\n")
+        refused = self.restore(execution, plan_path, self.approve_restore(plan_path, execution))
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn("启停跨度", refused.stderr)
+        self.assertEqual(self.project_bucket()["disabledMcpServers"], ["demo"])
 
 
 class McpToggleInvalidationTest(McpToggleFixture):

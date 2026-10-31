@@ -35,7 +35,10 @@ Code 写 `~/.claude.json` 里声明项目键的 `disabledMcpServers`（只增删
 | 只增删绑定的名字，其他元素与外围字节不动 | `mcp_toggle._removal_span`、插入片段与 `mcp_span.splice` | `test_existing_entries_are_preserved_and_redundant_disable_writes_nothing`：`legacy-disabled` 保留、另一个项目键的同名项不动 |
 | 已经是目标状态时不写字节 | `mcp_toggle.toggle_edit` 的 `change` | 同一用例里“已禁用时禁用补丁不改 `~/.claude.json` 字节” |
 | 多目标计划不能跳过 Claude 还把定义标成一致 | `personalize_mcp_plan.unsupported_patch_reason` | `test_claude_entry_without_a_toggle_target_blocks_the_whole_group`：整组 `not_applicable`，`apply` 退出 1 |
-| 普通参数更新不动启停，只有启停补丁改它 | `manage_enabled` 只在这次 patch 动了 `enabled` 时生效 | `tests/test_personalize_mcp_review.py` 的 `test_plain_update_keeps_pi_disabled_and_claude_without_the_field` |
+| 普通参数更新不动启停，只有启停补丁改它 | `mcp_toggle.managed_edit`（`manage_enabled` 为 False 时返回零长度跨度与空替换）、`personalize_mcp_plan.target_row` / `personalize_mcp_apply.prepare_target` | `test_plain_args_update_without_enabled_in_the_definition_keeps_all_three_targets`（定义没有 `enabled`：预览 / 应用退出 0，`~/.claude.json` 字节不变）与 `test_plain_args_update_keeps_a_hand_switched_toggle`（手动启用后普通更新不再禁回去） |
+| 定义声明启停却没有 `claude-toggle` 绑定：报 `toggle_unbound`，不报整体同步 | `personalize_mcp.target_state` 的 `toggle_bound`（`has_toggle_target` 从同一资产的绑定算出）、`DRIFT_STATES` | `test_adopt_accepts_a_disabled_pi_entry_as_the_first_target`：登记与 `mcp-drift` 都是 `["in_sync", "toggle_unbound"]`，字段 `["enabled"]`；普通更新仍可执行，改启停仍整组 `not_applicable` |
+| 删启停数组首项保留下一项的换行与缩进 | `mcp_toggle._removal_span` 的首项分支（删到后面的逗号为止） | `test_removing_the_first_name_keeps_the_next_entry_layout_and_restores_bytes`：`["demo",` 换行缩进 `"legacy-disabled"]` 启用 `demo` 后是 `[` 换行缩进 `"legacy-disabled"]`，恢复后逐字节回到原文件 |
+| 第一片的 MCP 恢复计划（`entries[]` 没有 `span`）仍可执行；启停恢复必须带跨度 | `personalize_mcp_apply.plan_restore_span` | `tests/test_personalize_mcp_legacy.py`：旧计划由 `5a7ba99` 生成，条目目标按当前绑定定位、内容变了仍拒绝；`test_toggle_restore_plan_without_its_span_is_refused` 报 `启停跨度` |
 | 预览后正常编辑 `~/.claude.json`（哪怕别的项目键）就要重新预览 | `personalize_mcp_apply.prepare_target` 比整份文件 sha256 | `test_editing_claude_home_after_preview_invalidates_the_approval`：退出 1，报 `在预览之后变了`，账本无新事实 |
 | 不备份整份 `~/.claude.json`，只记这个片段与两侧 sha256 | `personalize_mcp_apply.write_journal` 的 `mcp_fragments` 行 | journal 里 `before_fragment == ""`、`after_fragment == ', "disabledMcpServers": ["demo"]'`；PHE_HOME 里搜不到别的名字 |
 | 恢复按 journal 的编辑方向反推跨度 | `mcp_toggle.toggle_restore_span` | 逆序恢复后回到“没有这个列表”的原始字节 |
@@ -490,15 +493,55 @@ python3 -m unittest discover -s tests -t tests -k test_adopt_accepts_a_disabled
 
 加回实现后同一份用例全绿：`-k test_personalize_mcp_toggle` → 8 tests OK，`-k test_personalize_mcp` → 23 tests OK。
 
+## 第 1 轮审查修复（红 → 绿）
+
+第 1 轮独立审查报了 2 项 P1 与 2 项同源 P2，主控与 advisor 裁定四项都修（它们分别是已批准的启停补丁的行为、
+字节口径与兼容性契约，不是新增防护）。还是先写真实 CLI 用例（`tests/test_personalize_mcp_toggle.py` 三组、
+`tests/test_personalize_mcp_review.py` 改一项、新增 `tests/test_personalize_mcp_legacy.py`），在候选内容上跑出 6 项
+失败，再做最小修复：
+
+1. **普通参数更新不读定义里可能缺的 `enabled`（P1）。** `claude-toggle` 目标在预览与执行两处都无条件读
+   `definition["enabled"]`。定义没有这个字段时，只改 `args` 的普通更新直接退出 1；定义写着 `enabled: false` 而用户
+   在 Claude 里手动启用过时，普通更新会把它重新禁回去。修法：两处统一走 `mcp_toggle.managed_edit`，`manage_enabled`
+   为 False 时只返回零长度跨度与空替换，计划仍绑定整份文件与前后的片段 sha256，journal 与启停列表都不写字节。
+2. **定义声明启停、却没有 `claude-toggle` 绑定时不能报成同步（P1）。** Pi 首目标带 `enabled: false`、只要
+   pi + claude 两个目标时，`mcp-adopt` 与 `mcp-drift` 都把 Claude 报成 `in_sync`。修法：`target_state` 加
+   `toggle_bound`（由 `has_toggle_target` 从同一资产的绑定算出），定义声明了 `enabled` 而 Claude 条目没有对应启停目标时
+   报 `toggle_unbound` 与字段 `["enabled"]`；登记与普通参数更新仍可执行，改启停的补丁仍整组 `not_applicable`。
+3. **删启停数组首项不能吞掉下一项的排版（P2）。** 修前删除跨度一直延伸到第二项值的起点，
+   `["demo",` 换行缩进 `"legacy-disabled"]` 启用 `demo` 后变成 `["legacy-disabled"]`。修法：首项只删到它后面的逗号
+   为止，其余元素与外围字节不动；批准后恢复仍逐字节回到原文件。
+4. **第一片生成并批准的 MCP 恢复计划要能继续执行（P2）。** 新代码在 `restore` 里强制读计划条目的 `span`，而
+   `5a7ba99` 的恢复计划没有这个字段，升级后执行旧计划报 `personalize: 'span'`。修法：新增 `plan_restore_span`，计划
+   记了 `span` 就用记下的；旧计划的条目目标按当前绑定定位运行时跨度；启停目标仍必须带显式 `span`，缺了就拒绝。
+   通用批准 / PHE_HOME / 执行 ID / 逆序 / journal / 两侧 sha256 的核对顺序与内容变化的拒绝都不变；执行不修改计划或
+   批准字节。旧计划夹具见 `tests/legacy_mcp_restore/`（由 `5a7ba99` 真实生成，只做 `@ROOT@` / `@JOURNAL@` 两处
+   替换；路径变了计划字节就变了，所以批准按替换后的字节重写，不是原字节重放）。
+
+修前的红（`-k test_personalize_mcp`）：
+
+```text
+Ran 29 tests, FAILED (failures=6)
+- test_plain_args_update_without_enabled_in_the_definition_keeps_all_three_targets：preview 退出 1，`personalize: 'enabled'`
+- test_plain_args_update_keeps_a_hand_switched_toggle：应用后 disabledMcpServers 又从 [] 变回 ["demo"]
+- test_adopt_accepts_a_disabled_pi_entry_as_the_first_target：['in_sync', 'in_sync'] != ['in_sync', 'toggle_unbound']
+- test_removing_the_first_name_keeps_the_next_entry_layout_and_restores_bytes：应用后是 ["legacy-disabled"]，下一项前的换行与缩进被吞掉
+- test_first_slice_restore_plan_still_restores_both_entries：restore 退出 1，`personalize: 'span'`
+- test_toggle_restore_plan_without_its_span_is_refused：同样报 `personalize: 'span'`，不是“启停跨度”
+```
+
+修后：`-k test_personalize_mcp` → 29 tests OK。
+
 ## 测试与检查
 
 ```text
-python3 -m unittest discover -s tests -t tests → Ran 435 tests, OK
-python3 -m unittest discover -s tests -t tests -k test_personalize_mcp → Ran 23 tests, OK
-python3 -m unittest discover -s tests -t tests -k test_personalize_mcp_toggle → Ran 8 tests, OK
+python3 -m unittest discover -s tests -t tests → Ran 441 tests, OK
+python3 -m unittest discover -s tests -t tests -k test_personalize_mcp → Ran 29 tests, OK
+python3 -m unittest discover -s tests -t tests -k test_personalize_mcp_toggle → Ran 12 tests, OK
+python3 -m unittest discover -s tests -t tests -k test_personalize_mcp_legacy → Ran 2 tests, OK
 python3 -m unittest discover -s tests -t tests -k test_workspace → Ran 22 tests, OK
 ruff check . → All checks passed
-ruff format --check . → 120 files already formatted
+ruff format --check . → 124 files already formatted
 ```
 
 ## 未验证 / 剩余缺口

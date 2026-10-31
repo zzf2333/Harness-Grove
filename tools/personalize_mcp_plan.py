@@ -49,9 +49,10 @@ def target_row(target: dict, definition: dict, manage_enabled: bool) -> dict:
     try:
         data, text = mcp_asset.read_config(path)
         if target["adapter"] in mcp_config.TOGGLE_ARRAYS:
-            # 启停目标：只增删这个项目键下 disabledMcpServers 里绑定的名字。
-            edit = mcp_toggle.toggle_edit(
-                target["adapter"], text, target["project_key"], server, disabled=not definition["enabled"]
+            # 启停目标：只有这次 patch 改的就是启停时才增删这个项目键下 disabledMcpServers 里绑定的名字；
+            # 普通参数更新返回零长度跨度，不动 Host 里的启停。
+            edit = mcp_toggle.managed_edit(
+                target["adapter"], text, target["project_key"], server, definition, manage_enabled
             )
             span, rendered = edit["span"], edit["replacement"]
             drift, diff = [], mcp_toggle.toggle_diff(target["adapter"], edit, target["project_key"])
@@ -272,7 +273,7 @@ def render_preview(plan: dict, plan_sha: str) -> str:
             ]
         )
         for target in item["targets"]:
-            fields = "、".join(target["drift"]) or "无（与逻辑定义一致）"
+            fields = "、".join(target["drift"]) or "无（本次不改）"
             lines.append(
                 f"| {target['adapter']} | `{target['config_path']}` | `{target['current_file_sha256']}` | "
                 f"`{target['expected_file_sha256']}` | {fields} |"

@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "kind": "phe_restore_plan",
+  "asset_kind": "mcp",
+  "cycle": "c2",
+  "created_at": "2026-10-31T09:01:15+00:00",
+  "phe_home": "@ROOT@/phe",
+  "execution_id": "x0001",
+  "proposal_id": "P1",
+  "release": "r0001",
+  "journals": [
+    "@JOURNAL@"
+  ],
+  "entries": [
+    {
+      "adapter": "pi",
+      "config_path": "@ROOT@/home/.pi/agent/mcp.json",
+      "server": "demo",
+      "current_file_sha256": "7c79215d7a88143283db325a517f1a6c7a0af4f76cee81159f81035f75f62627",
+      "current_fragment_sha256": "d3c65d342cb851ea31e318d19d850ed68520bdfcd7a85d40205f5999de1db528",
+      "restore_fragment_sha256": "2f5b9a8be3f383a200bf345b81e4667432ca767ddd408e12e242620629e0e986",
+      "restored_file_sha256": "59ab6a424f1045ebcf6c508a89f7298f1b7ef669a814696164645b9b90098e4e",
+      "before_fragment": "{\n            \"command\": \"npx\",\n            \"args\": [\"-y\", \"demo-mcp\"],\n            \"env\": {\"DEMO_KEY\": \"${DEMO_KEY}\"}\n        }",
+      "diff": "--- 当前条目\n+++ 恢复后条目\n@@ -1,11 +1,5 @@\n {\n             \"command\": \"npx\",\n-            \"args\": [\n-                \"-y\",\n-                \"demo-mcp\",\n-                \"--verbose\"\n-            ],\n-            \"env\": {\n-                \"DEMO_KEY\": \"${DEMO_KEY}\"\n-            }\n+            \"args\": [\"-y\", \"demo-mcp\"],\n+            \"env\": {\"DEMO_KEY\": \"${DEMO_KEY}\"}\n         }\n"
+    },
+    {
+      "adapter": "claude",
+      "config_path": "@ROOT@/project/.mcp.json",
+      "server": "demo",
+      "current_file_sha256": "c78a49d575a50dadb517a8b441b63b705663f3c0fdc3f9d4fc883977fd6fd54e",
+      "current_fragment_sha256": "b88adc6dd688074a31364cd43bbfc721966039277efac04b1f7cca076a02f46e",
+      "restore_fragment_sha256": "4cd52cca8bb8beb4ac7c6c6cc84a5aab79850a5f36f49f174868017b9b7bc84a",
+      "restored_file_sha256": "e7b63c58e3bf154e3ff87b4b22edb08256a75896a93a8ca4767cb427f504252a",
+      "before_fragment": "{\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"demo-mcp\"],\n      \"env\": {\"DEMO_KEY\": \"${DEMO_KEY}\"}\n    }",
+      "diff": "--- 当前条目\n+++ 恢复后条目\n@@ -1,11 +1,5 @@\n {\n       \"command\": \"npx\",\n-      \"args\": [\n-        \"-y\",\n-        \"demo-mcp\",\n-        \"--verbose\"\n-      ],\n-      \"env\": {\n-        \"DEMO_KEY\": \"${DEMO_KEY}\"\n-      }\n+      \"args\": [\"-y\", \"demo-mcp\"],\n+      \"env\": {\"DEMO_KEY\": \"${DEMO_KEY}\"}\n     }\n"
+    }
+  ],
+  "host_writes": [
+    "@ROOT@/home/.pi/agent/mcp.json",
+    "@ROOT@/project/.mcp.json"
+  ],
+  "phe_writes": [
+    "ledger.jsonl"
+  ],
+  "restore_note": "恢复按 journal 把每个 Host 的托管跨度写回应用前的片段，并核对两侧完整文件 sha256；PHE 的逻辑定义保留应用后的内容"
+}
