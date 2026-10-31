@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-10-31 · R3a 第 1 轮审查修复：暂存残留、删除 patch、旧计划兼容与资产原名
+
+- 依据：R3a 候选 `709a523` 的第 1 轮独立审查（3 项 P1 + 1 项 P2）。四项都先用会失败的用例复现，再改最小代码；没有新增防护、锁、重试或版本 fallback，也没有回退旧 R2 / instructions 路径与 `change.py` 守卫。
+- 暂存残留（P1）：`asset_content.stage_patch` 在打 patch 前只重建本次执行拥有的暂存根（`staging/<执行 ID>/tree` 或 `file`），不清整个 `staging/`、发布或用户数据。修前旧入口按“应用 P1 → 重复 P1 失败 → 恢复 x0001 → 只批 P2”会让上一次失败留下的 `references/extra.md` 进入 r0002；产品入口共用同一暂存规则，残留存在时会因文件集合不一致拒绝本应可执行的更新。旧入口走完整序列，产品入口直接放入失败尝试会留下的暂存树。
+- 只删除文件的 patch（P1）：`patch_targets` 改按成对 diff 头取路径——新增/修改取 `+++`，删除取对应的 `---`；不重写 patch 引擎。修前只删除 `references/draft.md` 的合法 patch 在 `preview` 报“patch 里没有目标路径”；新增用例覆盖删除单文件的 preview → apply → restore，计划 `patch_targets` 与逐文件 diff 都含删除项。
+- 旧计划兼容（P1）：`personalize_apply` 对 base `5000e23` 生成的 `schema_version=1` 计划继续按 `current_sha256` / `expected_sha256` / 恢复内容 sha 与链接契约执行；新账本字段（`asset_kind` / `before_files` / `after_files` / `restored_files`）在核对后从真实内容推导；新 Skill 计划仍要求整树 `expected_files` / `restore.files`。已批准计划的字节不改，没有新增版本 fallback 框架。兼容用例 `tests/test_personalize_legacy.py` 用 5000e23 真实生成并批准的应用/恢复计划在新版本执行，输入改变仍退出 1；夹具在 `tests/legacy_r2/`，生成路径与 journal 名换成 `@ROOT@` / `@JOURNAL@`，字段集合保持旧版原样。
+- 单文件资产原名（P2）：单文件暂存按资产来源文件名保存，patch 路径只用于定位；`write_asset` 用来源文件名写回，预览 `expected_files`、PHE 写入路径与账本统一用原名。来源 `shared-AGENTS.md`、patch 目标 `config/AGENTS.md` 时不再改名为 `AGENTS.md`。
+- 测试：新增 7 项（`test_change_skill.py` 1、`test_personalize_skill.py` 2、`test_personalize.py` 1、`test_personalize_legacy.py` 3）；修复前分别失败，修复后转绿。`tests/personalize_fixture.py` 增加 `SOURCE_NAME`，其余夹具不变。
+- 文档：`docs/acceptance/r3a.md` 增加“第 1 轮审查修复”一节与暂存残留、删除 patch、旧计划兼容、资产原名的断言；工件按本轮重跑重生成，临时路径统一写成 `$WORK`；README 的 R3a 段补充删除单文件 patch 与升级续作；CHANGELOG 本条。
+- 验证：`python3 -m unittest discover -s tests -t tests` → 412 tests OK（exit 0）；`ruff check .` → All checks passed（exit 0）；`ruff format --check .` → 108 files already formatted（exit 0）；`docs/acceptance/r3a.md` 的 5 个 bash 块机械提取顺序执行 exit 0，两次 Pi 1.4.0 隔离 Host 探针十项检查全 true（应用版 `expanded-has-extra True`、恢复版 `False`）；日志在仓库外。
+- 未验证：模型自主选用 Skill 与任务效果（仍记 `observe` / `unknown`）；Codex 读 `~/.agents/skills`；产品入口没有 import 子命令；未读真实 Host 配置、未调用真实模型、未部署、未推送；仓库无类型检查配置，未跑 typecheck。
+
 ## 2026-10-31 · R3a 交付：目录型 Skill 的多文件闭环 + 隔离 Host 的发现与显式展开
 
 - 背景：R2 把闭环做成了产品入口（`tools/personalize.py`），但只覆盖单个 instructions 文件；Skill 是目录资产（`SKILL.md` 加它引用的文件），旧 `change.py` 写死 `kind=instructions` 与单文件 patch，改一个引用文件就无从预览、应用与恢复。Host 是否发现 Skill 也一直只有“文件存在”这一层。

@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "kind": "phe_product_plan",
+  "cycle": "c1",
+  "created_at": "2026-10-31T05:47:48+00:00",
+  "phe_home": "@ROOT@/phe",
+  "report": {
+    "path": "@ROOT@/out/report.md",
+    "sha256": "eb8e91f53abc59ec8793f06c62ca0017daa1efdf25254ba8d6e753b2f06fb8af"
+  },
+  "change": {
+    "path": "@ROOT@/out/change.json",
+    "sha256": "d621f9c765b964836cce02e83bbc554536b539f10b3af333c10c704f6922a0ba"
+  },
+  "asset": {
+    "asset_id": "asset-0001",
+    "resolved_path": "@ROOT@/shared/AGENTS.md",
+    "shared": true,
+    "entries": [
+      {
+        "agent": "claude",
+        "path": "@ROOT@/home/.claude/CLAUDE.md",
+        "state": "symlink",
+        "target": "@ROOT@/shared/AGENTS.md",
+        "sha256": "1bdb189d3dddfcc6b914c738debc5ebacc18ce21584b7d20f55ea65bd194954f",
+        "writable": true,
+        "note": null
+      },
+      {
+        "agent": "codex",
+        "path": "@ROOT@/home/.codex/AGENTS.md",
+        "state": "symlink",
+        "target": "@ROOT@/shared/AGENTS.md",
+        "sha256": "1bdb189d3dddfcc6b914c738debc5ebacc18ce21584b7d20f55ea65bd194954f",
+        "writable": true,
+        "note": null
+      },
+      {
+        "agent": "pi",
+        "path": "@ROOT@/home/.pi/agent/AGENTS.md",
+        "state": "symlink",
+        "target": "@ROOT@/shared/AGENTS.md",
+        "sha256": "1bdb189d3dddfcc6b914c738debc5ebacc18ce21584b7d20f55ea65bd194954f",
+        "writable": true,
+        "note": null
+      }
+    ]
+  },
+  "items": [
+    {
+      "item_id": "P1",
+      "evidence": [
+        "合成会话：L2"
+      ],
+      "prediction": {
+        "why": "合成证据 L2 指向的偏好或观察",
+        "expected": "P1 生效；不丢“用户说先别做时不越界”",
+        "verify": "读一遍入口内容；收益待验证，没有 Host 加载或行为证据时记 unknown"
+      },
+      "patch_target": "config/AGENTS.md",
+      "current_sha256": "1bdb189d3dddfcc6b914c738debc5ebacc18ce21584b7d20f55ea65bd194954f",
+      "state": "applicable",
+      "expected_sha256": "0f0dc13e43a925f218e89abb5d7dc89f4a7e69a67600f5c0730c4514dade2cd7",
+      "diff": "--- a/config/AGENTS.md\n+++ b/config/AGENTS.md\n@@ -1,4 +1,4 @@\n 先给结论。\n-先复述问题再回答。\n+先给结论，再复述问题。\n 用户说先别做时，不要越界执行。\n 复盘时先读账本。\n"
+    },
+    {
+      "item_id": "P2",
+      "evidence": [
+        "合成会话：L3"
+      ],
+      "prediction": {
+        "why": "合成证据 L3 指向的偏好或观察",
+        "expected": "P2 生效；不丢“用户说先别做时不越界”",
+        "verify": "读一遍入口内容；收益待验证，没有 Host 加载或行为证据时记 unknown"
+      },
+      "patch_target": "config/AGENTS.md",
+      "current_sha256": "1bdb189d3dddfcc6b914c738debc5ebacc18ce21584b7d20f55ea65bd194954f",
+      "state": "applicable",
+      "expected_sha256": "569433aacc8fa781dde3530542bb74fc4d273e9ab7c9d39caab09387394f3459",
+      "diff": "--- a/config/AGENTS.md\n+++ b/config/AGENTS.md\n@@ -1,4 +1,4 @@\n 先给结论。\n 先复述问题再回答。\n 用户说先别做时，不要越界执行。\n-复盘时先读账本。\n+复盘时先读账本，并对照原预测。\n"
+    }
+  ],
+  "host_writes": [
+    "@ROOT@/home/.claude/CLAUDE.md",
+    "@ROOT@/home/.codex/AGENTS.md",
+    "@ROOT@/home/.pi/agent/AGENTS.md"
+  ],
+  "phe_writes": [
+    "assets/asset-0001/content/AGENTS.md",
+    "assets/asset-0001/asset.json",
+    "releases/<下一个编号>/ 与 releases/high_water.json",
+    "staging/<执行 ID>/",
+    "journal/<时间戳>.json",
+    "bindings.json",
+    "ledger.jsonl"
+  ],
+  "restore": {
+    "method": "journal",
+    "note": "恢复把每个入口链接指回应用前的目标（journal 记录）；共享来源文件本身不改，原字节不变"
+  },
+  "missing": []
+}

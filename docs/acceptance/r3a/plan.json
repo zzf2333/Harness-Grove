@@ -2,27 +2,27 @@
   "schema_version": 1,
   "kind": "phe_product_plan",
   "cycle": "c1",
-  "created_at": "2026-10-31T05:23:09+00:00",
-  "phe_home": "/private/tmp/phe-r3a-SEMx9r/phe",
+  "created_at": "2026-10-31T05:53:31+00:00",
+  "phe_home": "$WORK/phe",
   "report": {
-    "path": "/private/tmp/phe-r3a-SEMx9r/out/report.md",
+    "path": "$WORK/out/report.md",
     "sha256": "50158c567edc2d0a577150130a515764e343f397c9e4ccc3decf559ebd550e61"
   },
   "change": {
-    "path": "/private/tmp/phe-r3a-SEMx9r/out/change.json",
-    "sha256": "3026480bbb52df4f8516cb2ca5b52f643004ff6c30beeab31ead9068d2144e23"
+    "path": "$WORK/out/change.json",
+    "sha256": "7b030599237c64c3aaec501700f8b4df16e2c6ee20852f1ee77635bd781e1f78"
   },
   "asset": {
     "asset_id": "asset-0001",
     "kind": "skill",
-    "resolved_path": "/private/tmp/phe-r3a-SEMx9r/skill/demo",
+    "resolved_path": "$WORK/skill/demo",
     "shared": true,
     "entries": [
       {
         "agent": "pi",
-        "path": "/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo",
+        "path": "$WORK/home/.pi/agent/skills/r3a-demo",
         "state": "symlink",
-        "target": "/private/tmp/phe-r3a-SEMx9r/skill/demo",
+        "target": "$WORK/skill/demo",
         "sha256": "9b7d5b4a6ef218500a46e24cac5452694bc589ed3c8197d5fc71f7565eb1e985",
         "files": {
           "SKILL.md": "5c991a2754bc53e29e6e92c0f66def2439e6fde1c8873b97302442a67351285e",
@@ -34,9 +34,9 @@
       },
       {
         "agent": "shared",
-        "path": "/private/tmp/phe-r3a-SEMx9r/home/.agents/skills/r3a-demo",
+        "path": "$WORK/home/.agents/skills/r3a-demo",
         "state": "symlink",
-        "target": "/private/tmp/phe-r3a-SEMx9r/skill/demo",
+        "target": "$WORK/skill/demo",
         "sha256": "9b7d5b4a6ef218500a46e24cac5452694bc589ed3c8197d5fc71f7565eb1e985",
         "files": {
           "SKILL.md": "5c991a2754bc53e29e6e92c0f66def2439e6fde1c8873b97302442a67351285e",
@@ -62,7 +62,8 @@
       "patch_targets": [
         "SKILL.md",
         "references/notes.md",
-        "references/extra.md"
+        "references/extra.md",
+        "references/draft.md"
       ],
       "current_sha256": "9b7d5b4a6ef218500a46e24cac5452694bc589ed3c8197d5fc71f7565eb1e985",
       "current_files": {
@@ -111,8 +112,8 @@
     }
   ],
   "host_writes": [
-    "/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo",
-    "/private/tmp/phe-r3a-SEMx9r/home/.agents/skills/r3a-demo"
+    "$WORK/home/.pi/agent/skills/r3a-demo",
+    "$WORK/home/.agents/skills/r3a-demo"
   ],
   "phe_writes": [
     "assets/asset-0001/content/（整棵替换）",

@@ -51,6 +51,13 @@ PATCH_P1 = """--- a/SKILL.md
 -草稿：这条引用没有被 SKILL.md 用到。
 """
 
+# 只删除一个引用文件的条目：diff 头是「--- a/references/draft.md / +++ /dev/null」，没有新增目标。
+PATCH_DELETE = """--- a/references/draft.md
++++ /dev/null
+@@ -1,1 +0,0 @@
+-草稿：这条引用没有被 SKILL.md 用到。
+"""
+
 # 另一条只改引用文件的条目：只批准 P1 时它不该生效。
 PATCH_P2 = """--- a/references/notes.md
 +++ b/references/notes.md

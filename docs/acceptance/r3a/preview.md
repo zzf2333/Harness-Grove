@@ -1,18 +1,18 @@
 # 应用预览 · 周期 c1
 
-- 生成时间：2026-10-31T05:23:09+00:00（工具按输入生成，不是自动诊断；报告本身是宿主写的材料）
-- PHE_HOME：`/private/tmp/phe-r3a-SEMx9r/phe`
-- 报告：`/private/tmp/phe-r3a-SEMx9r/out/report.md` sha256 `50158c567edc2d0a577150130a515764e343f397c9e4ccc3decf559ebd550e61`
-- 变更包：`/private/tmp/phe-r3a-SEMx9r/out/change.json` sha256 `3026480bbb52df4f8516cb2ca5b52f643004ff6c30beeab31ead9068d2144e23`
-- 计划 sha256：`b05157cf8efc6a4bb9eb48cc79be8917a5604da6da99c513d6736a988bd1f6b5`（批准记录绑定这份计划的原始字节）
-- 资产：`asset-0001` ← `/private/tmp/phe-r3a-SEMx9r/skill/demo`（多个入口共享）
+- 生成时间：2026-10-31T05:53:31+00:00（工具按输入生成，不是自动诊断；报告本身是宿主写的材料）
+- PHE_HOME：`$WORK/phe`
+- 报告：`$WORK/out/report.md` sha256 `50158c567edc2d0a577150130a515764e343f397c9e4ccc3decf559ebd550e61`
+- 变更包：`$WORK/out/change.json` sha256 `7b030599237c64c3aaec501700f8b4df16e2c6ee20852f1ee77635bd781e1f78`
+- 计划 sha256：`fad0c0b35da8361d20514478eab0253ef2beaf39bf700d5626c4e1347437acb5`（批准记录绑定这份计划的原始字节）
+- 资产：`asset-0001` ← `$WORK/skill/demo`（多个入口共享）
 
 ## 入口与当前内容
 
 | Agent | 入口 | 当前形态 | 当前文件 | 当前 sha256 | 应用后 |
 |---|---|---|---|---|---|
-| pi | `/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo` | 软链 → `/private/tmp/phe-r3a-SEMx9r/skill/demo` | 3 个 | `9b7d5b4a6ef218500a46e24cac5452694bc589ed3c8197d5fc71f7565eb1e985` | 指向新发布 |
-| shared | `/private/tmp/phe-r3a-SEMx9r/home/.agents/skills/r3a-demo` | 软链 → `/private/tmp/phe-r3a-SEMx9r/skill/demo` | 3 个 | `9b7d5b4a6ef218500a46e24cac5452694bc589ed3c8197d5fc71f7565eb1e985` | 指向新发布 |
+| pi | `$WORK/home/.pi/agent/skills/r3a-demo` | 软链 → `$WORK/skill/demo` | 3 个 | `9b7d5b4a6ef218500a46e24cac5452694bc589ed3c8197d5fc71f7565eb1e985` | 指向新发布 |
+| shared | `$WORK/home/.agents/skills/r3a-demo` | 软链 → `$WORK/skill/demo` | 3 个 | `9b7d5b4a6ef218500a46e24cac5452694bc589ed3c8197d5fc71f7565eb1e985` | 指向新发布 |
 
 共享关系：这些入口当前读同一份内容；应用后它们都指向同一份新发布，共享来源文件本身不改。
 
@@ -77,8 +77,8 @@
 
 Host 入口（只这些）：
 
-- `/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo`
-- `/private/tmp/phe-r3a-SEMx9r/home/.agents/skills/r3a-demo`
+- `$WORK/home/.pi/agent/skills/r3a-demo`
+- `$WORK/home/.agents/skills/r3a-demo`
 
 PHE_HOME 产物（相对 `<PHE_HOME>`）：
 

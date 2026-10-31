@@ -2,22 +2,22 @@
   "schema_version": 1,
   "kind": "phe_restore_plan",
   "cycle": "c2",
-  "created_at": "2026-10-31T05:23:10+00:00",
-  "phe_home": "/private/tmp/phe-r3a-SEMx9r/phe",
+  "created_at": "2026-10-31T05:53:32+00:00",
+  "phe_home": "$WORK/phe",
   "execution_id": "x0001",
   "proposal_id": "P1",
   "release": "r0001",
   "journals": [
-    "journal/20261031T052309Z.json",
-    "journal/20261031T052309Z-1.json"
+    "journal/20261031T055331Z.json",
+    "journal/20261031T055331Z-1.json"
   ],
   "entries": [
     {
       "agent": "shared",
-      "path": "/private/tmp/phe-r3a-SEMx9r/home/.agents/skills/r3a-demo",
+      "path": "$WORK/home/.agents/skills/r3a-demo",
       "current": {
         "state": "symlink",
-        "target": "/private/tmp/phe-r3a-SEMx9r/phe/releases/r0001/files/asset-0001",
+        "target": "$WORK/phe/releases/r0001/files/asset-0001",
         "sha256": "1ccb9472a9b079e3d2ea8e54fed65d6452075f7a18ec1a4ede0b5dccef5078f2",
         "files": {
           "SKILL.md": "c29f428e4324d00817869cc9e0b00252bbb0117070fc7163fbaa07f797755e35",
@@ -27,7 +27,7 @@
       },
       "restore": {
         "state": "symlink",
-        "old_target": "/private/tmp/phe-r3a-SEMx9r/skill/demo",
+        "old_target": "$WORK/skill/demo",
         "content_sha256": "9b7d5b4a6ef218500a46e24cac5452694bc589ed3c8197d5fc71f7565eb1e985",
         "files": {
           "SKILL.md": "5c991a2754bc53e29e6e92c0f66def2439e6fde1c8873b97302442a67351285e",
@@ -38,10 +38,10 @@
     },
     {
       "agent": "pi",
-      "path": "/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo",
+      "path": "$WORK/home/.pi/agent/skills/r3a-demo",
       "current": {
         "state": "symlink",
-        "target": "/private/tmp/phe-r3a-SEMx9r/phe/releases/r0001/files/asset-0001",
+        "target": "$WORK/phe/releases/r0001/files/asset-0001",
         "sha256": "1ccb9472a9b079e3d2ea8e54fed65d6452075f7a18ec1a4ede0b5dccef5078f2",
         "files": {
           "SKILL.md": "c29f428e4324d00817869cc9e0b00252bbb0117070fc7163fbaa07f797755e35",
@@ -51,7 +51,7 @@
       },
       "restore": {
         "state": "symlink",
-        "old_target": "/private/tmp/phe-r3a-SEMx9r/skill/demo",
+        "old_target": "$WORK/skill/demo",
         "content_sha256": "9b7d5b4a6ef218500a46e24cac5452694bc589ed3c8197d5fc71f7565eb1e985",
         "files": {
           "SKILL.md": "5c991a2754bc53e29e6e92c0f66def2439e6fde1c8873b97302442a67351285e",
@@ -62,8 +62,8 @@
     }
   ],
   "host_writes": [
-    "/private/tmp/phe-r3a-SEMx9r/home/.agents/skills/r3a-demo",
-    "/private/tmp/phe-r3a-SEMx9r/home/.pi/agent/skills/r3a-demo"
+    "$WORK/home/.agents/skills/r3a-demo",
+    "$WORK/home/.pi/agent/skills/r3a-demo"
   ],
   "phe_writes": [
     "bindings.json",

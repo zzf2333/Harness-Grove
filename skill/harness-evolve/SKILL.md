@@ -260,7 +260,8 @@ python3 -I "$T" restore --phe-home "$PHE_HOME" --execution x0001 --plan <恢复�
 
 1. **批准对象是计划原始字节。** `preview` 把计划写到 `<PHE_HOME>/reports/<周期>/plan.json` 并给出 `plan_sha256`；
    批准记录必须带同一个 `plan_sha256` 和获批条目。工具不会自己造用户批准：`source=user` 由你（宿主）按用户原话写，
-   演练一律写 `sandbox_rehearsal`，两者都不等于“效果已验证”。
+   演练一律写 `sandbox_rehearsal`，两者都不等于“效果已验证”。升级后，旧版（R2）生成并批准的单文件计划仍按原
+   `plan_sha256` 与内容 sha 契约执行，不要求重新预览；账本新增字段从已核对的内容推导。
 2. **预览之后一切以重新预览为准。** 变更包、报告、入口形态或入口当前内容任何一处变了，`apply` 退出 1；实际
    `--phe-home` 也必须是计划里的那个工作区（在 A 批准、换 `--phe-home` B 执行会退出 1）。上一周期已经应用的条目在
    新计划里标 `not_applicable`（patch 打不上当前内容），不挡同包其他条目，也不代表已经生效。多个入口共享同一个来源
@@ -283,7 +284,8 @@ python3 -I "$T" restore --phe-home "$PHE_HOME" --execution x0001 --plan <恢复�
 8. **Skill 是一个目录资产（R3a 起）。** 一条逻辑 Skill = `SKILL.md` + 它引用的文件，走同一套命令：`preview` 逐文件列出
    增 / 删 / 改和应用前后的文件集合，内容版本是「相对路径 + 每个文件 sha256」的整棵摘要；`apply` 按整棵树重建内容，两个
    Host 技能入口（例如 `~/.pi/agent/skills/<名字>` 与共享的 `~/.agents/skills/<名字>`）都指向同一份发布；`restore` 还原
-   集合与每个文件的字节。预览之后引用文件变了同样要重新预览。入口只支持软链：未受管的普通目录不迁移、不覆盖，把它从
+   集合与每个文件的字节。只删除一个引用文件的 patch（`+++` 是 `/dev/null`）也算一项改动，计划会列出这个删除项。
+   预览之后引用文件变了同样要重新预览。入口只支持软链：未受管的普通目录不迁移、不覆盖，把它从
    登记里移出或换成软链之后才能继续。文件集合对得上**不代表** Host 发现了它，也不代表会触发——`review` 仍记 `observe` /
    `unknown`；隔离 Host 的发现与显式展开证据见 [docs/acceptance/r3a.md](../../docs/acceptance/r3a.md)。
 

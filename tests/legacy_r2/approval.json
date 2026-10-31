@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "approval_id": "approval-fixture-c1",
+  "source": "user",
+  "plan_sha256": "96b6bc360a958d22eba4bcbd997244ae3166603921e6a9802331e683b6abf7c9",
+  "items": [
+    "P1"
+  ],
+  "note": "兼容夹具：用 base 5000e23 生成，合成批准，不代表真实用户同意"
+}

@@ -69,13 +69,18 @@ def asset_kind(phe: Path, asset: dict) -> str:
 
 
 def patch_targets(patch: str) -> list[str]:
-    """patch 涉及的目标路径（不含 /dev/null）：新增与删除文件都记进来。"""
+    """patch 涉及的目标路径，按成对 diff 头取：新增与修改取 `+++`，只删除的文件取对应的 `---`。"""
     targets = []
+    old = None
     for line in patch.splitlines():
-        if line.startswith("+++ "):
-            path = line[4:].split("\t")[0].strip().removeprefix("b/")
+        if line.startswith("--- "):
+            old = line[4:].split("\t")[0].strip().removeprefix("a/")
+        elif line.startswith("+++ "):
+            new = line[4:].split("\t")[0].strip().removeprefix("b/")
+            path = new if new and new != "/dev/null" else old
             if path and path != "/dev/null":
                 targets.append(path)
+            old = None
     if not targets:
         raise ValueError("patch 里没有目标路径")
     return targets
@@ -101,20 +106,30 @@ def git_apply(directory: Path, patch: str) -> None:
 def stage_patch(writer, staging: Path, patch: str, base: Path) -> Path:
     """在暂存区把 patch 打到当前生效内容的副本上；返回暂存的内容根（文件或目录）。
 
-    目录资产先整棵复制再打 patch，所以 patch 里新增、删除、修改引用文件都落在同一份暂存内容上；
-    打不上就失败，不写资产、不建发布。
+    每次先重建本次执行自己拥有的暂存根（`staging/<执行 ID>/tree|file`）：上一次失败留下的文件不能混进
+    这一次的发布。只清这一个目录，不动整个 staging、发布或用户数据。
+    目录资产整棵复制再打 patch，所以新增、删除、修改引用文件都落在同一份暂存内容上；打不上就失败，
+    不写资产、不建发布。单文件的 patch 路径只用来定位暂存，内容根按资产原文件名保存。
     """
+    root = staging / ("tree" if base.is_dir() else "file")
+    writer.check(root)
+    if os.path.lexists(root):
+        discard_content(root)
     if base.is_dir():
-        root = staging / "tree"
         release_tool.copy_tree(writer, base, root)
         git_apply(root, patch)
         return root
-    root = staging / "file"
     writer.makedirs(root)
     path = root / patch_target(patch)
     writer.write_bytes(path, base.read_bytes())
     git_apply(root, patch)
-    return path
+    if path.name == base.name:
+        return path
+    staged = root / base.name
+    writer.write_bytes(staged, path.read_bytes())
+    writer.check(path)
+    path.unlink()
+    return staged
 
 
 def discard_content(content: Path) -> None:
@@ -132,21 +147,23 @@ def write_asset(writer, phe: Path, asset: dict, staged: Path, source: Path, at: 
     """按 release import 的同一格式重建资产内容；不复用 import（它拒绝覆盖且固定从 resolved_path 复制）。
 
     内容整棵替换：patch 删掉的引用文件也要真的从资产内容里消失，否则下一次发布会把它带回来。
+    单文件资产按来源文件的原名写回：patch 里的路径只用于暂存定位，不改变资产名。
     """
     directory = phe / "assets" / asset["asset_id"]
     content = directory / "content"
     if os.path.lexists(content):
         discard_content(content)
+    name = Path(asset["resolved_path"]).name
     if staged.is_dir():
         release_tool.copy_tree(writer, staged, content)
     else:
-        writer.write_bytes(content / staged.name, staged.read_bytes())
+        writer.write_bytes(content / name, staged.read_bytes())
     writer.write_json(
         directory / "asset.json",
         {
             "asset_id": asset["asset_id"],
             "kind": "skill" if staged.is_dir() else "instructions",
-            "name": staged.name if staged.is_file() else Path(asset["resolved_path"]).name,
+            "name": name,
             "source": str(source),
             "imported_at": at,
         },

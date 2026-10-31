@@ -11,7 +11,7 @@ import os
 import unittest
 from pathlib import Path
 
-from skill_asset import APPLIED_NOTES, APPLIED_SKILL_MD, PATCH_P1, files_of, link_tree, write_skill
+from skill_asset import APPLIED_NOTES, APPLIED_SKILL_MD, PATCH_P1, PATCH_P2, files_of, link_tree, write_skill
 from test_change import ChangeFixture
 from test_release import REGISTRY, run_cli
 
@@ -47,7 +47,7 @@ class SkillChangeFixture(ChangeFixture):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.asset_id = json.loads(self.reg.read_text(encoding="utf-8"))["assets"][0]["asset_id"]
-        self.change = self.package([self.item("P1", PATCH_P1, 8)])
+        self.change = self.package([self.item("P1", PATCH_P1, 8), self.item("P2", PATCH_P2, 1)])
 
 
 class SkillChangeTests(SkillChangeFixture):
@@ -85,6 +85,27 @@ class SkillChangeTests(SkillChangeFixture):
         self.assertIn("patch 打不上当前生效内容", result.stderr)
         self.assertEqual(os.readlink(self.entries["pi"]), link)
         self.assertEqual(len([fact for fact in self.ledger() if fact["kind"] == "apply"]), 1)
+
+    def test_failed_attempt_residue_does_not_leak_into_the_next_release(self):
+        """应用 P1 → 重复 P1 失败 → 恢复 x0001 → 只应用 P2：失败留下的暂存文件不能进 r0002。
+
+        失败不追加 apply 事实，下一次仍用 x0002；上一次尝试留在 `staging/x0002/tree` 的
+        `references/extra.md` 属于那次应用后的入口内容，不是 P2 批准的内容。
+        """
+        first = self.apply("P1", self.approve(["P1"]))
+        self.assertIn("references/extra.md", first["after_files"])
+        failed = self.apply_cli("P1", self.approve(["P1"], name="approval-again.json"))
+        self.assertEqual(failed.returncode, 1)
+        stale = self.phe / "staging/x0002/tree"
+        self.assertTrue((stale / "references/extra.md").is_file())
+
+        self.restore("x0001")
+        second = self.apply("P2", self.approve(["P2"], name="approval-p2.json"))
+        self.assertEqual(set(second["after_files"]), {"SKILL.md", "references/notes.md", "references/draft.md"})
+        link = Path(os.readlink(self.entries["pi"]))
+        self.assertFalse((link / "references/extra.md").exists())
+        self.assertIn("并给出依据", (link / "references/notes.md").read_text(encoding="utf-8"))
+        self.assertFalse((stale / "references/extra.md").exists())
 
 
 if __name__ == "__main__":

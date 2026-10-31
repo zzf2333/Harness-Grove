@@ -6,10 +6,28 @@
 `tools/asset_content.py`（共享内容层）、`tools/change.py`（旧沙箱闭环）、`tools/personalize*.py`（产品入口）与
 `tools/workspace.py`（发现报告里 Skill 条目的显示）。
 **结论：** 验收项在隔离环境里全部通过：**文件层**（预览逐文件 diff、批准、应用、账本、逆序恢复、文件集合与字节）
-与**一次隔离 Host 的发现/显式展开**（Pi 1.4.0 的真实 loader 与真实 `session.prompt`）。模型自主选用 Skill、任务
+与**一次隔离 Host 的发现/显式展开**（Pi 1.4.0 的真实 loader 与真实 `session.prompt`）。第 1 轮审查的 3 项 P1 与
+1 项 P2 已按“先失败用例、再最小修复”处理，旧 R2 计划仍可执行（见下节）。模型自主选用 Skill、任务
 执行效果与收益仍**未验证**；本次证据不改变“没有行为证据就记 `unknown`”的口径。**R3a 完成不等于完整 Harness
-完成**：只覆盖 Skills 一类资产，目录 import 仍只在沙箱入口，MCP/Hooks/扩展与工具配置仍是后续。
+完成**：只覆盖 Skills 一类资产，目录 import 仍只在沙箱入口，MCP/Hooks/扩展与工具配置仍是后续；是否完成以主控
+第 2 轮复审为准。
 **base 提交：** `5000e23`；实现提交随本次改动入库，用 `git log -1 --format=%h` 取当前提交号。
+
+## 第 1 轮审查修复（2026-10-31）
+
+候选 `709a523` 的独立审查给了 3 项 P1 与 1 项 P2，都来自正常使用流程。四项先复现为失败用例，再做最小修复；
+没有新增防护、锁、重试或版本 fallback 框架。修复后同一套用例转绿，旧 R2 计划仍可执行。
+
+| 问题 | 复现（失败用例） | 修复 |
+|---|---|---|
+| P1 失败尝试留下的暂存树会混进下一次发布 | `test_change_skill.py::test_failed_attempt_residue_does_not_leak_into_the_next_release`：应用 P1 → 重复 P1 失败 → 恢复 x0001 → 只批 P2；修复前 r0002 的文件集合多出 `references/extra.md`。产品入口共用同一暂存规则（`test_personalize_skill.py::SkillResidualStagingTests`，直接放入失败尝试会留下的暂存树）修复前退出 1 报“打出来的内容和预览的 diff 不一致”。 | `asset_content.stage_patch` 每次打 patch 前只重建本次执行拥有的暂存根 `staging/<执行 ID>/tree` 或 `staging/<执行 ID>/file`；不清整个 staging、发布或用户数据。 |
+| P1 只删除引用文件的 patch 无法预览 | `test_personalize_skill.py::SkillDeleteOnlyTests`：修复前 `preview` 退出 1 报“patch 里没有目标路径”。 | `patch_targets` 按成对 diff 头取路径：`+++` 不是 `/dev/null` 时取它，否则取对应的 `---`；不重写 patch 引擎。 |
+| P1 旧 R2 计划升级后失效 | `test_personalize_legacy.py`：用 base `5000e23` 真实生成的 `schema_version=1` 计划/批准执行；修复前 `apply` 报 `'expected_files'`，修好 apply 后 `restore` 报 `'files'`。 | 旧单文件计划继续按 `current_sha256` / `expected_sha256` / 恢复内容 sha 与链接契约执行；账本新增字段（`asset_kind` / `before_files` / `after_files` / `restored_files`）从已核对的内容推导；新计划仍要求整树 `expected_files` / `files` 绑定。已批准计划的字节不改。 |
+| P2 单文件资产原名与 patch 文件名不同 | `test_personalize.py::SourceNameTests`：来源 `shared-AGENTS.md`、patch 目标 `config/AGENTS.md`；修复前计划 `expected_files` 与资产内容都叫 `AGENTS.md`。 | 单文件暂存按资产原名保存，patch 路径只用于定位；`write_asset` 用来源文件名写回，预览、`expected_files` 与账本统一用原名。 |
+
+兼容夹具 `tests/legacy_r2/` 保存的是 5000e23 的真实输出：字段集合是旧版原样，不是从新版计划删字段模拟；
+生成路径换成 `@ROOT@`、journal 名换成 `@JOURNAL@`，用例按当前临时目录和实际 journal 还原，并重新计算绑定 sha256。
+夹具说明见该目录 README。
 
 ## 环境与隔离
 
@@ -183,7 +201,7 @@ python3 -c "import json,sys;print([json.loads(l)['kind'] for l in open(sys.argv[
 | 块 | 内容 | 退出码 | 关键输出 |
 |---|---|---|---|
 | 1 | 合成输入 + `init` + `inventory` + `adopt` | 0 / 0 / 0 | `initialized …`；`adopted asset-0001 … (2 个 observed path)` |
-| 2 | 变更包 + `preview` + 夹具批准 + `apply` | 0 / 0 / 0 | 计划 `plan_sha256 b05157…`；`execution_id=x0001`、`release=r0001` |
+| 2 | 变更包 + `preview` + 夹具批准 + `apply` | 0 / 0 / 0 | 计划 `plan_sha256 fad0c0…`；`execution_id=x0001`、`release=r0001` |
 | 3 | Host 探针（应用后） | 0 | 十项检查全 `true`；`expanded-has-extra True` |
 | 4 | `restore-preview` + 夹具批准 + `restore` + 探针（恢复后） | 0 / 0 / 0 / 0 | `restored_files` 回到应用前；`expanded-has-extra False` |
 | 5 | 账本 | 0 | `['approval', 'apply', 'restore']` |
@@ -198,6 +216,7 @@ python3 -c "import json,sys;print([json.loads(l)['kind'] for l in open(sys.argv[
 | 两个入口读同一份内容 | 两个入口 `sha256` 都是 `9b7d5b4a…`，`files` 都是 `SKILL.md`、`references/draft.md`、`references/notes.md` |
 | 内容摘要不是 `SKILL.md` 单文件 hash | 入口 `sha256` 是逐文件「相对路径 + 文件 sha256」的整棵摘要；`SKILL.md` 自己的 sha256 是 `5c991a27…` |
 | 逐文件状态 | `SKILL.md` 修改、`references/notes.md` 修改、`references/extra.md` 新增、`references/draft.md` 删除 |
+| 计划里的目标路径 | `patch_targets` 四项全在，包括只有删除的 `references/draft.md`（旧实现会丢掉它） |
 | 预期文件集合 | `SKILL.md`、`references/extra.md`、`references/notes.md`（草稿文件消失） |
 | 预览写入范围 | 只写 `<PHE_HOME>/reports/c1/`；`home/` 与来源目录的文件指纹前后相同，账本不新增 |
 
@@ -214,6 +233,10 @@ python3 -c "import json,sys;print([json.loads(l)['kind'] for l in open(sys.argv[
 | 预览后改引用文件 | 用例覆盖：`apply` 退出 1，报 `入口 … 的内容在预览之后变了`，两个入口与文件都不写，账本无新行 |
 | 未受管入口 | 用例覆盖：入口换成普通目录副本后预览把它标成 `other`（“PHE 不覆盖”），`apply` 退出 1 报 `入口是普通文件或目录`，普通目录与另一入口都不写 |
 | 陈旧 patch | 旧入口用例覆盖：同一资产重复应用同一 patch 退出 1，报 `patch 打不上当前生效内容`，入口与账本不变 |
+| 失败尝试的残留暂存 | 旧入口用例走完整序列：应用 P1 → 重复 P1 失败留下 `staging/x0002/tree`（含 `references/extra.md`）→ 恢复 x0001 → 只批 P2；发布与入口都不含 `references/extra.md`。产品入口共用同一暂存规则，用例直接放入失败尝试会留下的暂存树，重新发布前该暂存根被重建 |
+| 只删除一个引用文件 | 用例覆盖：`references/draft.md` 的删除项出现在计划 `patch_targets` 与 `diffs`，`apply` 后发布不含它，`restore` 后文件集合与字节回原 |
+| 升级后续作旧计划 | 用例 `tests/test_personalize_legacy.py`：base `5000e23` 生成并批准的应用计划与恢复计划在新版本执行成功；账本 `asset_kind` / `before_files` / `after_files` / `restored_files` 从已核对内容推导；输入改变仍退出 1 |
+| 单文件资产原名 | 用例 `SourceNameTests`：来源 `shared-AGENTS.md`、patch 目标 `config/AGENTS.md`，预览 `expected_files`、资产内容与账本都用 `shared-AGENTS.md` |
 | 逆序恢复 | 恢复计划 `restore.files` 等于应用前的三文件集合；`restore` 退出 0，`restored_files` / `restored_sha256` 回到应用前值 |
 | 恢复后入口 | 两个 `readlink` 都回到 `$S`；相对软链变体保留原链接字符串（用例 `RelativeSkillRestoreTests`） |
 
@@ -263,20 +286,31 @@ Pi 读到的是恢复后的原版内容（原件 `docs/acceptance/r3a/host-probe
 
 | 用例 | base 上的结果 | 现在 |
 |---|---|---|
-| `test_personalize_skill.py`（6 项） | `FAILED (failures=6)`：预览没有逐文件 diff、`apply` 直接失败、恢复没有文件集合 | `Ran 6 tests … OK` |
-| `test_change_skill.py`（2 项） | `FAILED (failures=2)`：旧入口只按单文件 `read_bytes()` 取内容，多文件 patch 打不上 | `Ran 2 tests … OK` |
+| `test_personalize_skill.py`（6 项） | `FAILED (failures=6)`：预览没有逐文件 diff、`apply` 直接失败、恢复没有文件集合 | `Ran 8 tests … OK`（含第 1 轮新增 2 项） |
+| `test_change_skill.py`（2 项） | `FAILED (failures=2)`：旧入口只按单文件 `read_bytes()` 取内容，多文件 patch 打不上 | `Ran 3 tests … OK`（含新增 1 项） |
 | `test_workspace.py` 的技能条目断言 | `FAILED (failures=2)`：技能目录显示成“实体文件”、能力写“部分可托管” | `Ran 20 tests … OK` |
 
+第 1 轮审查修复的用例先在**修复前的候选**上跑（同一份用例与合成素材）：
+
+| 用例 | 修复前 | 现在 |
+|---|---|---|
+| `test_change_skill.py::test_failed_attempt_residue_does_not_leak_into_the_next_release` | `FAILED (failures=1)`：r0002 的 `after_files` 多出 `references/extra.md` | `Ran 3 tests … OK` |
+| `test_personalize_skill.py::SkillResidualStagingTests` | `FAILED (failures=1)`：`apply` 退出 1 报 `打出来的内容和预览的 diff 不一致` | `Ran 8 tests … OK` |
+| `test_personalize_skill.py::SkillDeleteOnlyTests` | `FAILED (failures=1)`：`preview` 退出 1 报 `patch 里没有目标路径` | `Ran 8 tests … OK` |
+| `test_personalize.py::SourceNameTests` | `FAILED (failures=1)`：`expected_files` 是 `AGENTS.md`，不是 `shared-AGENTS.md` | `Ran 10 tests … OK` |
+| `test_personalize_legacy.py`（3 项） | `FAILED (failures=2)`：`apply` 与 `restore` 都先在 `'expected_files'` 上失败；只修 apply 后 `restore` 接着报 `'files'` | `Ran 3 tests … OK` |
+
 实现过程中按失败证据改了两处：入口/来源是目录时按整棵内容取摘要与 diff（不是只读 `SKILL.md` 或只算一个文件）；
-预览后引用文件变化要按整棵摘要核对（不是只看正文文件）。
+预览后引用文件变化要按整棵摘要核对（不是只看正文文件）。第 1 轮修复轮另改了三处共用内容层规则（重建本次暂存根、
+按成对 diff 头取目标路径、旧计划字段从已核对内容推导），没有改批准计划字节，也没有回退旧 R2 / instructions 与守卫路径。
 
 ## 测试与检查
 
 | 命令 | 退出码 | 结果 |
 |---|---|---|
-| `python3 -m unittest discover -s tests -t tests` | 0 | `Ran 405 tests … OK`（base 397 + 新增 8） |
+| `python3 -m unittest discover -s tests -t tests` | 0 | `Ran 412 tests … OK`（base 397 + R3a 交付 8 + 第 1 轮修复 7） |
 | `ruff check .` | 0 | `All checks passed!` |
-| `ruff format --check .` | 0 | `106 files already formatted` |
+| `ruff format --check .` | 0 | `108 files already formatted` |
 
 类型检查：仓库没有 `pyproject.toml`，`pyright` / `mypy` 未安装，**未执行**。
 
@@ -323,5 +357,8 @@ PY
 
 - 本次执行的计划、预览、恢复预览、账本与两次探针记录：`docs/acceptance/r3a/`
   （`plan.json`、`preview.md`、`restore-x0001.json`、`restore-x0001.md`、`ledger.jsonl`、`host-probe-applied.json`、
-  `host-probe-restored.json`）。工件里的路径是那一次的 `$WORK`（临时目录），不含本机用户名。
-- 完整命令输出与探针 stdout/stderr：仓库外的 `/tmp/pi-worker/r3a-acceptance-*.log`。
+  `host-probe-restored.json`）。工件里的临时工作目录统一写成 `$WORK`，不含本机用户名或机器绝对路径；
+  报告/内容 sha256 都是那次运行的原始值。
+- 完整命令输出与探针 stdout/stderr：仓库外的 `${TMPDIR}/pi-worker/` 日志（本次为 `r3a-doc-run-*.log`（机械提取
+  执行）、`r3a-red-candidate-*.log`（把同一套新用例放到候选 `709a523` 上跑）、`r3a-fix-full-*.log`（全量测试与
+  ruff））。

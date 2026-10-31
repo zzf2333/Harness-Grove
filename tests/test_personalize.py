@@ -69,6 +69,43 @@ class PreviewTests(PersonalizeFixture):
         self.assertEqual(alt.read_bytes(), (BASE + "本地附加规则：只在这台机器上生效。\n").encode())
 
 
+class SourceNameTests(PersonalizeFixture):
+    """来源文件名与 patch 目标不同：预览、文件集合、写回都用资产原名，patch 路径只用于定位暂存。"""
+
+    SOURCE_NAME = "shared-AGENTS.md"
+
+    def setUp(self):
+        super().setUp()
+        self.prepare()
+        result = self.preview("c1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_preview_and_apply_keep_the_source_file_name(self):
+        plan = json.loads(self.plan_path("c1").read_text(encoding="utf-8"))
+        self.assertIn("assets/asset-0001/content/shared-AGENTS.md", plan["phe_writes"])
+        first = plan["items"][0]
+        self.assertEqual(set(first["current_files"]), {"shared-AGENTS.md"})
+        self.assertEqual(set(first["expected_files"]), {"shared-AGENTS.md"})
+        self.assertEqual([row["path"] for row in first["diffs"]], ["shared-AGENTS.md"])
+        preview = (self.phe / "reports/c1/preview.md").read_text(encoding="utf-8")
+        self.assertIn("assets/asset-0001/content/shared-AGENTS.md", preview)
+
+        approval = self.approve(self.plan_path("c1"), ["P1"])
+        result = self.apply_cli(self.plan_path("c1"), "P1", approval)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        applied = json.loads(result.stdout)
+        self.assertEqual(set(applied["before_files"]), {"shared-AGENTS.md"})
+        self.assertEqual(set(applied["after_files"]), {"shared-AGENTS.md"})
+        content = self.phe / "assets/asset-0001/content"
+        self.assertEqual(sorted(path.name for path in content.iterdir()), ["shared-AGENTS.md"])
+        metadata = json.loads((self.phe / "assets/asset-0001/asset.json").read_text(encoding="utf-8"))
+        self.assertEqual(metadata["name"], "shared-AGENTS.md")
+        row = next(fact for fact in self.ledger() if fact["kind"] == "apply")
+        self.assertEqual(set(row["before_files"]), {"shared-AGENTS.md"})
+        self.assertEqual(set(row["after_files"]), {"shared-AGENTS.md"})
+        self.assertIn("先给结论，再复述问题。", self.effective().decode())
+
+
 class ApplyTests(PersonalizeFixture):
     def setUp(self):
         super().setUp()

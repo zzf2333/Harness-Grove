@@ -18,6 +18,7 @@ from skill_asset import (
     APPLIED_SKILL_MD,
     BASE_FILES,
     NOTES,
+    PATCH_DELETE,
     PATCH_P1,
     PATCH_P2,
     files_of,
@@ -220,6 +221,90 @@ class RelativeSkillRestoreTests(RestoreFlow):
         for name in self.links:
             self.assertFalse(os.path.isabs(self.links[name]))
         self.assert_restored(self.apply_p1())
+
+
+class SkillDeleteOnlyTests(SkillFixture):
+    """只删除一个引用文件的 patch：成对 diff 头里没有新增目标，`+++` 是 /dev/null。"""
+
+    def setUp(self):
+        super().setUp()
+        self.prepare()
+        self.change = self.package([self.item("D1", PATCH_DELETE, 8, "hypothesis")])
+        self.before_files = self.files()
+        result = self.preview("c1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_delete_only_patch_previews_applies_and_restores(self):
+        plan = json.loads(self.plan_path("c1").read_text(encoding="utf-8"))
+        item = plan["items"][0]
+        self.assertEqual(item["patch_targets"], ["references/draft.md"])
+        self.assertEqual({row["path"]: row["state"] for row in item["diffs"]}, {"references/draft.md": "deleted"})
+        self.assertEqual(set(item["expected_files"]), {"SKILL.md", "references/notes.md"})
+        preview = (self.phe / "reports/c1/preview.md").read_text(encoding="utf-8")
+        self.assertIn("`references/draft.md`（删除）", preview)
+
+        approval = self.approve(self.plan_path("c1"), ["D1"], name="approval-d1.json")
+        result = self.apply_cli(self.plan_path("c1"), "D1", approval)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        applied = json.loads(result.stdout)
+        self.assertEqual(set(applied["after_files"]), {"SKILL.md", "references/notes.md"})
+        link = Path(os.readlink(self.entries["pi"]))
+        self.assertFalse((link / "references/draft.md").exists())
+        self.assertEqual(self.files(), self.before_files)
+
+        result = self.restore_preview("c2", applied["execution_id"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        restore_plan = self.phe / "reports/c2" / f"restore-{applied['execution_id']}.json"
+        result = self.restore_cli(
+            restore_plan, applied["execution_id"], self.approve_restore(restore_plan, applied["execution_id"])
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.files(), self.before_files)
+        self.assertEqual(files_of(Path(os.readlink(self.entries["pi"]))), self.before_files)
+
+
+class SkillResidualStagingTests(SkillFixture):
+    """一次失败尝试留下的暂存树不能混进下一次批准的应用。
+
+    产品入口在入口内容被改过后会先拒绝，走不到暂存；这里直接按“失败发生在打 patch 之后”留下的形态放入
+    `staging/x0002/tree`，验证共用的暂存规则会先重建本次执行的暂存根。
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.prepare()
+        self.assertEqual(self.preview("c1").returncode, 0)
+
+    def test_failed_attempt_residue_does_not_leak_into_the_next_apply(self):
+        approval = self.approve(self.plan_path("c1"), ["P1"], name="approval-p1.json")
+        applied = self.apply_cli(self.plan_path("c1"), "P1", approval)
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        # 失败不追加 apply 事实，下一次仍用 x0002：按失败尝试的形态放一份从 P1 后入口复制出的暂存树。
+        stale = self.phe / "staging/x0002/tree"
+        entry = Path(os.path.realpath(self.entries["pi"]))
+        for path in sorted(entry.rglob("*")):
+            if path.is_file():
+                target = stale / path.relative_to(entry)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(path.read_bytes())
+        self.assertTrue((stale / "references/extra.md").is_file())
+
+        result = self.restore_preview("c2", "x0001")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        restore_plan = self.phe / "reports/c2/restore-x0001.json"
+        result = self.restore_cli(restore_plan, "x0001", self.approve_restore(restore_plan, "x0001"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        # 恢复后重新预览：只批准 P2。暂存树里上一次留下的 references/extra.md 不属于这次批准。
+        self.assertEqual(self.preview("c3").returncode, 0)
+        approval = self.approve(self.plan_path("c3"), ["P2"], name="approval-p2.json")
+        result = self.apply_cli(self.plan_path("c3"), "P2", approval)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        applied_second = json.loads(result.stdout)
+        self.assertEqual(set(applied_second["after_files"]), {"SKILL.md", "references/notes.md", "references/draft.md"})
+        link = Path(os.readlink(self.entries["pi"]))
+        self.assertFalse((link / "references/extra.md").exists())
+        self.assertFalse((stale / "references/extra.md").exists())
 
 
 if __name__ == "__main__":

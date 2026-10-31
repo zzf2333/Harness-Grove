@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "kind": "phe_restore_plan",
+  "cycle": "c2",
+  "created_at": "2026-10-31T05:47:48+00:00",
+  "phe_home": "@ROOT@/phe",
+  "execution_id": "x0001",
+  "proposal_id": "P1",
+  "release": "r0001",
+  "journals": [
+    "@JOURNAL@",
+    "@JOURNAL@",
+    "@JOURNAL@"
+  ],
+  "entries": [
+    {
+      "agent": "pi",
+      "path": "@ROOT@/home/.pi/agent/AGENTS.md",
+      "current": {
+        "state": "symlink",
+        "target": "@ROOT@/phe/releases/r0001/files/asset-0001/AGENTS.md",
+        "sha256": "0f0dc13e43a925f218e89abb5d7dc89f4a7e69a67600f5c0730c4514dade2cd7"
+      },
+      "restore": {
+        "state": "symlink",
+        "old_target": "@ROOT@/shared/AGENTS.md",
+        "content_sha256": "1bdb189d3dddfcc6b914c738debc5ebacc18ce21584b7d20f55ea65bd194954f"
+      }
+    },
+    {
+      "agent": "codex",
+      "path": "@ROOT@/home/.codex/AGENTS.md",
+      "current": {
+        "state": "symlink",
+        "target": "@ROOT@/phe/releases/r0001/files/asset-0001/AGENTS.md",
+        "sha256": "0f0dc13e43a925f218e89abb5d7dc89f4a7e69a67600f5c0730c4514dade2cd7"
+      },
+      "restore": {
+        "state": "symlink",
+        "old_target": "@ROOT@/shared/AGENTS.md",
+        "content_sha256": "1bdb189d3dddfcc6b914c738debc5ebacc18ce21584b7d20f55ea65bd194954f"
+      }
+    },
+    {
+      "agent": "claude",
+      "path": "@ROOT@/home/.claude/CLAUDE.md",
+      "current": {
+        "state": "symlink",
+        "target": "@ROOT@/phe/releases/r0001/files/asset-0001/AGENTS.md",
+        "sha256": "0f0dc13e43a925f218e89abb5d7dc89f4a7e69a67600f5c0730c4514dade2cd7"
+      },
+      "restore": {
+        "state": "symlink",
+        "old_target": "@ROOT@/shared/AGENTS.md",
+        "content_sha256": "1bdb189d3dddfcc6b914c738debc5ebacc18ce21584b7d20f55ea65bd194954f"
+      }
+    }
+  ],
+  "host_writes": [
+    "@ROOT@/home/.pi/agent/AGENTS.md",
+    "@ROOT@/home/.codex/AGENTS.md",
+    "@ROOT@/home/.claude/CLAUDE.md"
+  ],
+  "phe_writes": [
+    "bindings.json",
+    "ledger.jsonl"
+  ],
+  "restore_note": "恢复按 journal 逆序把入口链接指回应用前的目标；应用前的共享来源文件本身从未被改过"
+}

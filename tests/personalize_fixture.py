@@ -120,12 +120,14 @@ class PersonalizeFixture(unittest.TestCase):
     """合成 home（三个共享入口）+ 仓外 PHE_HOME + 仓库副本 + 无关 cwd。"""
 
     PHE_IN_HOME = False
+    # 来源文件名：patch 目标可以是别的路径（如 `config/AGENTS.md`），资产原名仍按来源文件取。
+    SOURCE_NAME = "AGENTS.md"
 
     def setUp(self):
         self.tmp = Path(os.path.realpath(tempfile.mkdtemp(prefix="personalize-test-")))
         self.addCleanup(rmtree_force, self.tmp)
         self.home = self.tmp / "home"
-        self.shared = self.tmp / "shared" / "AGENTS.md"
+        self.shared = self.tmp / "shared" / self.SOURCE_NAME
         self.phe = (self.home / ".phe") if self.PHE_IN_HOME else (self.tmp / "phe")
         self.out = self.tmp / "out"
         self.elsewhere = self.tmp / "elsewhere"

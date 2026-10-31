@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "approval_id": "approval-fixture-c2-restore",
+  "source": "user",
+  "execution": "x0001",
+  "plan_sha256": "48a9645099c543dfa025f8ca18c9cd35a6659b33a50db486e0b64d441a74aedb",
+  "note": "兼容夹具：用 base 5000e23 生成，合成恢复批准，不代表真实用户同意"
+}
