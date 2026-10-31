@@ -133,6 +133,17 @@ def cmd_apply(args: argparse.Namespace) -> int:
         raise ValueError(f"计划里没有条目：{args.item}")
     if item_plan["state"] != "applicable":
         raise ValueError(f"计划里条目 {args.item} 当前不适用：{item_plan['reason']}；请重新预览")
+    if plan["asset"].get("kind") == "mcp":
+        import personalize_mcp_apply as mcp_applying
+
+        print(
+            json.dumps(
+                mcp_applying.apply(phe, args, plan, plan_sha, approval, source, package, report, change_sha, item_plan),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
     item = change.select_item(package, args.item)
     asset = change.target_asset(read_registry(planning.registry_path(phe, args.registry)), plan["asset"]["asset_id"])
     content_file = change.effective_file(asset)
@@ -235,6 +246,13 @@ def cmd_restore(args: argparse.Namespace) -> int:
     planning.require_planned_workspace(plan, phe)
     approval = read_json(args.approval)
     source = check_restore_approval(approval, plan_sha, args.execution)
+    if plan.get("asset_kind") == "mcp":
+        import personalize_mcp_apply as mcp_applying
+
+        print(
+            json.dumps(mcp_applying.restore(phe, args, plan, plan_sha, approval, source), ensure_ascii=False, indent=2)
+        )
+        return 0
     fact, journal_paths = restoring.restorable(phe, args.execution)
     if plan["journals"] != fact["journals"]:
         raise ValueError("恢复计划绑定的 journal 与账本不一致：请重新预览")

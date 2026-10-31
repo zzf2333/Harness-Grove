@@ -212,6 +212,11 @@ def build_plan(phe: Path, args: argparse.Namespace) -> dict:
     report = change.check_report(package)
     registry = read_registry(registry_path(phe, args.registry))
     asset = single_asset(package, registry)
+    if asset_kind(phe, asset) == "mcp":
+        # MCP 条目没有入口链接，托管对象是各 Host 配置里的一个 JSON 成员。
+        import personalize_mcp_plan as mcp_planning
+
+        return mcp_planning.build_plan(phe, args, package, report, change_sha, asset)
     content_file = change.effective_file(asset)
     kind = asset_kind(phe, asset)
     base_sha = sha_of(content_file)
@@ -291,6 +296,10 @@ def build_plan(phe: Path, args: argparse.Namespace) -> dict:
 
 
 def render_preview(plan: dict, plan_sha: str) -> str:
+    if plan["asset"].get("kind") == "mcp":
+        import personalize_mcp_plan as mcp_planning
+
+        return mcp_planning.render_preview(plan, plan_sha)
     asset = plan["asset"]
     report = plan["report"]
     entries = asset["entries"]

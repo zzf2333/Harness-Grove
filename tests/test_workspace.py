@@ -91,7 +91,7 @@ class DiscoverTests(WorkspaceFixture):
         self.assertEqual(self.data["registry"], {"path": str(self.registry_path), "present": False})
         mcp = [record for record in records if record["kind"] == "mcp"]
         self.assertEqual(len(mcp), 1)
-        self.assertEqual(mcp[0]["top_level_keys"], ["servers"])
+        self.assertEqual(mcp[0]["top_level_keys"], ["mcpServers"])
         self.assertIn("读不到 server 条目", mcp[0]["management_note"])
 
     def test_management_comes_from_the_entry_not_the_kind_alone(self):
@@ -99,7 +99,7 @@ class DiscoverTests(WorkspaceFixture):
         expected = {
             self.host / ".claude/CLAUDE.md": "sandbox_managed",
             self.host / ".claude/skills/demo": "sandbox_managed",
-            self.host / ".pi/agent/mcp.json": "observe_only",
+            self.host / ".pi/agent/mcp.json": "product_partial",
             self.host / ".claude/rules/style.md": "observe_only",
         }
         self.assertEqual({path: records[str(path)]["management"] for path in expected}, expected)

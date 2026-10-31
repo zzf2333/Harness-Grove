@@ -80,7 +80,7 @@ class WorkspaceFixture(unittest.TestCase):
         skill = self.host / ".claude/skills/demo"
         write(skill / "SKILL.md", "---\nname: demo\n---\n演示 skill\n")
         write(skill / "notes.md", "说明\n")
-        write(self.host / ".pi/agent/mcp.json", '{"servers": {"demo": {"command": "demo"}}}\n')
+        write(self.host / ".pi/agent/mcp.json", '{"mcpServers": {"demo": {"command": "demo"}}}\n')
         # 未托管、盘点不支持的托管路径：rules 目录里的普通文件。
         write(self.host / ".claude/rules/style.md", "风格规则\n")
         write(self.host / ".claude/agents/reviewer.md", "复核者定义\n")

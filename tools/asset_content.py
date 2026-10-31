@@ -143,11 +143,21 @@ def discard_content(content: Path) -> None:
         content.unlink()
 
 
-def write_asset(writer, phe: Path, asset: dict, staged: Path, source: Path, at: str) -> None:
+def write_asset(
+    writer,
+    phe: Path,
+    asset: dict,
+    staged: Path,
+    source: Path,
+    at: str,
+    kind: str | None = None,
+    extra: dict | None = None,
+) -> None:
     """按 release import 的同一格式重建资产内容；不复用 import（它拒绝覆盖且固定从 resolved_path 复制）。
 
     内容整棵替换：patch 删掉的引用文件也要真的从资产内容里消失，否则下一次发布会把它带回来。
     单文件资产按来源文件的原名写回：patch 里的路径只用于暂存定位，不改变资产名。
+    `kind` 覆盖按形状推断的类型（MCP 条目是单文件，但类型不是 instructions）；`extra` 是随资产一起保存的元数据段。
     """
     directory = phe / "assets" / asset["asset_id"]
     content = directory / "content"
@@ -158,16 +168,14 @@ def write_asset(writer, phe: Path, asset: dict, staged: Path, source: Path, at: 
         release_tool.copy_tree(writer, staged, content)
     else:
         writer.write_bytes(content / name, staged.read_bytes())
-    writer.write_json(
-        directory / "asset.json",
-        {
-            "asset_id": asset["asset_id"],
-            "kind": "skill" if staged.is_dir() else "instructions",
-            "name": name,
-            "source": str(source),
-            "imported_at": at,
-        },
-    )
+    declaration = {
+        "asset_id": asset["asset_id"],
+        "kind": kind or ("skill" if staged.is_dir() else "instructions"),
+        "name": name,
+        "source": str(source),
+        "imported_at": at,
+    }
+    writer.write_json(directory / "asset.json", declaration | (extra or {}))
 
 
 def read_text(root: Path, name: str, files: dict[str, str]) -> list[str]:

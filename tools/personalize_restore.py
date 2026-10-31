@@ -52,6 +52,10 @@ def link_content(path: Path, target: str | None) -> Path | None:
 
 def build_restore_plan(phe: Path, execution_id: str, cycle: str) -> dict:
     fact, journal_paths = restorable(phe, execution_id)
+    if fact.get("asset_kind") == "mcp":
+        import personalize_mcp_apply as mcp_applying
+
+        return mcp_applying.build_restore_plan(phe, fact, journal_paths, cycle)
     entries = []
     for journal_path in reversed(journal_paths):
         journal = read_json(journal_path)
@@ -91,6 +95,10 @@ def build_restore_plan(phe: Path, execution_id: str, cycle: str) -> dict:
 
 
 def render_restore_preview(plan: dict, plan_sha: str) -> str:
+    if plan.get("asset_kind") == "mcp":
+        import personalize_mcp_apply as mcp_applying
+
+        return mcp_applying.render_restore_preview(plan, plan_sha)
     lines = [
         f"# 恢复预览 · 周期 {plan['cycle']}",
         "",

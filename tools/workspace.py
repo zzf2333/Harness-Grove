@@ -31,6 +31,7 @@ REGISTRY_RELATIVE = Path("registry") / "assets.json"
 MANAGEMENT_LABELS = {
     "sandbox_managed": "沙箱可托管",
     "sandbox_partial": "部分可托管",
+    "product_partial": "产品入口部分可托管",
     "observe_only": "仅观察",
     "unsupported": "未支持",
 }
@@ -66,7 +67,17 @@ KIND_ROWS = (
             "模型自主选用与任务执行未验证。"
         ),
     ),
-    ("mcp", "MCP", "observe_only", "只记文件 Hash 与顶层键名，读不到 server 条目；没有渲染或合并。"),
+    (
+        "mcp",
+        "MCP",
+        "product_partial",
+        (
+            "只支持更新已存在的 server 条目：Pi 的用户级 `~/.pi/agent/mcp.json` 与项目级 `.pi/mcp.json`、"
+            "Claude Code 项目级 `.mcp.json`；产品入口只替换 `mcpServers` 下托管成员的值跨度，"
+            "未托管条目与文件外围字节不变。新增 / 删除条目、Codex 的 TOML 配置、其他项目级路径、"
+            "`enabled` 开关、连接与 Host 加载都未支持；盘点仍只记文件 Hash 与顶层键名，读不到 server 条目。"
+        ),
+    ),
     (
         "hook",
         "Hooks",

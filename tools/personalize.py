@@ -13,9 +13,13 @@
 
 命令：`preview`（写预览与机读计划，不写 Host）、`apply`（只写计划列明的入口与 PHE_HOME 产物）、
 `restore-preview` / `restore`（恢复也先预览、再批准）、`status` / `review-plan` / `review`（同一本账本）、
-`digest`（摘要写 `<PHE_HOME>/episodes/<cycle>/`）、`cycle-record` / `cycle-plan`（两周期延续）。
+`digest`（摘要写 `<PHE_HOME>/episodes/<cycle>/`）、`cycle-record` / `cycle-plan`（两周期延续）、
+`mcp-adopt` / `mcp-drift`（R3b：登记已存在的 MCP server 条目、看条目级漂移；写入仍走上面的 preview / apply）。
 
-本轮范围：单个 instructions 资产 + 多个 Host 入口共享同一来源。Skill、MCP、Hooks 等完整 Harness 是 R3。
+范围：R2 是单个 instructions 资产 + 多个 Host 入口共享同一来源；R3a 是 Skill 目录资产，入口仍是链接。
+R3b 第一片只处理 `kind=mcp` 的**已存在** server 条目：Pi 的 `~/.pi/agent/mcp.json` 与项目 `.pi/mcp.json`、
+Claude Code 项目级 `.mcp.json`。写入只替换 `mcpServers` 下托管成员的值跨度，未托管条目与文件外围字节不变；
+新增 / 删除条目与 Codex 的 TOML 配置本片不支持，也不验证 Host 是否加载或能否连上 server。
 产物路径、证据指针和观察窗的含义见 [README](https://github.com/) 的 R2 流程与 [Skill §11–§13]。
 """
 
@@ -31,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import change
 import change_review
 import personalize_apply as applying
+import personalize_mcp as mcp_entry
 import personalize_plan as planning
 import personalize_restore as restoring
 from change_ledger import append_ledger, read_ledger, require
@@ -205,6 +210,8 @@ COMMANDS = {
     "review-plan": cmd_review_plan,
     "review": cmd_review,
     "digest": cmd_digest,
+    "mcp-adopt": mcp_entry.cmd_mcp_adopt,
+    "mcp-drift": mcp_entry.cmd_mcp_drift,
     "cycle-record": cmd_cycle_record,
     "cycle-plan": cmd_cycle_plan,
 }
@@ -260,6 +267,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     cycle_plan = add("cycle-plan", "下一周期先读上一周期的证据范围、预测与结论（只读）")
     cycle_plan.add_argument("--cycle", required=True, help="本周期目录名，如 c2")
+
+    adopt = add("mcp-adopt", "登记已存在的 MCP server 条目：写逻辑定义与目标绑定，不碰 Host")
+    adopt.add_argument("--server", required=True, help="mcpServers 里的条目名，如 demo")
+    adopt.add_argument(
+        "--target",
+        action="append",
+        required=True,
+        help="adapter=路径，可重复；adapter 取 pi / claude，路径形状见 README 的 R3b 一节",
+    )
+    adopt.add_argument("--registry", type=Path, help=f"登记表，缺省 <PHE_HOME>/{workspace_tool.REGISTRY_RELATIVE}")
+
+    drift = add("mcp-drift", "按托管定义渲染后与各 Host 的条目比较，只报字段名（只读）")
+    drift.add_argument("--asset-id", help="MCP 资产 ID；PHE_HOME 里只有一条 MCP 资产时可省略")
     return parser
 
 
