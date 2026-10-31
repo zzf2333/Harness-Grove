@@ -35,28 +35,30 @@ def render_diff(current: dict, expected: dict) -> str:
 def target_row(target: dict, definition: dict) -> dict:
     """一个绑定目标在预览时的状态：当前条目、渲染后的片段与整份文件的 sha256。"""
     path = Path(target["config_path"])
+    server = target["server"]
     row = {
         "adapter": target["adapter"],
         "config_path": str(path),
         "scope": target["scope"],
-        "server": definition["server"],
+        "server": server,
     }
     try:
         data, text = mcp_asset.read_config(path)
-        location = mcp_config.server_location(text, definition["server"])
+        location = mcp_config.server_location(text, server)
         if location is None:
-            row.update(state="missing", reason=f"{path} 里没有 mcpServers 条目 {definition['server']}")
+            row.update(state="missing", reason=f"{path} 里没有 mcpServers 条目 {server}")
             return row
-        entry, _span, _fragment = mcp_config.entry_at(text, definition["server"])
-        current = mcp_config.definition_from_entry(target["adapter"], entry, definition["server"])
-        rendered = mcp_config.render_entry_text(target["adapter"], definition, location["column"], location["step"])
-        expected = mcp_config.render_entry(target["adapter"], definition)
+        entry, _span, _fragment = mcp_config.entry_at(text, server)
+        rendered = mcp_config.render_target_entry_text(
+            target["adapter"], definition, entry, location["column"], location["step"]
+        )
+        current = mcp_config.current_entry(target["adapter"], entry, server)
+        expected = mcp_config.render_target_entry(target["adapter"], definition, entry)
     except (OSError, ValueError) as error:
         row.update(state="unsupported", reason=str(error))
         return row
     new_text = mcp_config.splice(text, location["span"], rendered)
-    current_rendered = mcp_config.render_entry(target["adapter"], current)
-    fields = sorted(set(current_rendered) | set(expected))
+    fields = sorted(set(current) | set(expected))
     row.update(
         state="applicable",
         reason=None,
@@ -64,12 +66,21 @@ def target_row(target: dict, definition: dict) -> dict:
         current_fragment_sha256=mcp_asset.sha256_bytes(text[location["span"][0] : location["span"][1]].encode()),
         expected_file_sha256=mcp_asset.sha256_bytes(new_text.encode()),
         expected_fragment_sha256=mcp_asset.sha256_bytes(rendered.encode()),
-        drift=[name for name in fields if current_rendered.get(name) != expected.get(name)],
-        diff=render_diff(current_rendered, expected),
+        drift=[name for name in fields if current.get(name) != expected.get(name)],
+        diff=render_diff(current, expected),
         column=location["column"],
         step=location["step"],
     )
     return row
+
+
+def unsupported_patch_reason(base: dict, expected: dict) -> str | None:
+    """首片只更新条目内容：改 server 标识或启停都不生成可执行修改。"""
+    if expected["server"] != base["server"]:
+        return f"首片不支持改 server 标识（{base['server']} → {expected['server']}）：定位始终用登记的条目名"
+    if expected.get("enabled") != base.get("enabled"):
+        return "首片不支持改启停（enabled）：普通更新沿用各目标现在写的值与字段有无"
+    return None
 
 
 def build_plan(phe: Path, args, package: dict, report: dict, change_sha: str, asset: dict) -> dict:
@@ -103,6 +114,11 @@ def build_plan(phe: Path, args, package: dict, report: dict, change_sha: str, as
                 )
         except (OSError, ValueError) as error:
             row.update(state="not_applicable", reason=str(error).splitlines()[0])
+            items.append(row)
+            continue
+        unsupported = unsupported_patch_reason(base_definition, expected_definition)
+        if unsupported is not None:
+            row.update(state="not_applicable", reason=unsupported)
             items.append(row)
             continue
         rows = [target_row(target, expected_definition) for target in targets]

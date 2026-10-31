@@ -336,16 +336,16 @@ MCP server 现在按**条目**维护，不按整份配置文件：一个逻辑 s
   这一种，`instructions` / Skill 的入口条目不会因此获得整文件写权限。
 - drift：`mcp-drift` 按适配器把定义渲染后与每个 Host 的当前条目比较，只报字段名（不打印值）。外部手改会被报成
   `drifted`，不会因为整文件 Hash 没进账本就显示“没变化”。
-- 恢复：`restore-preview` / `restore` 单独预览、单独批准，按 journal 的片段反向拼接并核对两侧文件 sha256；PHE 的
-  逻辑定义保留应用后的内容。
+- 恢复：`restore-preview` / `restore` 单独预览、单独批准，先按账本核对逆序、执行身份与 journal，再按 journal 的片段反向拼接并核对两侧文件 sha256；PHE 的逻辑定义保留应用后的内容。
 
 凭证口径：`env` / `headers` 的值必须是 `${NAME}` 引用，`url` 不带内联认证；其他字面值、`oauth`、`timeout`、
 `exposure`、`description`、`headersHelper`、`!command` 让该条目不可托管并报出字段名。工具不读值、不执行 `!command`，
 journal 与发布里都没有未托管条目的内容。
 
-本片**不支持**：新增 / 删除条目（`mcpServers` 里没有这个 server 时计划标 `not_applicable`，不创建）、Codex 的
-`~/.codex/config.toml`、`enabled` / 禁用的落点（Claude 在 `~/.claude.json`，本片不写）、以及“Host 会加载”或
-“能连上 server”这类结论。
+本片**不支持**：新增 / 删除条目（`mcpServers` 里没有这个 server 时计划标 `not_applicable`，不创建）、改逻辑定义的
+`server` 标识（定位始终用登记的条目名）、改 `enabled` 启停（普通更新保留每个目标现在写的值与字段有无；Claude 的启停
+在 `~/.claude.json`，本片不写）、Codex 的 `~/.codex/config.toml`，以及“Host 会加载”或“能连上 server”这类结论。
+Claude 官方示例里的显式 `"type": "stdio"` 可以登记与更新，其他 transport 别名不扩大。
 
 最小输入与批准的样子（完整可跑序列见 [docs/acceptance/r3b.md](docs/acceptance/r3b.md)）：
 
@@ -380,9 +380,9 @@ python3 -I "$REPO/tools/personalize.py" apply --phe-home "$WORK/phe" --plan "$WO
 - 产品路线：[docs/ROADMAP.md](docs/ROADMAP.md) R1–R4。R1（独立开始使用）的初始化与只读发现入口已交付：`tools/workspace.py init/discover` 在沙箱验收（见 [docs/acceptance/r1.md](docs/acceptance/r1.md)），报告写在显式 PHE_HOME 的 `reports/` 下；仍未提供安装包、默认 PHE_HOME、真实 Host 写入与加载验证。R2（首条持续个性化闭环）的产品入口已交付：`tools/personalize.py` 的 `preview/apply/restore-preview/restore/status/review-plan/review/digest/cycle-record/cycle-plan` 在隔离模拟用户环境里通过两次合成周期的验收（见 [docs/acceptance/r2.md](docs/acceptance/r2.md)）；旧 `release_deploy` 守卫一字未改，仍拒绝真实 home 及 Host 入口路径，那套入口继续只用于演练。安装包、默认 `~/.phe`、Host 加载验证仍未提供。
 - R3b（MCP）第一片已交付：`tools/personalize.py` 的 `mcp-adopt` / `mcp-drift` 与同一套 `preview` / `apply` /
   `restore-preview` / `restore` / `review` 支持**更新已存在**的 Pi（用户级、项目级）与 Claude Code（项目级）JSON
-  条目，只替换 `mcpServers` 下托管成员的跨度，未托管条目与外围字节不变，journal 只记托管片段（见
-  [docs/acceptance/r3b.md](docs/acceptance/r3b.md)）。新增 / 删除条目、Codex TOML、`enabled` 落点、Host 加载与
-  连接、收益都**未验证或未支持**。
+  条目，只替换 `mcpServers` 下托管成员的跨度，未托管条目与外围字节不变，普通更新保留各目标现有的启停，journal 只记
+  托管片段（见 [docs/acceptance/r3b.md](docs/acceptance/r3b.md)）。新增 / 删除条目、改 `server` 标识、启停落点、
+  Codex TOML、Host 加载与连接、收益都**未验证或未支持**。
 - R3a（Skills）文件层与一次隔离 Host 的发现/显式展开已交付：同一套产品入口直接对目录型 Skill（`SKILL.md` + 引用文件）做逐文件预览、应用、账本与逆序恢复，两个 Host 技能入口指向同一发布；Host 层用真实 Pi 1.4.0 的 loader 与 `session.prompt("/skill:…")` 验证发现与展开，模型层是 faux provider（见 [docs/acceptance/r3a.md](docs/acceptance/r3a.md)）。模型自主选用、任务效果、Codex 读 `~/.agents/skills`、安装包仍**未验证**；MCP、Hooks、扩展与工具配置是 R3b–R3e。
 - M1 的 A–D1 已在沙箱完成（盘点、登记、漂移检测、发布/部署/回滚）；D2（MCP、hooks、Codex config.toml）未开始，接管真实环境需用户另批，见 [docs/M1_PLAN.md](docs/M1_PLAN.md)。
 - M2 已完成（按原定 Gate 结项，2026-10-30）：历史采集、结构分组、`log`/`status` 续作记录、Codex Target 最小接口已完成。两个真实 Host 续作同一提案已通过：S1 阻塞交接（Pi 起草、真实 Codex 会话从文件续读并停在阻塞处），S2 正常冻结交接（Pi 起草、Codex 独立复核后冻结，主控补核快照绑定；未批准或运行 Target），见 [docs/M2_PLAN.md](docs/M2_PLAN.md)。Target 按需逐个适配：Claude Code 有 M-1/M0 真实运行证据；真实 Claude Code Target 实验 m2-real-002 启动 1/15 次后因服务端拒绝订阅登录（403）停在 `pivot:telemetry_missing`，加载链阻塞保留。Codex Target 真实运行、费用与隔离验证是后续适配项，不追加为 Gate。
@@ -434,8 +434,9 @@ python3 -I "$REPO/tools/personalize.py" apply --phe-home "$WORK/phe" --plan "$WO
 - `tools/personalize.py`：R2 的产品入口（计划、预览与恢复预览在 `tools/personalize_plan.py` / `tools/personalize_restore.py`，执行在 `tools/personalize_apply.py`），复用 `release.py` / `release_deploy.py` / `change.py` / `change_ledger.py` / `change_review.py` 的业务函数，不建第二套引擎。`preview` 读报告、变更包、登记表与每个入口当前生效的内容，写 `<PHE_HOME>/reports/<cycle>/preview.md`、`plan.json` 与 `plan.sha256`（不写 Host）：计划绑定报告与变更包的 sha256、每个入口的形态与内容 sha256、每条目的实际 diff 与前后 sha256、写入范围与恢复方式；共享入口分叉（某个入口读的内容和计划要改的那份不同）时直接失败，不做多来源合并。`apply` 要求批准记录绑定计划原始字节（`plan_sha256`）并覆盖该条目；上一轮已应用的条目打不上当前内容时在预览里标 `not_applicable`，不挡同包其他条目。执行前核对实际 `--phe-home` 与计划一致、每个入口的内容 sha256 与计划基线一致，只写计划列明的入口与显式 `<PHE_HOME>` 产物；变更包、报告、入口形态或内容在预览之后变了就退出 1，要求重新预览。`restore-preview` / `restore` 同理先预览（绑定账本执行、journal、入口当前内容与恢复目标内容）、再批准，执行前复核形态、链接与两侧内容；相对软链按链接所在目录解析，恢复写回原始相对路径。`status` / `review-plan` / `review` 直接读写自己的 PHE_HOME 账本，`status` 多补一列批准来源；`digest` 用 `history_digest.build_digest` 的纯逻辑把摘要写进 `<PHE_HOME>/episodes/<cycle>/digest/`；`cycle-record` 追加周期事实（`processed_evidence` 带源文件路径、行号、类别与原文时间范围，重复上一周期的证据退出 1），`cycle-plan` 读回上一周期的证据范围、预测与结论并写明记录时间不是水位。目录型 skill 与单文件指令走同一套：计划的 `asset.kind` 是 `skill`，每个入口带文件集合与整棵摘要，每个条目带逐文件 `diffs`，恢复计划同样带两侧文件集合。R3b 起 `kind=mcp` 走同一套命令：`mcp-adopt` 登记已存在的条目并写 `assets/<id>/content/server.json`，`preview` 把逻辑定义 diff 与每个 Host 的渲染差异放进同一份计划，`apply` 只替换 `mcpServers` 下托管成员的值跨度（`tools/mcp_config.py` 用 `JSONDecoder.raw_decode` 定位，不重写整份文件），journal 记 `kind=mcp_fragments` 的托管前后片段，`restore` 反向拼接并核对两侧文件 sha256；`mcp-drift` 只读报条目级漂移。写入范围由 `personalize_plan.ApprovedScope` 判定（计划内入口精确匹配 + PHE_HOME，外加原子替换的同目录临时链接名），不查旧沙箱守卫；`source=sandbox_rehearsal` 另叠加 `release_deploy.refusal_reason` 的真实环境保护，`source=user` 才按计划精确范围写。旧入口的行为与守卫不变。
 - `tools/mcp_config.py`：MCP 条目的逻辑定义与两个 JSON 适配器（R3b 第一片）。`mcpServers` 下目标成员的值跨度用
   `JSONDecoder.raw_decode` 加小范围扫描定位，写入只拼接这一段，未托管 server 与文件外围字节不动；用文件自己的缩进步长
-  渲染（Pi 的 HTTP 条目不写 `type`，Claude 必须写 `"type": "http"`；Claude 条目没有 `cwd` 与 `enabled`）。`env` /
-  `headers` 只接受 `${NAME}` 引用，`url` 不接受 userinfo，其他字段报名字而不是猜。
+  渲染（Pi 的 HTTP 条目不写 `type`，Claude 必须写 `"type": "http"`；Claude 条目没有 `cwd` 与 `enabled`）。条目已有的
+  启停与显式 `"type": "stdio"` 属于目标本地状态，普通更新按目标原值渲染，改启停或改 `server` 标识不生成可执行修改。
+  `env` / `headers` 只接受 `${NAME}` 引用，`url` 不接受 userinfo，其他字段报名字而不是猜。
 - `tools/asset_content.py`：资产内容的共用层（旧沙箱 `change.py` 与产品入口 `personalize*` 都用它，不建第二套引擎）：内容文件清单、`sha256` 摘要（单文件资产取文件字节；目录资产取「相对路径 + 每个文件 sha256」的整棵摘要）、在临时目录里用 `git apply` 试打 patch、按资产类型写回。两类资产共用同一套摘要与写入，但写入政策仍分开。
 - `tools/r3a/skill_host_probe.py`：R3a 的隔离 Host 探针驱动（`skill_host_probe.mjs` 在子进程里跑真实 Pi SDK）。它显式给出 `HOME`、`PI_CODING_AGENT_DIR`、cwd 与 `PI_OFFLINE` / `PI_TELEMETRY`，用 `DefaultResourceLoader` 取技能列表、用 `createAgentSession` + `session.prompt("/skill:<名字> …")` 拿展开后的模型输入，模型层换成本地 faux provider（不联网、不付费、不执行工具）。它只写 `--out`，不碰 Host 配置；报告 `checks` 逐项给布尔值，不把模拟模型当成行为证据。
 - `tools/rehearse_change.py`：闭环切片 2 演练，只读真实报告与用户级 `config/AGENTS.md`，把字节复制到 `--out` 下，在临时 home 的三个入口软链上应用 P1、P2 并逆序恢复；P1/P2 的 patch 在 `tools/rehearse_change_input.py`（手工从报告提取，不解析 Markdown）。批准写 `source=sandbox_rehearsal`，命令、断言、发布、journal、账本和恢复所需文件全部留在 `--out`（本轮产物在 `experiments/loop-apply-001/`，被 Git 忽略）。

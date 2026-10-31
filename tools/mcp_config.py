@@ -15,7 +15,7 @@ server 与文件外围字节原样保留，不用 `json.dumps` 重写整个文�
   `type` 可选（`stdio` / `http` / `streamable-http`），`sse` 被拒；`enabled: false` 保留条目不连接；
   `env` / `headers` 可用 `${NAME}`。
 - Claude Code <https://code.claude.com/docs/en/mcp>：项目级 `.mcp.json` 的 `mcpServers`；stdio 用
-  `command` / `args` / `env`；HTTP 必须 `"type": "http"`（缺 `type` 会被读成 stdio，`streamable-http` 是别名）；
+  `command` / `args` / `env`，也接受官方示例里的显式 `"type": "stdio"`；HTTP 必须 `"type": "http"`（缺 `type` 会被读成 stdio，`streamable-http` 是别名）；
   `${VAR}` 与 `${VAR:-default}` 在 `command` / `args` / `env` / `url` / `headers` 里展开；条目没有 `enabled`
   字段，启停按项目记在 `~/.claude.json` 的 `disabledMcpServers`，本片不写那个文件。
 """
@@ -215,11 +215,9 @@ def _check_enabled(value, where: str) -> bool:
     return value
 
 
-def _check_type(adapter: str, transport: str, value) -> str:
+def _check_type(transport: str, value) -> str:
     if not isinstance(value, str) or value not in TRANSPORT_TYPES[transport]:
         raise ValueError(f"type 与传输不一致：{transport} 只接受 {' / '.join(TRANSPORT_TYPES[transport])}")
-    if adapter == "claude" and transport == "stdio":
-        raise ValueError("Claude 的 stdio 条目没有 type 字段（官方只要求 HTTP 写 type）：未支持，不猜")
     return value
 
 
@@ -235,9 +233,8 @@ def _transport_of(entry: dict, server: str, adapter: str) -> str:
 
 def _supported_entry_fields(adapter: str, transport: str) -> list[str]:
     limits = ADAPTERS[adapter]
-    fields = list(TRANSPORT_FIELDS[transport])
-    if transport == "http" or adapter == "pi":
-        fields.append("type")
+    # `type` 两个适配器都可能显式写出来（Claude 官方 stdio 示例就是 `"type": "stdio"`）。
+    fields = [*TRANSPORT_FIELDS[transport], "type"]
     if limits["enabled"]:
         fields.append("enabled")
     return fields
@@ -308,7 +305,7 @@ def definition_from_entry(adapter: str, entry, server: str) -> dict:
         )
     definition = {"schema_version": SCHEMA_VERSION, "kind": DEFINITION_KIND, "server": server, "transport": transport}
     if "type" in entry:
-        _check_type(adapter, transport, entry["type"])
+        _check_type(transport, entry["type"])
     where = f"{adapter} 条目 {server}"
     if transport == "stdio":
         definition["command"] = _check_command(entry["command"], f"{where}.command")
@@ -369,10 +366,27 @@ def render_entry(adapter: str, definition: dict) -> dict:
     return entry
 
 
-def render_entry_text(adapter: str, definition: dict, column: int = 0, step: int = 2) -> str:
-    """渲染片段文本；多行时按 `column` 与文件自己的缩进步长对齐到条目原来的位置。"""
-    text = json.dumps(render_entry(adapter, definition), ensure_ascii=False, indent=step)
+def render_target_entry(adapter: str, definition: dict, entry: dict) -> dict:
+    """按目标当前条目渲染：启停与显式 stdio `type` 是目标本地状态，本片不管理，沿用原值。"""
+    rendered = render_entry(adapter, definition)
+    if ADAPTERS[adapter]["enabled"]:
+        if "enabled" in entry:
+            rendered["enabled"] = entry["enabled"]
+        else:
+            rendered.pop("enabled", None)
+    if definition["transport"] == "stdio" and entry.get("type") == "stdio":
+        rendered = {"type": "stdio", **rendered}
+    return rendered
+
+
+def render_target_entry_text(adapter: str, definition: dict, entry: dict, column: int = 0, step: int = 2) -> str:
+    text = json.dumps(render_target_entry(adapter, definition, entry), ensure_ascii=False, indent=step)
     return text.replace("\n", "\n" + " " * column)
+
+
+def current_entry(adapter: str, entry: dict, server: str) -> dict:
+    """目标当前条目的规范化渲染，用来和期待条目比对；目标本地状态保持原值。"""
+    return render_target_entry(adapter, definition_from_entry(adapter, entry, server), entry)
 
 
 def entry_at(text: str, server: str) -> tuple[dict, tuple[int, int], str]:
@@ -392,8 +406,8 @@ def drift(adapter: str, definition: dict, text: str) -> dict:
     except ValueError as exc:
         return {"state": "missing", "fields": [], "reason": str(exc), "span": None, "fragment": None}
     try:
-        current = render_entry(adapter, definition_from_entry(adapter, entry, server))
-        expected = render_entry(adapter, definition)
+        current = current_entry(adapter, entry, server)
+        expected = render_target_entry(adapter, definition, entry)
     except ValueError as exc:
         return {"state": "unsupported", "fields": [], "reason": str(exc), "span": span, "fragment": fragment}
     fields = sorted(set(current) | set(expected))

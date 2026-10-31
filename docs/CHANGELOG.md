@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-10-31 · R3b 第一片第 1 轮审查修复：server 标识、恢复逆序、目标本地启停与 Claude stdio
+
+- 依据：R3b 第一片候选 `3c26e2b`（本树 cherry-pick 后为 `886dd2b` + `b164850`）的第 1 轮独立审查，4 项 P1 与 2 项 P2。四项 P1 都先用真实 CLI 序列写成失败用例（`tests/test_personalize_mcp_review.py`，5 项），在候选内容上跑出 5 项失败，再做最小修复；没有新增防护、锁、重试或 fallback，旧 `change.py` / `release*.py` 守卫与旧 instructions / Skill 路径未回退。
+- 改 server 标识（P1）：`personalize_mcp_plan.unsupported_patch_reason` 在生成目标行前把改 `server` 的 patch 标为 `not_applicable`，不生成可执行修改；目标定位始终用 `asset.json` 里登记的绑定名，journal 也记同一个名字。修前同文件的未托管 `other` 会被改写，journal 仍记 `demo`，恢复随后找错片段。
+- 恢复逆序（P1）：`personalize_apply.cmd_restore` 把 `personalize_restore.restorable()`（逆序与执行状态）、计划 `execution_id` 与 journal 对照移到 `asset_kind=mcp` 分派之前，再进入 MCP 的逐文件内容核对；复用现有账本推导，不建第二套栈。修前 `x1 A→B` / `x2 B→C` / `x3 C→B` 后，`x1` 旧恢复计划两侧 hash 又对上，会把文件写回 A 而账本仍显示 `x3 applied`。
+- 目标本地启停（P1）：新增 `mcp_config.render_target_entry` / `current_entry`，渲染时保留目标条目里显式的 `enabled` 原值、缺字段就不补；登记、预览、应用、`mcp-drift` 走同一函数。修前 Claude 先登记、Pi 已有 `enabled: false` 时，只加 `args` 的普通更新会删掉 Pi 的 `enabled`，按 Pi 规则变成允许连接。改 `enabled` 的 patch 明确标 `not_applicable`，不把 Claude 没有的字段写进 `.mcp.json`。
+- Claude 显式 stdio（P1）：`_supported_entry_fields` 承认 `type`，`_check_type` 不再拒绝 Claude stdio 的 `"stdio"`；条目原本写明时渲染保留。修前 `mcp-adopt` 直接退出 1（报不支持字段 `type`），官方示例形状进不了闭环。其他未知 transport（如 `sse`）仍拒绝。
+- 文档（P2）：`docs/acceptance/r3b.md` 的 7 个结束围栏从带 `text` 标注改成三个反引号，11 个围栏全部成对闭合，报告与契约表可正常阅读；ROADMAP 的 MCP 现状矩阵与发现覆盖同步第一片（`部分可托管`），与 `workspace.py` 的 `product_partial`、AGENTS 一致；README、Skill §14 第 9 条、SPEC §5 与本节同步“普通更新保留各目标现有启停与显式 stdio type、改标识或启停不适用、恢复先核对逆序”。
+- 测试：新增 `tests/test_personalize_mcp_review.py`（5 项，覆盖 4 个 P1 的真实 CLI 序列）；共享夹具移到 `tests/personalize_mcp_fixture.py`，`tests/test_personalize_mcp.py` 保留原 9 项并补显式 stdio / 未知 transport 的适配器断言。红：候选内容上 5 项全失败；修后 `-k test_personalize_mcp` → 14 tests OK。
+- 验证：`python3 -m unittest discover -s tests -t tests` → 426 tests OK（exit 0）；`-k test_personalize_mcp` → 14 tests OK；`-k test_workspace` → 22 tests OK；`ruff check .` → All checks passed；`ruff format --check .` → 116 files already formatted；`docs/acceptance/r3b.md` 的 4 个 `bash` 块从最终文件机械提取，在仓库副本与无关 cwd 里用 `bash -e` 顺序执行，4 块全 exit 0，`cmp` 与 drift 状态核对通过；临时工作区已删除。
+- 未验证：Host 是否加载这个条目、能否连上 server、有没有收益（`review` 仍记 `observe` / `unknown`）；整个 R3b 仍未完成（新增 / 删除条目、改 server 标识、启停落点与跨目标一致、Codex `config.toml`、Host 加载/连接）；未读真实 Host 配置或凭证、未启动 MCP 连接、未调用付费服务、未推送；仓库无类型检查配置，未跑 typecheck。
+
 ## 2026-10-31 · R3b 第一片交付：MCP 条目级更新的产品闭环
 
 - 背景：R3b 要把 R2 的“预览 → 逐条批准 → 应用 → 复盘 → 恢复”扩到 MCP。此前只按文件记 Hash 与顶层键名，改一个 server 就得整体重写配置，未托管条目和密钥都有被覆盖或带出来的风险。本片只做“更新已存在的条目”，新增 / 删除、Codex TOML、`enabled` 落点与 Host 加载/连接都留给后续。

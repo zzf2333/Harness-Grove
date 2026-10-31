@@ -143,14 +143,15 @@ def existing_asset(registry: dict, server: str, targets: list[dict]) -> dict | N
 def register(writer, phe: Path, args: argparse.Namespace, registry_path: Path) -> dict:
     """把已存在的 server 条目登记成一条 MCP 资产，并写出逻辑定义与目标绑定。"""
     targets = parse_targets(args.target)
-    projections = []
+    projections, entries = [], []
     for target in targets:
         _data, text = read_config(Path(target["config_path"]))
         entry, _span, _fragment = mcp_config.entry_at(text, args.server)
+        entries.append(entry)
         projections.append(mcp_config.definition_from_entry(target["adapter"], entry, args.server))
     definition = projections[0]
-    for target in targets:
-        mcp_config.render_entry(target["adapter"], definition)
+    for target, entry in zip(targets, entries):
+        mcp_config.render_target_entry(target["adapter"], definition, entry)
     try:
         registry = registry_tool.read_registry(registry_path)
     except FileNotFoundError:
@@ -212,18 +213,17 @@ def register(writer, phe: Path, args: argparse.Namespace, registry_path: Path) -
                 "fields": fields,
             }
             for target, state, fields in (
-                (target, *render_state(target, definition, projection))
-                for target, projection in zip(targets, projections)
+                (target, *render_state(target, definition, entry)) for target, entry in zip(targets, entries)
             )
         ],
         "note": "登记只写 PHE_HOME；Host 是否加载这个条目没有验证。漂移只报字段名，不读也不打印字段值。",
     }
 
 
-def render_state(target: dict, definition: dict, projection: dict) -> tuple[str, list[str]]:
-    """其余目标相对逻辑定义的漂移：只比较渲染后的字段名。"""
-    current = mcp_config.render_entry(target["adapter"], projection)
-    expected = mcp_config.render_entry(target["adapter"], definition)
+def render_state(target: dict, definition: dict, entry: dict) -> tuple[str, list[str]]:
+    """其余目标相对逻辑定义的漂移：只比较渲染后的字段名，目标本地状态（启停等）不算漂移。"""
+    current = mcp_config.current_entry(target["adapter"], entry, definition["server"])
+    expected = mcp_config.render_target_entry(target["adapter"], definition, entry)
     fields = sorted(set(current) | set(expected))
     changed = [name for name in fields if current.get(name) != expected.get(name)]
     return ("drifted" if changed else "in_sync"), changed

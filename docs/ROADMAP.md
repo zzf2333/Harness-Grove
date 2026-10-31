@@ -64,7 +64,7 @@
 |---|---|---|---|---|
 | 共享指令（instructions） | 软链、原生加载或 `@` 引用；版本、优先级、是否重复加载要验证 | `inventory` 发现用户级/项目级；`registry adopt/drift`；`release import/release/deploy` 三 Agent 软链；`change.py apply/status/restore` 与 `review-plan/review` | 沙箱：字节、链接、账本、逆序恢复；`examples/lightweight-loop` 按文档复跑（15 个 bash 块 exit 0，2026-10-31） | 真实 Host 是否加载与优先级；`@` 引用式部署（只有软链）；多资产同时更新与复盘（`release` 能发布多个资产，`change.py` 每次只处理一个 instructions 资产） |
 | Skills | 共享目录软链或原生搜索路径；必须验证被发现和触发 | `inventory` 记 skill 目录与 `SKILL.md` 指纹；`import` 整目录复制；release 逐文件 sha256；deploy 目录级软链；产品入口与旧沙箱入口都能预览/应用/恢复多文件 skill（`asset_kind=skill`，内容按整棵树记账） | 沙箱：逐文件预览、选择性应用、双入口共享发布、逆序恢复（文件集合与字节）；隔离 Host：Pi 1.4.0 发现 + `/skill:` 显式展开（模型是 faux provider，见 [acceptance/r3a.md](acceptance/r3a.md)） | 模型自主选用与效果（`unknown`）；Codex 是否读 `~/.agents/skills`（本机观察）；安装用户导入 skill 目录的产品入口 |
-| MCP | 统一逻辑 Catalog，按平台渲染；不覆盖未托管条目、不写密钥 | 把 `settings*.json`、`.mcp.json`、`mcp.json`、`config.toml` 当**文件**记 Hash 与顶层键名 | 盘点/漂移的文件级测试 | 条目级模型（server 标识、命令/URL、传输、启用状态）；渲染与合并；只记键名导致现在根本读不到条目，谈不上语义管理 |
+| MCP | 统一逻辑 Catalog，按平台渲染；不覆盖未托管条目、不写密钥 | 第一片：产品入口登记已存在的 Pi（用户级 / 项目级）与 Claude Code（项目级）JSON 条目，逻辑定义在 `assets/<id>/content/server.json`，按适配器渲染、只替换 `mcpServers` 下托管成员的值跨度；片段 journal 与按账本逆序的恢复 | 隔离合成环境：adopt → preview（逻辑定义 diff + 各 Host 渲染差异）→ 只批托管条目 → apply → drift → review → restore，未托管字节、权限位与凭证不进产物（[acceptance/r3b.md](acceptance/r3b.md)） | 新增 / 删除条目；改 `server` 标识；启停落点（普通更新只保留各目标现有值，Claude 在 `~/.claude.json`）；Codex TOML；Host 加载与连接 |
 | Hooks | 底层脚本共享，按平台包装；权限与事件语义差异 | `kind=hook` 枚举存在，但没有候选路径（hooks 写在 `settings.json` 里），盘点不会产出 hook 记录 | 无 | 事件模型、平台包装、加载验证 |
 | 扩展 / 插件 / prompts / 子代理定义 | 底层脚本共享，按平台包装 | `inventory` 记录 `.pi/agent/extensions`、`.pi/agent/prompts`、`.claude/plugins`、`.claude/agents`、`.pi/agent/agents` 的一层条目 | 盘点有单测；目录型条目在发布部署里只按通用 skill 路径验证过 | 逻辑类型：`import` 按物理形状分类（目录→`skill`、文件→`instructions`），这些条目会被导入成错误的 kind；启用状态与宿主加载规则也没有模型 |
 | 工具配置 / 权限 / 模型与版本 | 按平台探测工具与权限差异，不假定统一配置格式（SPEC §5 Adapter 原则） | `settings.json`、`config.toml` 只记 Hash 与顶层键名，不记值 | 无 | 值级模型、diff、版本引用；启用/禁用已安装工具的改动路径 |
@@ -72,7 +72,7 @@
 
 会话历史不是资产，是证据来源：`history.py collect/group/digest` 已实现并做过真实只读运行，三家 Host 的格式表是本机观察、未按官方文档核实。它不是本矩阵的一行。
 
-**发现覆盖（R1，已交付）：** `tools/workspace.py discover` 把上表能盘点的类型逐条列进 `<PHE_HOME>/reports/discovery.{md,json}`，并给每类一个管理状态：`沙箱可托管`（指令）、`部分可托管`（Skills）、`仅观察`（MCP、工具配置、扩展/插件/prompts、规则与记忆目录）、`未支持`（Hooks，无候选路径，报告不猜路径）。每类都有“发现 N 条 / 未发现 / 未支持”三态，项目级范围只在传了 `--project` 时扫描，没传时报告写“未扫描”。每条记录带 `load_chain unverified`：这一列不证明任何配置被 Host 加载过。
+**发现覆盖（R1，已交付）：** `tools/workspace.py discover` 把上表能盘点的类型逐条列进 `<PHE_HOME>/reports/discovery.{md,json}`，并给每类一个管理状态：`沙箱可托管`（指令）、`部分可托管`（Skills、MCP 的已存在条目）、`仅观察`（工具配置、扩展/插件/prompts、规则与记忆目录）、`未支持`（Hooks，无候选路径，报告不猜路径）。每类都有“发现 N 条 / 未发现 / 未支持”三态，项目级范围只在传了 `--project` 时扫描，没传时报告写“未扫描”。每条记录带 `load_chain unverified`：这一列不证明任何配置被 Host 加载过。
 
 ## 4. 证据口径
 
@@ -206,17 +206,19 @@
 `tools/mcp_config.py`（Pi 用户级 / 项目级 `mcp.json`、Claude Code 项目级 `.mcp.json`）；`mcp-adopt` 登记已存在的
 条目并显式记 `asset_id` / `adapter` / `config_path` / `server`，`preview` 把逻辑定义 diff 与每个 Host 的渲染差异放进
 同一份计划，`apply` 只替换 `mcpServers` 下托管成员的值跨度（未托管 server 与外围字节不动），journal 记
-`kind=mcp_fragments` 的托管前后片段，`restore` 反向拼接并核对两侧 sha256；`mcp-drift` 报条目级字段漂移。账本、
-`execution_id`、`status` / `review` 与 R2 共用。原先四项缺口的状态：
+`kind=mcp_fragments` 的托管前后片段，`restore` 按账本逆序反向拼接并核对两侧 sha256；`mcp-drift` 报条目级字段漂移。
+账本、`execution_id`、`status` / `review` 与 R2 共用。第 1 轮审查修复后：普通更新保留各目标当前写的启停与显式
+stdio `type`，改 `server` 标识或改启停标 `not_applicable`，恢复先核对逆序、执行身份与 journal 再看内容 hash。原先四项
+缺口的状态：
 
 1. 已做（第一片）：条目级模型与两份配置的识别/比对。模型含 server 标识、transport、`command` / `args` / `env` /
    `cwd` / `url` / `headers`，**不含凭证值**（`env` / `headers` 只接受 `${NAME}` 引用）。
 2. 已做（第一片）：渲染与合并规则——未托管条目不覆盖、字节不变；Claude 的 HTTP 条目补 `"type": "http"`，Pi 不写
-   `type`，Claude 条目没有 `cwd` / `enabled`。
+   `type`；Claude 条目没有 `cwd` / `enabled`；目标已有的启停与显式 stdio `type` 在普通更新中保持原值。
 3. 部分：产物不含明文凭证。合成标记串证明了未托管内容不进预览、计划、journal、发布与账本；非引用型字面值本身
    不被支持，因此不会被脱敏后写回。没有通用 secret 扫描，也不声称能识别所有内联凭证。
-4. 未做：新增 / 删除条目、Codex 的 `config.toml`、`enabled` 的落点（Claude 在 `~/.claude.json`）、Host 是否加载与
-   能否连接。
+4. 未做：新增 / 删除条目、改 `server` 标识、Codex 的 `config.toml`、`enabled` 的落点（Claude 在 `~/.claude.json`）
+   与跨目标启停一致、Host 是否加载与能否连接。
 
 **缺口与交付物：**
 

@@ -110,7 +110,10 @@ def apply(
     release_id = release_tool.build_release(writer, phe, release_tool.asset_entries(phe))
     journal_targets, writes = [], []
     for row, (path, data, text, location, mode) in zip(item_plan["targets"], prepared):
-        rendered = mcp_config.render_entry_text(row["adapter"], definition, location["column"], location["step"])
+        entry, _span, _fragment = mcp_config.entry_at(text, row["server"])
+        rendered = mcp_config.render_target_entry_text(
+            row["adapter"], definition, entry, location["column"], location["step"]
+        )
         new_text = mcp_config.splice(text, location["span"], rendered)
         new_data = new_text.encode("utf-8")
         if mcp_asset.sha256_bytes(new_data) != row["expected_file_sha256"]:

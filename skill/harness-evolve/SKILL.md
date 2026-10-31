@@ -301,7 +301,9 @@ python3 -I "$T" mcp-drift --phe-home "$PHE_HOME" [--asset-id <id>]
    凭证口径：`env` / `headers` 的值只能是 `${NAME}` 引用，`url` 不带内联认证；其他字面值或 `oauth` / `timeout` /
    `exposure` / `description` / `headersHelper` / `!command` 等字段让条目不可托管并报出字段名，工具不读值、不脱敏后写回。
    `mcpServers` 里没有这个 server、或要新增 / 删除条目时不适用，计划标 `not_applicable`；Codex 的 `config.toml` 与
-   Claude 的启用开关都不在本片。文件对得上**不代表** Host 加载了这个 server，也不代表连得上。
+   Claude 的启用开关都不在本片。普通更新保留每个目标现在写的启停与显式 `"type": "stdio"`；改启停或改 `server`
+   标识同样标 `not_applicable`。恢复先按账本核对逆序、执行身份与 journal，旧计划不会因为文件内容回到旧值而被接受。
+   文件对得上**不代表** Host 加载了这个 server，也不代表连得上。
 
 边界：一次只处理一个资产（单个 instructions 文件、一个 Skill 目录或一个 MCP 条目）+ 多个 Host 入口，不碰未受管的普通
 文件或目录；MCP 只支持上面两种 JSON 格式的已存在条目，新增 / 删除、Codex TOML、Hooks、扩展与工具配置留给 R3c–R3e。

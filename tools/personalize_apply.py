@@ -246,6 +246,12 @@ def cmd_restore(args: argparse.Namespace) -> int:
     planning.require_planned_workspace(plan, phe)
     approval = read_json(args.approval)
     source = check_restore_approval(approval, plan_sha, args.execution)
+    # 逆序与执行身份对两种资产都适用：内容回到旧值也不能用旧计划覆盖后续应用。
+    fact, journal_paths = restoring.restorable(phe, args.execution)
+    if plan.get("execution_id") != args.execution:
+        raise ValueError(f"恢复计划绑定的是 {plan.get('execution_id')}，不是 {args.execution}：请重新预览")
+    if plan["journals"] != fact["journals"]:
+        raise ValueError("恢复计划绑定的 journal 与账本不一致：请重新预览")
     if plan.get("asset_kind") == "mcp":
         import personalize_mcp_apply as mcp_applying
 
@@ -253,9 +259,6 @@ def cmd_restore(args: argparse.Namespace) -> int:
             json.dumps(mcp_applying.restore(phe, args, plan, plan_sha, approval, source), ensure_ascii=False, indent=2)
         )
         return 0
-    fact, journal_paths = restoring.restorable(phe, args.execution)
-    if plan["journals"] != fact["journals"]:
-        raise ValueError("恢复计划绑定的 journal 与账本不一致：请重新预览")
     check_restore_entries(plan["entries"])
     targets = [Path(entry["path"]) for entry in plan["entries"]]
     writer = planning.product_writer(phe, targets, source)
