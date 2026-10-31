@@ -333,16 +333,22 @@ ruff format --check . → 116 files already formatted
 - 条目同名但 transport 不同（stdio ↔ http）时，本片按“同一 server 的字段变化”渲染；跨 transport 的语义等价没有
   验证。
 
+## 第二轮定向复审与复跑
+
+复审范围 `b164850..fda5af6`，结论 PASS。四项 P1 均经源码与回归日志核对修复；复审未运行 Host 或 MCP 连接。发现的复跑说明漏传输出脚本参数已修正，同时将读取文档的路径明确为 `REPO` 下的文件。
+
+主控委派 runner 从最终文档提取最后的 `sh` 代码块，在包含该文档的仓库副本、无关 cwd 中实际执行：外层命令与四个产品流程块均退出 0。应用后两个目标的条目 drift 为 `in_sync`，review 写入同一账本；恢复后 Pi、Claude 配置均与原始副本逐字节一致，Claude 权限位仍为 `600`。工作目录和源码副本清理成功。原始日志留在仓库外 `${TMPDIR}/pi-runner/harness-grove-20261031-153749.log`。本次仅修说明，未重复全量测试；实现候选的 426 项测试及 Ruff 通过记录仍适用。
+
 ## 本记录自身的复现
 
 从本文档机械提取全部 `bash` 块、顺序拼接后用 `bash -e` 执行（`REPO` 指向仓库副本，`RUN_CWD` 是无关 cwd）：
 
 ```sh
-REPO=<仓库副本> RUN_CWD=<无关 cwd> python3 - <<'PY'
+REPO=<仓库副本> RUN_CWD=<无关工作目录> python3 - <临时输出脚本路径> <<'PY'
 import os, pathlib, subprocess, sys
 fence = "`" * 3
 blocks, current = [], None
-for line in pathlib.Path("docs/acceptance/r3b.md").read_text(encoding="utf-8").splitlines():
+for line in (pathlib.Path(os.environ["REPO"]) / "docs/acceptance/r3b.md").read_text(encoding="utf-8").splitlines():
     if current is None and line == fence + "bash":
         current = []
     elif current is not None and line == fence:
