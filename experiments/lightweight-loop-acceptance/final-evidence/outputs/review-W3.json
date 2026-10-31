@@ -1,0 +1,14 @@
+{
+  "verdict": "observe",
+  "prediction_met": "unknown",
+  "reason": "收益待验证：只在临时沙箱应用，Host 未加载；观察窗内没有该环境的会话，样例会话在应用之前，不能当观察证据；材料也只有一次可见的相邻文件越界写入（L10–L11），不能把两条叫停当成已发生的两次越界",
+  "observations": [
+    "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L9",
+    "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L10",
+    "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L11",
+    "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L12",
+    "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/temper/config/AGENTS.md:L4",
+    "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/inputs/change.json"
+  ],
+  "next": "用户批准真实应用后，按 prediction.verify 在观察窗内统计“越界后需要叫停”的次数，再决定保留或调整"
+}

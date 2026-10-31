@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "approval_id": "approval-rehearsal-w1-w3",
+  "source": "sandbox_rehearsal",
+  "change_sha256": "5114125a8e9dc126f1034c44d375e7059cb106de4fb7ccf816631eb849aea742",
+  "items": [
+    "W1",
+    "W3"
+  ],
+  "note": "只在临时沙箱复跑示例的演练批准，不是用户批准；W2 未批准"
+}

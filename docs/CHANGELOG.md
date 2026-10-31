@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-10-31 · 轻量评估示例 W3 表述的时间顺序纠正
+
+- 删掉 `examples/lightweight-loop/host-report.md` 与 `examples/lightweight-loop/render_inputs.py` 里的两处“之后”：`一次可见越界 + 之后两条叫停` → `一次可见越界 + 两条叫停`。前文已经按 L9 叫停 → L10/L11 写入 → L12 叫停写清顺序，“之后”反而暗示两条叫停都在这唯一一次越界之后，读起来像两次独立越界。合成会话原文不动，其余表述不动。
+- 文本改动使报告 sha256 变为 `ed268f0e…66f1`、`change_sha256` 变为 `5114125a…a742`（上一轮的 `53699c1b…51a4` / `df31a0b7…31a2` 作废）。
+- 按 README 现有 15 个 bash 块在全新临时目录复跑（复用 `round2-content-correction/build_runner.py` 与 `checks_inline.py`，未新增第三套 runner/脚本）：15 块与证据采集段全 `exit=0`，证据采集段 24 项断言全过；`source=sandbox_rehearsal` 只批 W1/W3；W1/W3 在三个入口生效、W2 重复句仍在（`grep -c` = 2）；账本 7 条事实来源全为演练、三行说明原文入账、无“已验证”字段；review 保持 `observe` / `unknown`；逆序恢复回原字节 `33385c10…`；临时目录已删除。
+- 本轮证据在 `experiments/lightweight-loop-acceptance/final-evidence/`（`commands.log`、`outputs/`、`checks-project.log`），前两轮日志保留不覆盖；`experiments/` 被忽略，用 `git add -f` 精确加入，同时把前两轮的 `report.md`、`checks.md` 顶部改为历史轮次并指向本轮。`tools/` 未改。
+- 验证：`python3 -m unittest discover -s tests -t tests` → 358 tests OK；`ruff check .`、`ruff format --check .` → 通过；退出码逐条记在 `final-evidence/checks-project.log`。
+- 未验证：真实配置写入、Host 是否加载改后配置、观察窗内行为统计、`source=user` 批准路径、L2 对照实验。本轮只证明文本、原文指针、账本与字节一致，不证明 W3 有效。
+
 ## 2026-10-30 · 轻量评估示例的证据表述纠正
 
 - 纠正 `examples/lightweight-loop/` 的 W3 证据过度表述：合成会话只有两条叫停消息（L9、L12），相邻文件的越界写入只有一次（L10 助手调用 `edit` 改 `README.md`、L11 返回“已写入 README.md”），且发生在 L9 明确叫停之后；L7/L8 改的是 `config/AGENTS.md`，属于目标文件。合成原文不动，改的是报告与生成字段：`host-report.md` 的 W3 证据指针 / 为什么改 / 凭什么判断，`render_inputs.py` 的 W3 `evidence`（增 `:L10`、`:L11`）与 `prediction.why`，以及 W3 review 的 `reason` / `observations`。上一节“L9、L12 越界”的表述以本条为准。

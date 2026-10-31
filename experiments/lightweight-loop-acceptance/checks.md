@@ -1,9 +1,14 @@
 # 检查结果（逐条）
 
-> **后续轮次：当前结论与证据以新目录为准。** 下表是第一轮的 19 条检查，只覆盖“流程能否跑通、字节与账本
-> 对不对”，**没有核对 W3 证据里的事件计数**（“两条叫停”被写成“两次越界”）。这条内容缺陷已在第二轮纠正，
-> 检查项见 [`round2-content-correction/checks.md`](round2-content-correction/checks.md)；本文件保留为旧轮次
-> 记录，不覆盖、不重写。
+> **历史轮次：本文件是第一轮检查记录，不是当前结论。** 当前证据在
+> [`final-evidence/`](final-evidence/)：24 项断言会过（`outputs/checks.txt`）、15 个 bash 块逐块 `exit=0`
+> （`commands.log`）、新报告 sha256 `ed268f0e…66f1` 与新 `change_sha256` `5114125a…a742`
+> （`outputs/host-report.sha256`、`outputs/change.sha256`）、项目三项检查 `checks-project.log`。
+>
+> 下表是第一轮的 19 条检查，只覆盖“流程能否跑通、字节与账本对不对”，**没有核对 W3 证据里的事件计数**
+> （“两条叫停”被写成“两次越界”）；第二轮（[`round2-content-correction/checks.md`](round2-content-correction/checks.md)）
+> 纠正了事件计数，但仍留一处时间顺序错误（“一次可见越界 + 之后两条叫停”），最后一轮只删这两处“之后”。
+> 三个轮次的旧日志都保留、不覆盖、不重写。
 
 按 `examples/lightweight-loop/README.md` 在全新临时目录里复跑两次后得到的检查项。第一次运行在第 15 个
 bash 块（清理）失败，修正 README 后第二次复跑全部通过；失败现场保留在 `commands-run1.log` 与

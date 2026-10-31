@@ -1,0 +1,585 @@
+# 本轮复跑：README 15 个 bash 块 + 现有验收脚本。构建段复用 round2 的 build_runner.py 与 checks_inline.py，不新增第三套 runner/脚本。
+## 构建：把 15 个 bash 块机械拼进 runner.sh（临时构建目录 ��用完删除）
++ cp experiments/lightweight-loop-acceptance/round2-content-correction/checks_inline.py /var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.I6xtBL8sz7/checks_inline.py
++ python3 - /var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.I6xtBL8sz7 /Users/saonian/.pi/worktrees/Harness-Grove/pi-worktree-f25abc33-d938-4375-bc1a-6ac60e4e741a-s0-0/experiments/lightweight-loop-acceptance/final-evidence
+block 1: README f1fcebe0eab8552d4724549d494fa6f642da00dce07547d58e51136fe514626c 在 runner.sh 中逐字出现=True
+block 2: README 0f119a74f8fd9e020107fdbd4dc207f95ac1e18de70a82e310ed9d859fc7782d 在 runner.sh 中逐字出现=True
+block 3: README 8dda1c161ca6a8bb09eb364cb39fe47073551af9dc737c8d0005bbfb76369430 在 runner.sh 中逐字出现=True
+block 4: README 6458e290f60b5c9026b6df6ee10ce7a2e2966824a413c59a1b34afc23fd2b65c 在 runner.sh 中逐字出现=True
+block 5: README 2aa055a931844ea43edac5c911d7322f8f3f014b3073e51570a57a693cf1f40e 在 runner.sh 中逐字出现=True
+block 6: README 6d7321fcd3ee6b39482f9d29b0dfae897088fda576048e3400d21a5f89a7f342 在 runner.sh 中逐字出现=True
+block 7: README 8173f5d3e847cb537c0b24980c27feadc464b767cd3dfcbbbb4e126bd3d76617 在 runner.sh 中逐字出现=True
+block 8: README f4efad53bb026793088965107caf5e7cd4173821dd6718821b19173db2cf3f74 在 runner.sh 中逐字出现=True
+block 9: README fbc178e5bc8c5c1b791c686a6eca846672354df85143e195176cdc603bb5c85e 在 runner.sh 中逐字出现=True
+block 10: README 061322fa1e62ec716ba2fd9f51b16631b9f884a3b277ef31f62294152b2623e6 在 runner.sh 中逐字出现=True
+block 11: README 24d751f35804a2e2bfefed84f992e008ff33d7f18735274d48fb270daabeb605 在 runner.sh 中逐字出现=True
+block 12: README f7ed999e3fa4b1758d2d7328961d34aa1f03538d0e617fcfa7b63f3c274f2d98 在 runner.sh 中逐字出现=True
+block 13: README e9015f78c9b3e6344133d6350ce9f112a57844591a6782eaf43a088a97abf224 在 runner.sh 中逐字出现=True
+block 14: README 0b3053cc6616272f931062429d7f8ae06fcc83bfb7392e8e5b877021237817ea 在 runner.sh 中逐字出现=True
+block 15: README 8710f64be13f7a83c1ee913547ed299cdd3adf47d7f2e678503cb1d4c90f385f 在 runner.sh 中逐字出现=True
+已写出 /Users/saonian/.pi/worktrees/Harness-Grove/pi-worktree-f25abc33-d938-4375-bc1a-6ac60e4e741a-s0-0/experiments/lightweight-loop-acceptance/final-evidence/runner.sh
++ set +x
+
+## 复跑：exec bash experiments/lightweight-loop-acceptance/final-evidence/runner.sh
+===== block 1（README 第 1 个 bash 块） =====
+/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI
+----- block 1 exit=0
+===== block 2（README 第 2 个 bash 块） =====
+----- block 2 exit=0
+===== block 3（README 第 3 个 bash 块） =====
+history: pi 入选 1/1 个会话，1 块，跳过 0，不可用 0
+{
+  "host": "pi",
+  "root": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root",
+  "since": "2026-10-01",
+  "window_start": "2026-10-01T00:00:00+08:00",
+  "generated_at": "2026-10-31T01:41:22+00:00",
+  "sessions_total": 1,
+  "sessions_included": 1,
+  "sessions_skipped": 0,
+  "sessions_unavailable": 0,
+  "blocks": [
+    {
+      "file": "pi-1.md",
+      "sessions": 1,
+      "bytes": 1096
+    }
+  ],
+  "unavailable_sources": []
+}
+# 会话摘要 · pi · 第 1/1 块
+
+- 时间窗：2026-10-01T00:00:00+08:00 起
+- 指针：`L<行号>` 是源 JSONL 的物理行号（从 1 开始，空行也占一行）；节标题给出源文件绝对路径。
+- 范围：只含真人用户发言、工具失败和 retry 标注，不含助手输出。
+
+## 7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f · pi · /home/demo/proj
+
+- 源文件：`/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl`
+- 时间：2026-10-28T09:00:00+00:00 → 2026-10-28T09:01:30+00:00
+- 统计：用户消息 4；工具调用 3；工具失败 0
+
+- L2 用户：帮我把 config/AGENTS.md 里的说明整理一下，顺便看看 README 的措辞。
+- L6 用户：回答先给结论：以后每次回答都先给结论，再解释理由。这是我的固定偏好。
+- L9 用户：停一下，我没让你改 README。先别做相邻改动。
+- L12 用户：不是让你顺手改别的文件，我说的是只动 config。停下来。
+
+----- block 3 exit=0
+===== block 4（README 第 4 个 bash 块） =====
+{"type":"message","timestamp":"2026-10-28T09:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"帮我把 config/AGENTS.md 里的说明整理一下，顺便看看 README 的措辞。"}]}}
+{"type":"message","timestamp":"2026-10-28T09:00:15.000Z","message":{"role":"user","content":[{"type":"text","text":"回答先给结论：以后每次回答都先给结论，再解释理由。这是我的固定偏好。"}]}}
+{"type":"message","timestamp":"2026-10-28T09:00:40.000Z","message":{"role":"user","content":[{"type":"text","text":"停一下，我没让你改 README。先别做相邻改动。"}]}}
+{"type":"message","timestamp":"2026-10-28T09:01:20.000Z","message":{"role":"user","content":[{"type":"text","text":"不是让你顺手改别的文件，我说的是只动 config。停下来。"}]}}
+先给结论。
+先复述问题再回答。
+先给结论。
+用户说先别做时，不要越界执行。
+# 轻量评估闭环样例报告（宿主手写，合成材料）
+
+**这份报告是样例，不是工具自动诊断的产物。** 宿主先读 `history.py digest` 生成的摘要，再按摘要里的
+`源文件路径 + L<行号>` 回读源 JSONL 与配置原文，核对后才写出下面的三条建议。样例里的会话全部虚构，
+不含任何真实内容。
+
+- Host：`pi`（合成会话，cwd `/home/demo/proj`）
+- 摘要输入：`pi-1.md` 与 `pi-index.json`（`--since 2026-10-01`，入选 1/1 个会话，1 块）
+- 会话源文件（相对本样例目录）：`pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl`
+- 目标配置（相对本样例目录）：`config/AGENTS.md`，共 5 行
+- 本报告只列建议，不改配置、不批准、不应用
+
+材料边界，读下面的建议前先确认：
+
+- `config/AGENTS.md` 是独立准备的演练基线，**不是本会话编辑后的快照**。第 2 行与全局偏好的冲突是基线自带的状态，
+  不能当成“会话里发生过这次编辑”的证据。
+- **未提供 Retired 记录**：本样例没有资产退役清单，也没做退役匹配，所以不能声称这三条与历史退役记录没有冲突。
+- **同一个会话只提供一条可见的相邻文件越界写入**（W3 的 L10–L11）。两条叫停消息不是两个独立事件的证据。
+
+回读摘要时用的四个用户发言，逐条核对过原文：
+
+| 指针 | 原文 |
+|---|---|
+| 会话 L2 | 帮我把 config/AGENTS.md 里的说明整理一下，顺便看看 README 的措辞。 |
+| 会话 L6 | 回答先给结论：以后每次回答都先给结论，再解释理由。这是我的固定偏好。 |
+| 会话 L9 | 停一下，我没让你改 README。先别做相邻改动。 |
+| 会话 L12 | 不是让你顺手改别的文件，我说的是只动 config。停下来。 |
+
+## W1 偏好：把“先复述问题再回答”改成“先给结论，再复述问题”
+
+| 项 | 内容 |
+|---|---|
+| 改动性质 | 用户明确的偏好 |
+| 目标文件 | `config/AGENTS.md` 第 2 行 |
+| 证据指针 | 会话 L6（用户自述固定偏好）；`config/AGENTS.md` L2（现有要求与之冲突） |
+
+- 为什么改：用户明确要求“以后每次回答都先给结论，再解释理由”（会话 L6）；配置第 2 行要求先复述问题再回答，与新偏好冲突
+- 改后期待什么：先给结论，再复述问题；不丢“用户说先别做时，不要越界执行”这条约束
+- 凭什么判断：读一遍：措辞是否准确表达偏好、是否与其余行冲突；偏好不需要证明更优
+
+```diff
+--- a/config/AGENTS.md
++++ b/config/AGENTS.md
+@@ -1,3 +1,3 @@
+ 先给结论。
+-先复述问题再回答。
++先给结论，再复述问题。
+ 先给结论。
+```
+
+## W2 清理：删掉重复的“先给结论。”
+
+| 项 | 内容 |
+|---|---|
+| 改动性质 | 清理重复句 |
+| 目标文件 | `config/AGENTS.md` 第 3 行 |
+| 证据指针 | `config/AGENTS.md` L1 与 L3（同一句“先给结论。”出现两次） |
+
+- 为什么改：配置第 1 行与第 3 行是同一句“先给结论。”，同一约束写了两处
+- 改后期待什么：同一约束只保留一处；保留第 1 行原文，不扩大授权
+- 凭什么判断：对照改前改后含义：仍有一条先给结论；收益待验证
+
+```diff
+--- a/config/AGENTS.md
++++ b/config/AGENTS.md
+@@ -1,4 +1,3 @@
+ 先给结论。
+ 先复述问题再回答。
+-先给结论。
+ 用户说先别做时，不要越界执行。
+```
+
+## W3 假设：把“不要顺手做相邻改动”写进越界约束（收益待验证）
+
+| 项 | 内容 |
+|---|---|
+| 改动性质 | 想减少失误的假设 |
+| 目标文件 | `config/AGENTS.md` 第 4 行 |
+| 证据指针 | 会话 L9、L12（两条用户叫停）；L10 助手调用 `edit` 改 `README.md`、L11 工具结果“已写入 README.md”（唯一可见的相邻文件写入，在 L9 明确叫停之后）；`config/AGENTS.md` L4（现有约束只写“先别做时不越界”） |
+
+- 为什么改：原文有两条叫停（L9、L12），但相邻文件的越界写入只有一次：L10 助手调用 `edit` 改 `README.md`、L11 返回“已写入 README.md”，且发生在 L9 明确叫停之后。L7、L8 改的是 `config/AGENTS.md`（L2 用户本来就要求整理它），不能算相邻越界。材料只支持“一次可见越界 + 两条叫停”，不能计成两次独立越界；配置第 4 行只写“先别做时不要越界执行”，没写不能顺手做相邻改动
+- 改后期待什么：越界后需要用户叫停的情况减少；不丢原有“先别做时不越界”约束
+- 凭什么判断：收益待验证：本轮不做行为实验，单条合成会话也说不出真实环境里的越界频率；用户批准真实应用后，在观察窗内统计越界后需要叫停的次数
+
+```diff
+--- a/config/AGENTS.md
++++ b/config/AGENTS.md
+@@ -3,3 +3,3 @@
+ 先给结论。
+-用户说先别做时，不要越界执行。
++用户说先别做时，不要越界执行，也不要顺手做相邻改动。
+ 复盘时先读账本。
+```
+
+## 读完这份报告要记住的三件事
+
+1. W1 是偏好、W2 是清理，读一遍措辞和含义就能判断；W3 是假设，收益只能标“待验证”。
+2. 三条都只改了 `config/AGENTS.md`，不涉及别的文件，也不涉及其他约束行。
+3. 报告不等于批准。演练流程只批准 W1、W3（`source=sandbox_rehearsal`），W2 保持不批不生效；应用成功也不等于
+   效果已验证，W3 的复盘结论保持 `observe` / `unknown`。
+----- block 4 exit=0
+===== block 5（README 第 5 个 bash 块） =====
+adopted asset-0001 /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/temper/config/AGENTS.md (3 个 observed path)
+asset-0001
+----- block 5 exit=0
+===== block 6（README 第 6 个 bash 块） =====
+{
+  "report": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/host-report.md",
+  "change": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/inputs/change.json",
+  "change_sha256": "5114125a8e9dc126f1034c44d375e7059cb106de4fb7ccf816631eb849aea742",
+  "approval": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/inputs/approval-rehearsal.json",
+  "review": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/inputs/review-W3.json"
+}
+----- block 6 exit=0
+===== block 7（README 第 7 个 bash 块） =====
+deployed r0001 -> claude: 1 条链接，journal /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/phe/journal/20261031T014122Z.json
+deployed r0001 -> codex: 1 条链接，journal /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/phe/journal/20261031T014122Z-1.json
+deployed r0001 -> pi: 1 条链接，journal /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/phe/journal/20261031T014122Z-2.json
+{
+  "execution_id": "x0001",
+  "proposal_id": "W1",
+  "source": "sandbox_rehearsal",
+  "asset_id": "asset-0001",
+  "release": "r0001",
+  "before_sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66",
+  "after_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+  "journals": [
+    "journal/20261031T014122Z.json",
+    "journal/20261031T014122Z-1.json",
+    "journal/20261031T014122Z-2.json"
+  ]
+}
+deployed r0002 -> claude: 1 条链接，journal /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/phe/journal/20261031T014122Z-3.json
+deployed r0002 -> codex: 1 条链接，journal /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/phe/journal/20261031T014122Z-4.json
+deployed r0002 -> pi: 1 条链接，journal /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/phe/journal/20261031T014122Z-5.json
+{
+  "execution_id": "x0002",
+  "proposal_id": "W3",
+  "source": "sandbox_rehearsal",
+  "asset_id": "asset-0001",
+  "release": "r0002",
+  "before_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+  "after_sha256": "a98213676922a48ae0278eb6a4a3a62f6e237d81445a695b1eac996eae747421",
+  "journals": [
+    "journal/20261031T014122Z-3.json",
+    "journal/20261031T014122Z-4.json",
+    "journal/20261031T014122Z-5.json"
+  ]
+}
+----- block 7 exit=0
+===== block 8（README 第 8 个 bash 块） =====
+{
+  "phe_home": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/phe",
+  "executions": [
+    {
+      "execution_id": "x0001",
+      "proposal_id": "W1",
+      "release": "r0001",
+      "state": "applied",
+      "applied_at": "2026-10-31T01:41:22+00:00",
+      "restored_at": null,
+      "before_sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66",
+      "after_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+      "latest_review": null
+    },
+    {
+      "execution_id": "x0002",
+      "proposal_id": "W3",
+      "release": "r0002",
+      "state": "applied",
+      "applied_at": "2026-10-31T01:41:22+00:00",
+      "restored_at": null,
+      "before_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+      "after_sha256": "a98213676922a48ae0278eb6a4a3a62f6e237d81445a695b1eac996eae747421",
+      "latest_review": null
+    }
+  ],
+  "active": [
+    {
+      "execution_id": "x0001",
+      "proposal_id": "W1",
+      "release": "r0001",
+      "state": "applied",
+      "applied_at": "2026-10-31T01:41:22+00:00",
+      "restored_at": null,
+      "before_sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66",
+      "after_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+      "latest_review": null
+    },
+    {
+      "execution_id": "x0002",
+      "proposal_id": "W3",
+      "release": "r0002",
+      "state": "applied",
+      "applied_at": "2026-10-31T01:41:22+00:00",
+      "restored_at": null,
+      "before_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+      "after_sha256": "a98213676922a48ae0278eb6a4a3a62f6e237d81445a695b1eac996eae747421",
+      "latest_review": null
+    }
+  ],
+  "targets": [
+    {
+      "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/home/.claude/CLAUDE.md",
+      "release": "r0002",
+      "sha256": "a98213676922a48ae0278eb6a4a3a62f6e237d81445a695b1eac996eae747421"
+    },
+    {
+      "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/home/.codex/AGENTS.md",
+      "release": "r0002",
+      "sha256": "a98213676922a48ae0278eb6a4a3a62f6e237d81445a695b1eac996eae747421"
+    },
+    {
+      "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/home/.pi/agent/AGENTS.md",
+      "release": "r0002",
+      "sha256": "a98213676922a48ae0278eb6a4a3a62f6e237d81445a695b1eac996eae747421"
+    }
+  ]
+}
+----- block 8 exit=0
+===== block 9（README 第 9 个 bash 块） =====
+== /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/home/.pi/agent/AGENTS.md
+先给结论。
+先给结论，再复述问题。
+先给结论。
+用户说先别做时，不要越界执行，也不要顺手做相邻改动。
+复盘时先读账本。
+== /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/home/.codex/AGENTS.md
+先给结论。
+先给结论，再复述问题。
+先给结论。
+用户说先别做时，不要越界执行，也不要顺手做相邻改动。
+复盘时先读账本。
+== /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/home/.claude/CLAUDE.md
+先给结论。
+先给结论，再复述问题。
+先给结论。
+用户说先别做时，不要越界执行，也不要顺手做相邻改动。
+复盘时先读账本。
+2
+----- block 9 exit=0
+===== block 10（README 第 10 个 bash 块） =====
+{
+  "phe_home": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/phe",
+  "note": "观察窗只是候选取样范围（应用到恢复或至今），不证明 Host 加载过配置；review 只记录宿主的判断和证据指针，不判断效果。",
+  "executions": [
+    {
+      "execution_id": "x0001",
+      "proposal_id": "W1",
+      "state": "applied",
+      "applied_at": "2026-10-31T01:41:22+00:00",
+      "restored_at": null,
+      "prediction": {
+        "why": "用户明确要求“以后每次回答都先给结论，再解释理由”（会话 L6）；配置第 2 行要求先复述问题再回答，与新偏好冲突",
+        "expected": "先给结论，再复述问题；不丢“用户说先别做时，不要越界执行”这条约束",
+        "verify": "读一遍：措辞是否准确表达偏好、是否与其余行冲突；偏好不需要证明更优",
+        "baseline": "待观察"
+      },
+      "evidence": [
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L6",
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/temper/config/AGENTS.md:L2"
+      ],
+      "report": {
+        "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/host-report.md",
+        "sha256": "ed268f0e61dda42bfac9dc2dcfcf433517a48f9d878fd2167070a59962ae66f1"
+      },
+      "observation_window": {
+        "from": "2026-10-31T01:41:22+00:00",
+        "to": null
+      },
+      "reviews": [],
+      "latest_review": null
+    },
+    {
+      "execution_id": "x0002",
+      "proposal_id": "W3",
+      "state": "applied",
+      "applied_at": "2026-10-31T01:41:22+00:00",
+      "restored_at": null,
+      "prediction": {
+        "why": "原文有两条叫停（L9、L12），但相邻文件的越界写入只有一次：L10 助手调用 edit 改 README.md、L11 返回“已写入 README.md”，且发生在 L9 明确叫停之后；L7、L8 改的是 config，不能算相邻越界。材料只支持“一次可见越界 + 两条叫停”，不能计成两次独立越界；配置第 4 行只写“先别做时不要越界执行”，没写不能顺手做相邻改动",
+        "expected": "越界后需要用户叫停的情况减少；不丢原有“先别做时不越界”约束",
+        "verify": "收益待验证：本轮不做行为实验，单条合成会话也说不出真实环境里的越界频率；用户批准真实应用后，在观察窗内统计越界后需要叫停的次数",
+        "baseline": "待观察"
+      },
+      "evidence": [
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L9",
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L10",
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L11",
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L12",
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/temper/config/AGENTS.md:L4"
+      ],
+      "report": {
+        "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/host-report.md",
+        "sha256": "ed268f0e61dda42bfac9dc2dcfcf433517a48f9d878fd2167070a59962ae66f1"
+      },
+      "observation_window": {
+        "from": "2026-10-31T01:41:22+00:00",
+        "to": null
+      },
+      "reviews": [],
+      "latest_review": null
+    }
+  ]
+}
+----- block 10 exit=0
+===== block 11（README 第 11 个 bash 块） =====
+{
+  "verdict": "observe",
+  "prediction_met": "unknown",
+  "reason": "收益待验证：只在临时沙箱应用，Host 未加载；观察窗内没有该环境的会话，样例会话在应用之前，不能当观察证据；材料也只有一次可见的相邻文件越界写入（L10–L11），不能把两条叫停当成已发生的两次越界",
+  "observations": [
+    "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L9",
+    "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L10",
+    "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L11",
+    "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L12",
+    "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/temper/config/AGENTS.md:L4",
+    "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/inputs/change.json"
+  ],
+  "next": "用户批准真实应用后，按 prediction.verify 在观察窗内统计“越界后需要叫停”的次数，再决定保留或调整"
+}
+----- block 11 exit=0
+===== block 12（README 第 12 个 bash 块） =====
+{
+  "kind": "review",
+  "at": "2026-10-31T01:41:22+00:00",
+  "execution_id": "x0002",
+  "proposal_id": "W3",
+  "record": {
+    "verdict": "observe",
+    "prediction_met": "unknown",
+    "reason": "收益待验证：只在临时沙箱应用，Host 未加载；观察窗内没有该环境的会话，样例会话在应用之前，不能当观察证据；材料也只有一次可见的相邻文件越界写入（L10–L11），不能把两条叫停当成已发生的两次越界",
+    "observations": [
+      "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L9",
+      "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L10",
+      "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L11",
+      "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L12",
+      "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/temper/config/AGENTS.md:L4",
+      "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/inputs/change.json"
+    ],
+    "next": "用户批准真实应用后，按 prediction.verify 在观察窗内统计“越界后需要叫停”的次数，再决定保留或调整"
+  },
+  "record_path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/inputs/review-W3.json",
+  "record_sha256": "0c9798dde3db58ef9f1ac7c0fa406f530662c76369ae22b1823e75a34c948ced"
+}
+----- block 12 exit=0
+===== block 13（README 第 13 个 bash 块） =====
+rolled back r0002 for pi: 1 条链接
+rolled back r0002 for codex: 1 条链接
+rolled back r0002 for claude: 1 条链接
+{
+  "kind": "restore",
+  "at": "2026-10-31T01:41:22+00:00",
+  "execution_id": "x0002",
+  "proposal_id": "W3",
+  "journals": [
+    "journal/20261031T014122Z-3.json",
+    "journal/20261031T014122Z-4.json",
+    "journal/20261031T014122Z-5.json"
+  ],
+  "restored_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+  "release": "r0001"
+}
+rolled back r0001 for pi: 1 条链接
+rolled back r0001 for codex: 1 条链接
+rolled back r0001 for claude: 1 条链接
+{
+  "kind": "restore",
+  "at": "2026-10-31T01:41:23+00:00",
+  "execution_id": "x0001",
+  "proposal_id": "W1",
+  "journals": [
+    "journal/20261031T014122Z.json",
+    "journal/20261031T014122Z-1.json",
+    "journal/20261031T014122Z-2.json"
+  ],
+  "restored_sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66",
+  "release": null
+}
+----- block 13 exit=0
+===== block 14（README 第 14 个 bash 块） =====
+33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66  /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/home/.pi/agent/AGENTS.md
+33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66  /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/temper/config/AGENTS.md
+33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66  examples/lightweight-loop/config/AGENTS.md
+lrwxr-xr-x@ 1 saonian  staff  95 Oct 31 09:41 /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/home/.claude/CLAUDE.md -> /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/temper/config/AGENTS.md
+lrwxr-xr-x@ 1 saonian  staff  95 Oct 31 09:41 /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/home/.codex/AGENTS.md -> /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/temper/config/AGENTS.md
+lrwxr-xr-x@ 1 saonian  staff  95 Oct 31 09:41 /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/home/.pi/agent/AGENTS.md -> /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/temper/config/AGENTS.md
+----- block 14 exit=0
+===== 证据采集（不属于 README 的 15 个 bash 块；只读命令 + 复制 /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI 里的文件）=====
+ed268f0e61dda42bfac9dc2dcfcf433517a48f9d878fd2167070a59962ae66f1  /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/host-report.md
+ed268f0e61dda42bfac9dc2dcfcf433517a48f9d878fd2167070a59962ae66f1  examples/lightweight-loop/host-report.md
+5114125a8e9dc126f1034c44d375e7059cb106de4fb7ccf816631eb849aea742  /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/inputs/change.json
+----- 证据采集 exit=0
+===== block 15（README 第 15 个 bash 块） =====
+{
+  "phe_home": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/phe",
+  "executions": [
+    {
+      "execution_id": "x0001",
+      "proposal_id": "W1",
+      "release": "r0001",
+      "state": "restored",
+      "applied_at": "2026-10-31T01:41:22+00:00",
+      "restored_at": "2026-10-31T01:41:23+00:00",
+      "before_sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66",
+      "after_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+      "latest_review": null
+    },
+    {
+      "execution_id": "x0002",
+      "proposal_id": "W3",
+      "release": "r0002",
+      "state": "restored",
+      "applied_at": "2026-10-31T01:41:22+00:00",
+      "restored_at": "2026-10-31T01:41:22+00:00",
+      "before_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+      "after_sha256": "a98213676922a48ae0278eb6a4a3a62f6e237d81445a695b1eac996eae747421",
+      "latest_review": {
+        "kind": "review",
+        "at": "2026-10-31T01:41:22+00:00",
+        "execution_id": "x0002",
+        "proposal_id": "W3",
+        "record": {
+          "verdict": "observe",
+          "prediction_met": "unknown",
+          "reason": "收益待验证：只在临时沙箱应用，Host 未加载；观察窗内没有该环境的会话，样例会话在应用之前，不能当观察证据；材料也只有一次可见的相邻文件越界写入（L10–L11），不能把两条叫停当成已发生的两次越界",
+          "observations": [
+            "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L9",
+            "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L10",
+            "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L11",
+            "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L12",
+            "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/temper/config/AGENTS.md:L4",
+            "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/inputs/change.json"
+          ],
+          "next": "用户批准真实应用后，按 prediction.verify 在观察窗内统计“越界后需要叫停”的次数，再决定保留或调整"
+        },
+        "record_path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/inputs/review-W3.json",
+        "record_sha256": "0c9798dde3db58ef9f1ac7c0fa406f530662c76369ae22b1823e75a34c948ced"
+      }
+    }
+  ],
+  "active": [],
+  "targets": [
+    {
+      "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/home/.claude/CLAUDE.md",
+      "release": null,
+      "sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66"
+    },
+    {
+      "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/home/.codex/AGENTS.md",
+      "release": null,
+      "sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66"
+    },
+    {
+      "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.1O7bDn03uI/home/.pi/agent/AGENTS.md",
+      "release": null,
+      "sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66"
+    }
+  ]
+}
+----- block 15 exit=0
+WORK 已删除：是
+
+===== 本轮文案核对（Advisor 裁定：只删两处“之后”，变为“一次可见越界 + 两条叫停”）=====
+$ git diff -- examples/lightweight-loop/
+diff --git a/examples/lightweight-loop/host-report.md b/examples/lightweight-loop/host-report.md
+index e991b7e..bbc1ad7 100644
+--- a/examples/lightweight-loop/host-report.md
++++ b/examples/lightweight-loop/host-report.md
+@@ -78,7 +78,7 @@
+ | 目标文件 | `config/AGENTS.md` 第 4 行 |
+ | 证据指针 | 会话 L9、L12（两条用户叫停）；L10 助手调用 `edit` 改 `README.md`、L11 工具结果“已写入 README.md”（唯一可见的相邻文件写入，在 L9 明确叫停之后）；`config/AGENTS.md` L4（现有约束只写“先别做时不越界”） |
+ 
+-- 为什么改：原文有两条叫停（L9、L12），但相邻文件的越界写入只有一次：L10 助手调用 `edit` 改 `README.md`、L11 返回“已写入 README.md”，且发生在 L9 明确叫停之后。L7、L8 改的是 `config/AGENTS.md`（L2 用户本来就要求整理它），不能算相邻越界。材料只支持“一次可见越界 + 之后两条叫停”，不能计成两次独立越界；配置第 4 行只写“先别做时不要越界执行”，没写不能顺手做相邻改动
++- 为什么改：原文有两条叫停（L9、L12），但相邻文件的越界写入只有一次：L10 助手调用 `edit` 改 `README.md`、L11 返回“已写入 README.md”，且发生在 L9 明确叫停之后。L7、L8 改的是 `config/AGENTS.md`（L2 用户本来就要求整理它），不能算相邻越界。材料只支持“一次可见越界 + 两条叫停”，不能计成两次独立越界；配置第 4 行只写“先别做时不要越界执行”，没写不能顺手做相邻改动
+ - 改后期待什么：越界后需要用户叫停的情况减少；不丢原有“先别做时不越界”约束
+ - 凭什么判断：收益待验证：本轮不做行为实验，单条合成会话也说不出真实环境里的越界频率；用户批准真实应用后，在观察窗内统计越界后需要叫停的次数
+ 
+diff --git a/examples/lightweight-loop/render_inputs.py b/examples/lightweight-loop/render_inputs.py
+index c7f09c1..6ad7caa 100644
+--- a/examples/lightweight-loop/render_inputs.py
++++ b/examples/lightweight-loop/render_inputs.py
+@@ -112,7 +112,7 @@ def main() -> int:
+                 "prediction": {
+                     "why": "原文有两条叫停（L9、L12），但相邻文件的越界写入只有一次：L10 助手调用 edit 改 README.md、"
+                     "L11 返回“已写入 README.md”，且发生在 L9 明确叫停之后；L7、L8 改的是 config，不能算相邻越界。"
+-                    "材料只支持“一次可见越界 + 之后两条叫停”，不能计成两次独立越界；"
++                    "材料只支持“一次可见越界 + 两条叫停”，不能计成两次独立越界；"
+                     "配置第 4 行只写“先别做时不要越界执行”，没写不能顺手做相邻改动",
+                     "expected": "越界后需要用户叫停的情况减少；不丢原有“先别做时不越界”约束",
+                     "verify": "收益待验证：本轮不做行为实验，单条合成会话也说不出真实环境里的越界频率；"
+
+$ grep -rn '之后两条叫停' examples/ tools/ tests/ docs/ skills/ skill/ README.md
+grep exit=1（1 = 仓库里已无该表述）
+
+$ grep -rn '一次可见越界 + 两条叫停' examples/ experiments/lightweight-loop-acceptance/final-evidence/outputs/change.json
+examples/lightweight-loop/host-report.md:81:- 为什么改：原文有两条叫停（L9、L12），但相邻文件的越界写入只有一次：L10 助手调用 `edit` 改 `README.md`、L11 返回“已写入 README.md”，且发生在 L9 明确叫停之后。L7、L8 改的是 `config/AGENTS.md`（L2 用户本来就要求整理它），不能算相邻越界。材料只支持“一次可见越界 + 两条叫停”，不能计成两次独立越界；配置第 4 行只写“先别做时不要越界执行”，没写不能顺手做相邻改动
+examples/lightweight-loop/render_inputs.py:115:                    "材料只支持“一次可见越界 + 两条叫停”，不能计成两次独立越界；"
+experiments/lightweight-loop-acceptance/final-evidence/outputs/change.json:50:        "why": "原文有两条叫停（L9、L12），但相邻文件的越界写入只有一次：L10 助手调用 edit 改 README.md、L11 返回“已写入 README.md”，且发生在 L9 明确叫停之后；L7、L8 改的是 config，不能算相邻越界。材料只支持“一次可见越界 + 两条叫停”，不能计成两次独立越界；配置第 4 行只写“先别做时不要越界执行”，没写不能顺手做相邻改动",
+
+$ grep -n '发生在 L9 明确叫停之后\|在 L9 明确叫停之后' examples/lightweight-loop/host-report.md experiments/lightweight-loop/render_inputs.py
+examples/lightweight-loop/host-report.md:79:| 证据指针 | 会话 L9、L12（两条用户叫停）；L10 助手调用 `edit` 改 `README.md`、L11 工具结果“已写入 README.md”（唯一可见的相邻文件写入，在 L9 明确叫停之后）；`config/AGENTS.md` L4（现有约束只写“先别做时不越界”） |
+examples/lightweight-loop/host-report.md:81:- 为什么改：原文有两条叫停（L9、L12），但相邻文件的越界写入只有一次：L10 助手调用 `edit` 改 `README.md`、L11 返回“已写入 README.md”，且发生在 L9 明确叫停之后。L7、L8 改的是 `config/AGENTS.md`（L2 用户本来就要求整理它），不能算相邻越界。材料只支持“一次可见越界 + 两条叫停”，不能计成两次独立越界；配置第 4 行只写“先别做时不要越界执行”，没写不能顺手做相邻改动
+examples/lightweight-loop/render_inputs.py:114:                    "L11 返回“已写入 README.md”，且发生在 L9 明确叫停之后；L7、L8 改的是 config，不能算相邻越界。"
+
+===== 说明：本轮不提交第三套 runner/脚本 =====
+runner.sh 由构建段现场生成在临时构建目录里，只在复跑时用到，用完随临时构建目录删除，不进入仓库；
+要重跑，按本文件构建段的三条命令重新生成即可（复用 round2-content-correction/build_runner.py 与 checks_inline.py）。
+生成的 runner 与 round2 的 runner 逐行相同，只差 cd 的仓库绝对路径与 OUT 目录（用 sed 归一化后 diff 为空）。

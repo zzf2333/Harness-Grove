@@ -1,11 +1,15 @@
 # 轻量评估闭环示例·首次使用者验收报告
 
-> **后续轮次：当前结论与证据以新目录为准。** 本文件是第一轮复跑记录：证明 15 个 bash 块能跑通、字节与
-> 账本对得上。但那一轮没有核对 W3 证据的**事件计数**，漏掉了“把两条叫停写成两次独立越界”的内容缺陷。
-> 报告与生成字段已在第二轮纠正，报告 sha256 与 `change_sha256` 因此重新生成。现在的结论与证据指向
-> [`round2-content-correction/report.md`](round2-content-correction/report.md) 与
-> [`round2-content-correction/checks.md`](round2-content-correction/checks.md)。本文件的旧日志保留、不覆盖；
-> 下文出现的 hash、临时目录路径与运行输出都属于上一轮。
+> **历史轮次：本文件是第一轮复跑记录，不是当前结论。** 当前结论与证据在
+> [`final-evidence/`](final-evidence/)：`commands.log`（15 个 bash 块逐块退出码 + 证据采集段）、
+> `outputs/checks.txt`（24 项断言）、`outputs/change.json` / `outputs/approval-rehearsal.json` /
+> `outputs/ledger.jsonl`、`outputs/host-report.sha256` / `outputs/change.sha256`、`checks-project.log`。
+>
+> 第一轮证明 15 个 bash 块能跑通、字节与账本对得上，但没核对 W3 证据的**事件计数**，漏掉了“把两条叫停
+> 写成两次独立越界”的内容缺陷；第二轮（[`round2-content-correction/`](round2-content-correction/)）纠正了
+> 事件计数，但仍留一处时间顺序错误：“一次可见越界 + 之后两条叫停”。最后一轮只删这两处“之后”，改为
+> “一次可见越界 + 两条叫停”，前文已按 L9 → L10/L11 → L12 写清顺序；报告 sha256 与 `change_sha256`
+> 随文本改动重新生成。三个轮次的旧日志都保留、不覆盖；下文出现的 hash、临时目录路径与运行输出属于第一轮。
 
 验收对象：仓库内新增的 `examples/lightweight-loop/`（README、合成会话、最小配置、宿主报告样例、
 `render_inputs.py`）。

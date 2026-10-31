@@ -1,0 +1,89 @@
+# 项目三项检查（提交前，最终代码状态；每条命令单独跑、退出码紧接着记下，不经管道）
+
+$ python3 -m unittest discover -s tests -t tests
+.....................................................................................................................stop_reason: invalid_run:oracle_hash_changed
+stop_reason: invalid_run:oracle_hash_changed
+stop_reason: invalid_run:config_hash_changed
+stop_reason: pivot:cost_budget_exhausted
+stop_reason: pivot:cost_budget_exhausted
+stop_reason: invalid_run:config_hash_changed
+slot 1 base_left complete
+stop_reason: pivot:telemetry_missing
+slot 1 base_left complete
+stop_reason: pivot:per_invocation_cost_exceeded
+slot 1 base_left complete
+.slot 1 runner failed: simulated runner failure
+slot 1 runner failed: simulated runner failure
+..................................stop_reason: invalid_run:user_files_changed
+stop_reason: invalid_run:oracle_hash_changed
+stop_reason: invalid_run:oracle_hash_changed
+stop_reason: pivot:wall_budget_exhausted
+stop_reason: invalid_run:harness_hash_changed:base_left
+slot 1 base_left complete
+....stop_reason: pivot:telemetry_missing
+stop_reason: invalid_run:sandbox_runner_hash_missing
+stop_reason: invalid_run:sandbox_runner_hash_missing
+slot 1 base_left complete
+..stop_reason: pivot:telemetry_missing
+slot 1 base_left complete
+.stop_reason: pivot:telemetry_missing
+slot 1 base_left complete
+.stop_reason: pivot:telemetry_missing
+slot 1 base_left complete
+.....stop_reason: pivot:telemetry_missing
+slot 1 base_left complete
+..stop_reason: pivot:telemetry_missing
+stop_reason: invalid_run:config_hash_changed
+slot 1 base_left complete
+.stop_reason: pivot:telemetry_missing
+slot 1 base_left complete
+.........................slot 1 runner failed: simulated runner failure
+slot 1 runner failed: simulated runner failure
+slot 1 runner failed: simulated runner failure
+..slot 1 runner failed: oracle 目的路径逃出验收副本：oracle.txt -> /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/phe-sandbox-run-mmfp1j5b/denied/victim.txt
+.......slot 2 runner failed: simulated runner failure
+...stop_reason: pivot:telemetry_missing
+stop_reason: invalid_run:proposal_hash_changed
+stop_reason: invalid_run:proposal_hash_changed
+stop_reason: invalid_run:proposal_hash_changed
+stop_reason: invalid_run:proposal_hash_changed
+stop_reason: invalid_run:config_hash_changed
+stop_reason: invalid_run:config_hash_changed
+stop_reason: pivot:runner_crashed_no_record
+slot 1 base_left complete
+slot 2 base_right complete
+slot 3 ablated complete
+.stop_reason: None
+slot 1 base_left complete
+slot 2 base_right complete
+slot 3 ablated complete
+.stop_reason: None
+slot 1 base_left complete
+slot 2 base_right complete
+slot 3 ablated complete
+.stop_reason: None
+slot 1 base_left complete
+slot 2 base_right complete
+slot 3 ablated complete
+......................................................................................................................................................
+----------------------------------------------------------------------
+Ran 358 tests in 42.958s
+
+OK
+stop_reason: None
+stop_reason: invalid_run:sandbox_runner_hash_changed
+stop_reason: invalid_run:sandbox_runner_hash_missing
+stop_reason: invalid_run:config_hash_changed
+stop_reason: invalid_run:config_hash_changed
+stop_reason: invalid_run:config_hash_changed
+stop_reason: invalid_run:config_hash_changed
+deployed r0001 -> claude: 2 条链接，journal /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/release-test-cexes1kh/phe/journal/20261031T014349Z.json
+exit=0
+
+$ ruff check .
+All checks passed!
+exit=0
+
+$ ruff format --check .
+83 files already formatted
+exit=0
