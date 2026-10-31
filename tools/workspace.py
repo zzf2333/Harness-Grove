@@ -16,6 +16,7 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from release_deploy import load_sibling
+from workspace_kinds import KIND_ROWS
 
 inventory_tool = load_sibling("inventory")
 registry_tool = load_sibling("registry")
@@ -35,8 +36,6 @@ MANAGEMENT_LABELS = {
     "observe_only": "仅观察",
     "unsupported": "未支持",
 }
-DIRECTORY_NOTE = "只记一层条目；导入会按物理形状分类，逻辑类型与启用状态未支持。"
-NO_IMPORT_NOTE = "只记一层条目；没有导入、发布或部署路径。"
 
 # inventory 的候选表把 `.claude/agents`、`.pi/agent/agents` 记成 instructions：kind 枚举里没有 agent。
 # 这些位置放的是子代理定义，逻辑类型未支持，所以标成只读观察，不继承单文件指令的能力。
@@ -44,53 +43,6 @@ SUBAGENT_DIRS = ((".claude", "agents"), (".pi", "agent", "agents"))
 SUBAGENT_NOTE = "子代理定义：kind 枚举里没有 agent，逻辑类型未支持；只读观察，不导入也不部署。"
 SUBAGENT_DIR_NOTE = "子代理定义目录：只记一层条目；子代理逻辑类型未支持，不导入也不部署。"
 
-# 逻辑类型 → 中文名、PHE 当前能力、限制。顺序就是报告里的顺序。
-# hook 在盘点里没有候选路径（hooks 写在 settings.json 里），列在这里是为了让覆盖摘要不漏这一类。
-KIND_ROWS = (
-    (
-        "instructions",
-        "共享指令",
-        "sandbox_managed",
-        (
-            "沙箱可用 import → release → deploy 与 change.py apply/restore；只覆盖单文件指令，"
-            "Host 是否加载未验证；子代理定义（`.claude/agents`、`.pi/agent/agents`）的逻辑类型未支持，"
-            "条目单独标成仅观察。"
-        ),
-    ),
-    (
-        "skill",
-        "Skills",
-        "sandbox_managed",
-        (
-            "沙箱与产品入口可用 import/release/deploy 与预览→批准→apply/review/restore；目录内容（含引用文件）整棵重建，"
-            "只覆盖软链入口，普通目录入口不迁移、不覆盖；Pi 的发现与显式展开已在一次性隔离 Host 里验证，"
-            "模型自主选用与任务执行未验证。"
-        ),
-    ),
-    (
-        "mcp",
-        "MCP",
-        "product_partial",
-        (
-            "只支持更新已存在的 server 条目：Pi 的用户级 `~/.pi/agent/mcp.json` 与项目级 `.pi/mcp.json`、"
-            "Claude Code 项目级 `.mcp.json`；产品入口只替换 `mcpServers` 下托管成员的值跨度，"
-            "未托管条目与文件外围字节不变。新增 / 删除条目、Codex 的 TOML 配置、其他项目级路径、"
-            "`enabled` 开关、连接与 Host 加载都未支持；盘点仍只记文件 Hash 与顶层键名，读不到 server 条目。"
-        ),
-    ),
-    (
-        "hook",
-        "Hooks",
-        "unsupported",
-        "盘点没有独立候选路径（hooks 写在 settings.json 里），报告不列 hook 条目，也不猜路径。",
-    ),
-    ("extension", "扩展", "observe_only", DIRECTORY_NOTE),
-    ("prompt", "prompts", "observe_only", DIRECTORY_NOTE),
-    ("plugin", "插件", "observe_only", DIRECTORY_NOTE),
-    ("settings", "工具配置 / 权限 / 模型与版本", "observe_only", "只记 Hash 与顶层键名，不记值；改值与还原未支持。"),
-    ("rules", "规则目录", "observe_only", NO_IMPORT_NOTE),
-    ("memory", "记忆目录", "observe_only", NO_IMPORT_NOTE),
-)
 KIND_INDEX = {
     kind: {"label": label, "management": management, "note": note} for kind, label, management, note in KIND_ROWS
 }

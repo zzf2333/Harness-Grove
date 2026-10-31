@@ -17,9 +17,10 @@
 `mcp-adopt` / `mcp-drift`（R3b：登记已存在的 MCP server 条目、看条目级漂移；写入仍走上面的 preview / apply）。
 
 范围：R2 是单个 instructions 资产 + 多个 Host 入口共享同一来源；R3a 是 Skill 目录资产，入口仍是链接。
-R3b 第一片只处理 `kind=mcp` 的**已存在** server 条目：Pi 的 `~/.pi/agent/mcp.json` 与项目 `.pi/mcp.json`、
+R3b 只处理 `kind=mcp` 的**已存在** server 条目：Pi 的 `~/.pi/agent/mcp.json` 与项目 `.pi/mcp.json`、
 Claude Code 项目级 `.mcp.json`。写入只替换 `mcpServers` 下托管成员的值跨度，未托管条目与文件外围字节不变；
-新增 / 删除条目与 Codex 的 TOML 配置本片不支持，也不验证 Host 是否加载或能否连上 server。
+新增 / 删除条目与 Codex 的 TOML 配置本片不支持，也不验证 Host 是否加载或能否连上 server。启停按目标分开：
+Pi 写条目的 `enabled`，Claude Code 写 `~/.claude.json` 项目条目的 `disabledMcpServers`（要 `--project-key`）。
 产物路径、证据指针和观察窗的含义见 [README](https://github.com/) 的 R2 流程与 [Skill §11–§13]。
 """
 
@@ -274,7 +275,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--target",
         action="append",
         required=True,
-        help="adapter=路径，可重复；adapter 取 pi / claude，路径形状见 README 的 R3b 一节",
+        help="adapter=路径，可重复；adapter 取 pi / claude / claude-toggle，路径形状见 README 的 R3b 一节",
+    )
+    adopt.add_argument(
+        "--project-key",
+        help="claude-toggle 目标的 ~/.claude.json 项目键（工作目录路径字符串）；只对启停目标生效",
     )
     adopt.add_argument("--registry", type=Path, help=f"登记表，缺省 <PHE_HOME>/{workspace_tool.REGISTRY_RELATIVE}")
 

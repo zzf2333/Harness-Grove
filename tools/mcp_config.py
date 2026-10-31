@@ -1,8 +1,13 @@
 """MCP server 条目的逻辑定义与两种 JSON 适配器：有界定位、渲染与条目级比对（标准库）。
 
-范围（R3b 第一片）：Pi 的 `mcpServers`（用户级 `.pi/agent/mcp.json`、项目级 `.pi/mcp.json`）与 Claude Code
+范围（R3b）：Pi 的 `mcpServers`（用户级 `.pi/agent/mcp.json`、项目级 `.pi/mcp.json`）与 Claude Code
 项目级 `.mcp.json` 里**已经存在**的 server 条目。写入只替换 `mcpServers` 下指定成员的值跨度：未托管的
 server 与文件外围字节原样保留，不用 `json.dumps` 重写整个文件。新增与删除条目本片未支持。
+
+启停（`enabled`）：Pi 的条目自己就有 `enabled: false`；Claude Code 的 `.mcp.json` 条目没有这个字段，启停按项目
+记在 `~/.claude.json` 的 `projects[<项目键>].disabledMcpServers`，由 `mcp_toggle.py` 与 `claude-toggle` 目标写。
+启停只表示去掉这一层的禁用，不保证 Host 会加载或能连上；项目 `.mcp.json` 的审批（`disabledMcpjsonServers` /
+`enabledMcpjsonServers`）、信任（`hasTrustDialogAccepted`）与默认关闭的内置 server 不是同一套开关，本片不碰。
 
 凭证：不读、不解析 `env` / `headers` 的值，也不执行 `!command`。逻辑定义里 `env` / `headers` 的值必须含
 `${NAME}` 引用，`url` 不得带 userinfo；其他字面值、`oauth`、`timeout`、`exposure`、`description`、
@@ -17,14 +22,23 @@ server 与文件外围字节原样保留，不用 `json.dumps` 重写整个文�
 - Claude Code <https://code.claude.com/docs/en/mcp>：项目级 `.mcp.json` 的 `mcpServers`；stdio 用
   `command` / `args` / `env`，也接受官方示例里的显式 `"type": "stdio"`；HTTP 必须 `"type": "http"`（缺 `type` 会被读成 stdio，`streamable-http` 是别名）；
   `${VAR}` 与 `${VAR:-default}` 在 `command` / `args` / `env` / `url` / `headers` 里展开；条目没有 `enabled`
-  字段，启停按项目记在 `~/.claude.json` 的 `disabledMcpServers`，本片不写那个文件。
+  字段，启停按项目记在 `~/.claude.json` 的 `projects[<项目键>].disabledMcpServers`。
+- Claude Code 项目启停：`/mcp disable` 把 name 追加进项目条目的 `disabledMcpServers`，`/mcp enable` 删除该名；
+  缺这个列表等价于空列表；项目键是启动时工作目录的路径字符串（NFC 规范化，不 realpath），不在 `projects`
+  里的键回落成默认项目条目、改动静默无效——所以本片只按显式给出的项目键读写，不创建项目条目。
+  依据是 2026-10-31 从本机安装的 2.1.312 二进制只读定位的产品自身说明与读写函数（静态证据，不是 Host 实跑）。
 """
 
 import difflib
 import json
 import re
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from mcp_span import server_span
 
 SCHEMA_VERSION = 1
 DEFINITION_KIND = "phe_mcp_server"
@@ -44,7 +58,11 @@ ADAPTERS = {
 ADAPTER_PATHS = {
     "pi": (("user", (".pi", "agent", "mcp.json")), ("project", (".pi", "mcp.json"))),
     "claude": (("project", (".mcp.json",)),),
+    # 不是条目适配器，而是 Claude Code 的项目启停目标：写入在 `~/.claude.json` 的 `projects[<项目键>]` 下。
+    "claude-toggle": (("user", (".claude.json",)),),
 }
+# 启停目标的数组名：数组里有这个名字 = 禁用，没有 = 启用，缺列表等价于空列表。
+TOGGLE_ARRAYS = {"claude-toggle": "disabledMcpServers"}
 # 逻辑定义里允许出现的字段；`type` 由适配器渲染，不进入定义。
 DEFINITION_FIELDS = (
     "schema_version",
@@ -80,86 +98,7 @@ def target_path_reason(adapter: str, path) -> str | None:
     return f"{path} 不是本片支持的 {adapter} 入口形状（只支持 {shapes}）"
 
 
-# 有界定位：只扫最外层对象与 mcpServers 的成员，值的边界交给 JSONDecoder.raw_decode。
-
-
-def _skip_ws(text: str, index: int) -> int:
-    while index < len(text) and text[index] in " \t\n\r":
-        index += 1
-    return index
-
-
-def _expect(text: str, index: int, char: str) -> int:
-    index = _skip_ws(text, index)
-    if index >= len(text) or text[index] != char:
-        raise ValueError(f"{index} 处不是 {char!r}：配置文件不是可定位的 JSON 对象")
-    return index + 1
-
-
-def object_members(text: str, start: int) -> tuple[list[tuple[str, int, int, int]], int]:
-    """`start` 处对象的成员 [(键, 键起点, 值起点, 值终点)] 与对象结束位置；值用 raw_decode 跳过。"""
-    decoder = json.JSONDecoder()
-    members: list[tuple[str, int, int, int]] = []
-    index = _skip_ws(text, _expect(text, start, "{"))
-    if index < len(text) and text[index] == "}":
-        return members, index + 1
-    while True:
-        key_start = _skip_ws(text, index)
-        key, index = decoder.raw_decode(text, key_start)
-        if not isinstance(key, str):
-            raise TypeError(f"{index} 处的成员名不是字符串：无法定位 mcpServers")
-        index = _expect(text, index, ":")
-        value_start = _skip_ws(text, index)
-        _value, value_end = decoder.raw_decode(text, value_start)
-        members.append((key, key_start, value_start, value_end))
-        index = _skip_ws(text, value_end)
-        if index < len(text) and text[index] == ",":
-            index += 1
-            continue
-        if index < len(text) and text[index] == "}":
-            return members, index + 1
-        raise ValueError(f"{index} 处不是 ',' 或 '}}'：配置文件不是可定位的 JSON 对象")
-
-
-def server_location(text: str, server: str) -> dict | None:
-    """指定 server 条目的跨度与排版位置：值跨度、(键)缩进列、文件自己的缩进步长。
-
-    没有 `mcpServers` 或没有这个成员时返回 None。步长取自 `mcpServers` 与它第一个成员的缩进差，
-    这样渲染出来的托管跨度贴近原文件排版，而不是写死 2 或 4。
-    """
-    if not text.strip():
-        return None
-    top, _end = object_members(text, _skip_ws(text, 0))
-    for key, key_start, start, _value_end in top:
-        if key != "mcpServers":
-            continue
-        inner, _inner_end = object_members(text, start)
-        step = 2
-        if inner:
-            guessed = column_of(text, inner[0][1]) - column_of(text, key_start)
-            if guessed > 0:
-                step = guessed
-        for name, inner_key_start, inner_start, inner_end in inner:
-            if name == server:
-                return {"span": (inner_start, inner_end), "column": column_of(text, inner_key_start), "step": step}
-    return None
-
-
-def server_span(text: str, server: str) -> tuple[int, int] | None:
-    """`mcpServers` 下指定成员的值跨度；没有 `mcpServers` 或没有这个成员时返回 None。"""
-    location = server_location(text, server)
-    return location["span"] if location is not None else None
-
-
-def column_of(text: str, index: int) -> int:
-    """`index` 所在行的缩进列：渲染片段时按它对齐，让托管跨度里的排版贴近原文件。"""
-    return index - (text.rfind("\n", 0, index) + 1)
-
-
-def splice(text: str, span: tuple[int, int], replacement: str) -> str:
-    """只替换跨度内的字节；跨度前后原样保留。"""
-    start, end = span
-    return text[:start] + replacement + text[end:]
+# 跨度定位在 `mcp_span.py`：这里只用它找 `mcpServers` 下托管成员的值跨度，不重写整份文件。
 
 
 # 字段规则：凭证只允许引用，非敏感常量本片不支持。
@@ -366,10 +305,16 @@ def render_entry(adapter: str, definition: dict) -> dict:
     return entry
 
 
-def render_target_entry(adapter: str, definition: dict, entry: dict) -> dict:
-    """按目标当前条目渲染：启停与显式 stdio `type` 是目标本地状态，本片不管理，沿用原值。"""
-    rendered = render_entry(adapter, definition)
-    if ADAPTERS[adapter]["enabled"]:
+def render_target_entry(adapter: str, definition: dict, entry: dict, manage_enabled: bool = False) -> dict:
+    """按适配器渲染托管条目，并保留目标本地状态（显式 stdio `type` 始终保留）。
+
+    `manage_enabled` 为 False 时启停是目标本地状态：条目里写了 `enabled` 就沿用原值、缺字段就不补（普通参数更新
+    不动目标开关）。为 True 时（这次 patch 改的就是启停）才按定义渲染。Claude 的 `.mcp.json` 条目没有启停字段：
+    它的启停由 `claude-toggle` 目标写到 `~/.claude.json`，这里不从定义往条目里塞 `enabled`。
+    """
+    limits = ADAPTERS[adapter]
+    rendered = render_entry(adapter, definition if limits["enabled"] else _without_enabled(definition))
+    if limits["enabled"] and not manage_enabled:
         if "enabled" in entry:
             rendered["enabled"] = entry["enabled"]
         else:
@@ -379,9 +324,33 @@ def render_target_entry(adapter: str, definition: dict, entry: dict) -> dict:
     return rendered
 
 
-def render_target_entry_text(adapter: str, definition: dict, entry: dict, column: int = 0, step: int = 2) -> str:
-    text = json.dumps(render_target_entry(adapter, definition, entry), ensure_ascii=False, indent=step)
+def _without_enabled(definition: dict) -> dict:
+    return {key: value for key, value in definition.items() if key != "enabled"}
+
+
+def render_target_entry_text(
+    adapter: str, definition: dict, entry: dict, column: int = 0, step: int = 2, manage_enabled: bool = False
+) -> str:
+    text = json.dumps(render_target_entry(adapter, definition, entry, manage_enabled), ensure_ascii=False, indent=step)
     return text.replace("\n", "\n" + " " * column)
+
+
+def render_target_fragment(
+    adapter: str,
+    definition: dict,
+    entry: dict,
+    text: str,
+    span: tuple[int, int],
+    column: int = 0,
+    step: int = 2,
+    manage_enabled: bool = False,
+) -> str:
+    """目标要替换进文件的片段：渲染结果与当前条目一致时原样返回现片段，不重排已一致的条目。"""
+    if current_entry(adapter, entry, definition["server"]) == render_target_entry(
+        adapter, definition, entry, manage_enabled
+    ):
+        return text[span[0] : span[1]]
+    return render_target_entry_text(adapter, definition, entry, column, step, manage_enabled)
 
 
 def current_entry(adapter: str, entry: dict, server: str) -> dict:
@@ -412,6 +381,9 @@ def drift(adapter: str, definition: dict, text: str) -> dict:
         return {"state": "unsupported", "fields": [], "reason": str(exc), "span": span, "fragment": fragment}
     fields = sorted(set(current) | set(expected))
     changed = [name for name in fields if current.get(name) != expected.get(name)]
+    if "enabled" in definition and ADAPTERS[adapter]["enabled"] and entry.get("enabled", True) != definition["enabled"]:
+        # 启停是逻辑定义里管着的字段：外部把 Pi 条目的 `enabled` 改回去也算漂移。
+        changed.append("enabled")
     return {
         "state": "drifted" if changed else "in_sync",
         "fields": changed,

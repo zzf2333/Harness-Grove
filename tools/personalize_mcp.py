@@ -1,12 +1,14 @@
 """R3b 产品入口（MCP 条目）：登记已存在的 server 条目与条目级 drift（标准库）。
 
-范围（第一片）：Pi 的 `mcp.json`（用户级与项目级）与 Claude Code 项目级 `.mcp.json` 里**已经存在**的 server
-条目。取值、渲染与比对规则在 `mcp_config.py`；预览 / 应用 / 恢复在 `personalize_mcp_plan.py` 与
+范围（R3b）：Pi 的 `mcp.json`（用户级与项目级）与 Claude Code 项目级 `.mcp.json` 里**已经存在**的 server
+条目，以及 Claude Code 的项目启停（`~/.claude.json` 的 `projects[<项目键>].disabledMcpServers`）。取值、渲染与
+比对规则在 `mcp_config.py` 与 `mcp_toggle.py`；预览 / 应用 / 恢复在 `personalize_mcp_plan.py` 与
 `personalize_mcp_apply.py`，它们与这条路共用 R2 的写入范围、计划原始字节批准、`execution_id` 与同一本账本。
 
 `mcp-adopt` 只写 PHE_HOME（登记表、`assets/<id>/asset.json`、`assets/<id>/content/server.json`），不碰 Host：
-从第一个 `--target` 的现有条目投影出逻辑定义，其余目标只做渲染校验与漂移报告。`mcp-drift` 只读，按适配器把
-逻辑定义渲染后与每个 Host 当前的托管条目比较，只报字段名。
+从第一个**条目目标**的现有条目投影出逻辑定义，其余条目目标只做渲染校验与漂移报告；`claude-toggle` 目标
+（需要 `--project-key`）不投影定义，只校验项目键在 `~/.claude.json` 里存在。`mcp-drift` 只读：条目目标按适配器
+渲染后比字段名，启停目标比项目启停列表里有没有这个名字。
 
 凭证：不读、不解析 `env` / `headers` 的值，不执行 `!command`；定义里 `env` / `headers` 只接受含 `${NAME}` 的
 引用，`url` 不接受 userinfo。
@@ -23,6 +25,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import change
 import mcp_config
+import mcp_toggle
 import personalize_plan as planning
 from change_ledger import read_json, require
 from release_deploy import load_sibling, utc_now
@@ -39,6 +42,7 @@ DRIFT_STATES = {
     "drifted": "与逻辑定义不一致",
     "missing": "配置文件里没有这个条目",
     "unsupported": "条目里有本片不支持的字段或值",
+    "not_managed": "逻辑定义没有声明启停（enabled）：这一项不比对",
 }
 
 
@@ -60,23 +64,25 @@ def metadata(phe: Path, asset_id: str) -> dict:
 
 
 def target_bindings(meta: dict, asset_id: str) -> list[dict]:
-    """绑定的 Host 目标：每一项都带 adapter / config_path / server，不做 agent → release 的替代。"""
+    """绑定的 Host 目标：每一项都带 adapter / config_path / server，启停目标还带项目键。"""
     binding = meta.get("mcp") or {}
     targets = binding.get("targets") or []
     if not targets:
         raise ValueError(f"{asset_id} 的 asset.json 没有 mcp.targets 绑定")
     rows = []
     for target in targets:
-        if target.get("adapter") not in mcp_config.ADAPTERS:
-            raise ValueError(f"{asset_id} 的目标 adapter 未支持：{target.get('adapter')}")
-        rows.append(
-            {
-                "adapter": target["adapter"],
-                "config_path": target["config_path"],
-                "scope": target.get("scope"),
-                "server": require(binding, "server", f"{asset_id} 的 mcp 绑定"),
-            }
-        )
+        adapter = target.get("adapter")
+        if adapter not in mcp_config.ADAPTER_PATHS:
+            raise ValueError(f"{asset_id} 的目标 adapter 未支持：{adapter}")
+        row = {
+            "adapter": adapter,
+            "config_path": target["config_path"],
+            "scope": target.get("scope"),
+            "server": require(binding, "server", f"{asset_id} 的 mcp 绑定"),
+        }
+        if adapter in mcp_config.TOGGLE_ARRAYS:
+            row["project_key"] = require(target, "project_key", f"{asset_id} 的 {adapter} 目标")
+        rows.append(row)
     return rows
 
 
@@ -108,23 +114,36 @@ def read_config(path: Path) -> tuple[bytes, str]:
 # 登记：从已存在的条目写出逻辑定义与绑定；只写 PHE_HOME，不碰 Host。
 
 
-def parse_targets(values: list[str]) -> list[dict]:
+def parse_targets(values: list[str], project_key: str | None) -> list[dict]:
+    """`adapter=路径` 列表；`claude-toggle` 目标必须带项目键，且一个资产只登记一个。"""
     targets: list[dict] = []
     for value in values:
         adapter, separator, raw = value.partition("=")
         if not separator or not raw:
             raise ValueError(f"--target 需要 adapter=路径 的形式：{value}")
-        if adapter not in mcp_config.ADAPTERS:
-            raise ValueError(f"--target 的 adapter 只能是 {' / '.join(mcp_config.ADAPTERS)}：{adapter}")
+        if adapter not in mcp_config.ADAPTER_PATHS:
+            raise ValueError(f"--target 的 adapter 只能是 {' / '.join(mcp_config.ADAPTER_PATHS)}：{adapter}")
         path = Path(os.path.realpath(raw))
         reason = mcp_config.target_path_reason(adapter, path)
         if reason is not None:
             raise ValueError(reason)
         if any(target["config_path"] == str(path) for target in targets):
             raise ValueError(f"--target 重复：{path}")
-        targets.append({"adapter": adapter, "config_path": str(path), "scope": mcp_config.adapter_scope(adapter, path)})
+        target = {"adapter": adapter, "config_path": str(path), "scope": mcp_config.adapter_scope(adapter, path)}
+        if adapter in mcp_config.TOGGLE_ARRAYS:
+            target["project_key"] = project_key
+        targets.append(target)
     if not targets:
         raise ValueError("至少需要一个 --target adapter=路径")
+    toggles = [target for target in targets if target["adapter"] in mcp_config.TOGGLE_ARRAYS]
+    if toggles and project_key is None:
+        raise ValueError("有 claude-toggle 目标时必须给 --project-key：它是 ~/.claude.json 里项目条目的键")
+    if project_key is not None and not toggles:
+        raise ValueError("--project-key 只用于 claude-toggle 目标")
+    if len(toggles) > 1:
+        raise ValueError("本片一个资产只登记一个 claude-toggle 目标")
+    if len(toggles) == len(targets):
+        raise ValueError("至少需要一个条目目标（pi / claude）：启停目标只写启停，不投影逻辑定义")
     return targets
 
 
@@ -140,18 +159,37 @@ def existing_asset(registry: dict, server: str, targets: list[dict]) -> dict | N
     return None
 
 
-def register(writer, phe: Path, args: argparse.Namespace, registry_path: Path) -> dict:
-    """把已存在的 server 条目登记成一条 MCP 资产，并写出逻辑定义与目标绑定。"""
-    targets = parse_targets(args.target)
-    projections, entries = [], []
+def project_definition(server: str, targets: list[dict]) -> dict:
+    """从第一个条目目标的现有条目投影逻辑定义；其余条目目标只做渲染校验，启停目标校验项目键存在。"""
+    definition = None
     for target in targets:
         _data, text = read_config(Path(target["config_path"]))
-        entry, _span, _fragment = mcp_config.entry_at(text, args.server)
-        entries.append(entry)
-        projections.append(mcp_config.definition_from_entry(target["adapter"], entry, args.server))
-    definition = projections[0]
-    for target, entry in zip(targets, entries):
+        if target["adapter"] in mcp_config.TOGGLE_ARRAYS:
+            mcp_toggle.project_object(text, target["project_key"])
+            continue
+        entry, _span, _fragment = mcp_config.entry_at(text, server)
+        if definition is None:
+            definition = mcp_config.definition_from_entry(target["adapter"], entry, server)
         mcp_config.render_target_entry(target["adapter"], definition, entry)
+    if definition is None:
+        raise ValueError(f"没有条目目标（pi / claude）能投影 {server} 的逻辑定义")
+    return definition
+
+
+# `target_state` 同时用于登记与 `mcp-drift`，两边口径一致。
+def target_state(target: dict, definition: dict) -> dict:
+    """单个目标相对逻辑定义的漂移：条目目标比渲染后的字段名，启停目标比项目启停列表里有没有这个名字。"""
+    _data, text = read_config(Path(target["config_path"]))
+    if target["adapter"] in mcp_config.TOGGLE_ARRAYS:
+        return mcp_toggle.toggle_drift(target["adapter"], definition, text, target["project_key"], target["server"])
+    return mcp_config.drift(target["adapter"], definition, text)
+
+
+def register(writer, phe: Path, args: argparse.Namespace, registry_path: Path) -> dict:
+    """把已存在的 server 条目登记成一条 MCP 资产，并写出逻辑定义与目标绑定。"""
+    targets = parse_targets(args.target, args.project_key)
+    definition = project_definition(args.server, targets)
+    states = [target_state(dict(target, server=args.server), definition) for target in targets]
     try:
         registry = registry_tool.read_registry(registry_path)
     except FileNotFoundError:
@@ -209,24 +247,13 @@ def register(writer, phe: Path, args: argparse.Namespace, registry_path: Path) -
                 "adapter": target["adapter"],
                 "config_path": target["config_path"],
                 "scope": target["scope"],
-                "state": state,
-                "fields": fields,
+                "state": state["state"],
+                "fields": state["fields"],
             }
-            for target, state, fields in (
-                (target, *render_state(target, definition, entry)) for target, entry in zip(targets, entries)
-            )
+            for target, state in zip(targets, states)
         ],
         "note": "登记只写 PHE_HOME；Host 是否加载这个条目没有验证。漂移只报字段名，不读也不打印字段值。",
     }
-
-
-def render_state(target: dict, definition: dict, entry: dict) -> tuple[str, list[str]]:
-    """其余目标相对逻辑定义的漂移：只比较渲染后的字段名，目标本地状态（启停等）不算漂移。"""
-    current = mcp_config.current_entry(target["adapter"], entry, definition["server"])
-    expected = mcp_config.render_target_entry(target["adapter"], definition, entry)
-    fields = sorted(set(current) | set(expected))
-    changed = [name for name in fields if current.get(name) != expected.get(name)]
-    return ("drifted" if changed else "in_sync"), changed
 
 
 def cmd_mcp_adopt(args: argparse.Namespace) -> int:
@@ -259,8 +286,7 @@ def drift_rows(phe: Path, asset_id: str) -> dict:
     definition = load_definition(phe, asset_id)
     rows = []
     for target in target_bindings(meta, asset_id):
-        _data, text = read_config(Path(target["config_path"]))
-        result = mcp_config.drift(target["adapter"], definition, text)
+        result = target_state(target, definition)
         rows.append(
             {
                 "adapter": target["adapter"],

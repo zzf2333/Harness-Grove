@@ -1,9 +1,8 @@
 """MCP 条目的执行侧：应用托管跨度、写片段 journal、按 journal 反向拼接恢复（标准库）。
 
-应用的写入只碰计划列明的 Host 配置，并且只替换 `mcpServers` 下托管条目的值跨度；文件其余字节不动，原文件
-权限位在写回后还原。journal 是第三种执行记录（类型 `mcp_fragments`）：只记 `adapter` / `config_path` /
-`server`、托管前后的片段、两侧完整文件 sha256 与执行 ID，不复制整份配置——未托管的条目可能有凭证。恢复按
-同一跨度写回应用前的片段，并核对两侧完整文件 sha256；对不上就拒绝，不做自动协调。
+应用的写入只碰计划列明的 Host 配置，并且只替换托管跨度：条目目标是 `mcpServers` 下那个条目的值，启停目标（`claude-toggle`）是项目键下启停列表里的这个名字。文件其余字节不动，原文件权限位在写回后还原。
+journal 是第三种执行记录（类型 `mcp_fragments`）：只记 `adapter` / `config_path` / `server` / 项目键、托管前后的片段、两侧完整文件 sha256 与执行 ID，不复制整份配置——未托管的条目可能有凭证。恢复按同一
+跨度写回应用前的片段，并核对两侧完整文件 sha256；对不上就拒绝，不做自动协调。
 """
 
 import argparse
@@ -17,6 +16,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import change
 import mcp_config
+import mcp_span
+import mcp_toggle
 import personalize_mcp as mcp_asset
 import personalize_plan as planning
 import release as release_tool
@@ -29,19 +30,44 @@ RESTORE_PLAN_KIND = planning.RESTORE_PLAN_KIND
 JOURNAL_KIND = mcp_asset.JOURNAL_KIND
 
 
-def check_target_current(row: dict) -> tuple[Path, bytes, str, dict, int]:
-    """执行前核对：整份文件与托管片段的 sha256 都还要与预览一致。"""
+def prepare_target(row: dict, definition: dict, manage_enabled: bool) -> dict:
+    """执行前核对并算出这个目标要替换的跨度：整份文件与托管片段的 sha256 都要与预览一致。"""
     path = Path(row["config_path"])
     data, text = mcp_asset.read_config(path)
     if mcp_asset.sha256_bytes(data) != row["current_file_sha256"]:
         raise ValueError(f"{path} 的内容在预览之后变了：请重新预览")
-    location = mcp_config.server_location(text, row["server"])
-    if location is None:
-        raise ValueError(f"{path} 里已经没有条目 {row['server']}：请重新预览")
-    fragment = text[location["span"][0] : location["span"][1]]
+    prepare = {"path": path, "data": data, "before_file_sha256": mcp_asset.sha256_bytes(data)}
+    if row["adapter"] in mcp_config.TOGGLE_ARRAYS:
+        # 启停目标：只增删项目键下启停列表里的这个名字，其他元素与外围字节不动。
+        edit = mcp_toggle.toggle_edit(
+            row["adapter"], text, row["project_key"], row["server"], disabled=not definition["enabled"]
+        )
+        span, replacement = edit["span"], edit["replacement"]
+        prepare["project_key"] = row["project_key"]
+    else:
+        location = mcp_span.server_location(text, row["server"])
+        if location is None:
+            raise ValueError(f"{path} 里已经没有条目 {row['server']}：请重新预览")
+        entry, _span, _fragment = mcp_config.entry_at(text, row["server"])
+        span = location["span"]
+        replacement = mcp_config.render_target_fragment(
+            row["adapter"], definition, entry, text, span, location["column"], location["step"], manage_enabled
+        )
+        prepare.update(column=location["column"], step=location["step"])
+    fragment = text[span[0] : span[1]]
     if mcp_asset.sha256_bytes(fragment.encode("utf-8")) != row["current_fragment_sha256"]:
         raise ValueError(f"{path} 里条目 {row['server']} 的内容在预览之后变了：请重新预览")
-    return path, data, text, location, mcp_asset.file_mode(path)
+    new_text = mcp_span.splice(text, span, replacement)
+    if mcp_asset.sha256_bytes(new_text.encode("utf-8")) != row["expected_file_sha256"]:
+        raise ValueError(f"{path} 的渲染结果与预览不一致：请重新预览")
+    prepare.update(
+        mode=mcp_asset.file_mode(path),
+        new_data=new_text.encode("utf-8"),
+        span=list(span),
+        before_fragment=fragment,
+        after_fragment=replacement,
+    )
+    return prepare
 
 
 def write_journal(writer, phe: Path, execution_id: str, release_id: str, targets: list[dict]) -> str:
@@ -86,7 +112,7 @@ def apply(
     server = plan["asset"]["server"]
     if change.sha256_file(base_file) != item_plan["current_sha256"]:
         raise ValueError(f"逻辑定义在预览之后变了：{base_file}，请重新预览")
-    prepared = [check_target_current(dict(row, server=row.get("server") or server)) for row in item_plan["targets"]]
+    base_definition = mcp_asset.load_definition(phe, asset_id)
     item = change.select_item(package, args.item)
     patch = require(item, "patch", f"条目 {args.item}")
     targets = [Path(row["config_path"]) for row in item_plan["targets"]]
@@ -96,6 +122,12 @@ def apply(
     if content_sha(staged) != item_plan["expected_sha256"]:
         raise ValueError("打出来的逻辑定义与预览的 diff 不一致：请重新预览")
     definition = mcp_config.check_definition(json.loads(staged.read_text(encoding="utf-8")))
+    # 只有这次 patch 改的就是启停时才动 Host 里的启停字段；其余参数更新沿用各目标现在写的值。
+    manage_enabled = definition.get("enabled") != base_definition.get("enabled")
+    prepared = [
+        prepare_target(dict(row, server=row.get("server") or server), definition, manage_enabled)
+        for row in item_plan["targets"]
+    ]
     at = utc_now()
     write_asset(
         writer,
@@ -109,30 +141,23 @@ def apply(
     )
     release_id = release_tool.build_release(writer, phe, release_tool.asset_entries(phe))
     journal_targets, writes = [], []
-    for row, (path, data, text, location, mode) in zip(item_plan["targets"], prepared):
-        entry, _span, _fragment = mcp_config.entry_at(text, row["server"])
-        rendered = mcp_config.render_target_entry_text(
-            row["adapter"], definition, entry, location["column"], location["step"]
-        )
-        new_text = mcp_config.splice(text, location["span"], rendered)
-        new_data = new_text.encode("utf-8")
-        if mcp_asset.sha256_bytes(new_data) != row["expected_file_sha256"]:
-            raise ValueError(f"{path} 的渲染结果与预览不一致：请重新预览")
-        writes.append((path, new_data, mode))
-        journal_targets.append(
-            {
-                "adapter": row["adapter"],
-                "config_path": str(path),
-                "server": server,
-                "span": list(location["span"]),
-                "column": location["column"],
-                "step": location["step"],
-                "before_fragment": text[location["span"][0] : location["span"][1]],
-                "after_fragment": rendered,
-                "before_file_sha256": mcp_asset.sha256_bytes(data),
-                "after_file_sha256": row["expected_file_sha256"],
-            }
-        )
+    for row, ready in zip(item_plan["targets"], prepared):
+        journal_row = {
+            "adapter": row["adapter"],
+            "config_path": str(ready["path"]),
+            "server": server,
+            "span": ready["span"],
+            "before_fragment": ready["before_fragment"],
+            "after_fragment": ready["after_fragment"],
+            "before_file_sha256": ready["before_file_sha256"],
+            "after_file_sha256": row["expected_file_sha256"],
+        }
+        if "project_key" in ready:
+            journal_row["project_key"] = ready["project_key"]
+        if "column" in ready:
+            journal_row.update(column=ready["column"], step=ready["step"])
+        journal_targets.append(journal_row)
+        writes.append((ready["path"], ready["new_data"], ready["mode"]))
     journal = write_journal(writer, phe, execution_id, release_id, journal_targets)
     for path, new_data, mode in writes:
         writer.write_bytes(path, new_data)
@@ -176,7 +201,12 @@ def apply(
             "server": server,
             "mcp_targets": journal_targets
             and [
-                {"adapter": target["adapter"], "config_path": target["config_path"], "server": server}
+                {
+                    "adapter": target["adapter"],
+                    "config_path": target["config_path"],
+                    "server": server,
+                    **({"project_key": target["project_key"]} if "project_key" in target else {}),
+                }
                 for target in journal_targets
             ],
         },
@@ -217,6 +247,29 @@ def render_fragment_diff(current: str, before: str) -> str:
     return "".join(difflib.unified_diff(old, new, fromfile="当前条目", tofile="恢复后条目"))
 
 
+def restore_span(path: Path, text: str, entry: dict) -> tuple[int, int]:
+    """恢复时的跨度：条目目标按现在的条目定位，启停目标按 journal 记的编辑方向反推。"""
+    if entry["adapter"] in mcp_config.TOGGLE_ARRAYS:
+        return mcp_toggle.toggle_restore_span(entry)
+    location = mcp_span.server_location(text, entry["server"])
+    if location is None:
+        raise ValueError(f"{path} 里已经没有条目 {entry['server']}：请先核对当前内容")
+    return location["span"]
+
+
+def restore_target(
+    path: Path, text: str, entry: dict, span: tuple[int, int], fragment_sha: str, restored_sha: str
+) -> tuple[str, str]:
+    """按 journal 把一次应用写回应用前：先核对当前片段，再核对还原后的整份文件 sha256。"""
+    fragment = text[span[0] : span[1]]
+    if mcp_asset.sha256_bytes(fragment.encode("utf-8")) != fragment_sha:
+        raise ValueError(f"{path} 里条目 {entry['server']} 的片段与预览的记录不一致：请先核对当前内容")
+    restored = mcp_span.splice(text, span, entry["before_fragment"])
+    if mcp_asset.sha256_bytes(restored.encode("utf-8")) != restored_sha:
+        raise ValueError(f"{path} 的片段不能还原成应用前的完整 sha256：未恢复")
+    return restored, fragment
+
+
 def build_restore_plan(phe: Path, fact: dict, journal_paths: list[Path], cycle: str) -> dict:
     targets = []
     for journal_path in journal_paths:
@@ -228,30 +281,30 @@ def build_restore_plan(phe: Path, fact: dict, journal_paths: list[Path], cycle: 
             data, text = mcp_asset.read_config(path)
             if mcp_asset.sha256_bytes(data) != entry["after_file_sha256"]:
                 raise ValueError(f"{path} 与应用后的记录不一致：请先核对当前内容，不做自动协调")
-            location = mcp_config.server_location(text, entry["server"])
-            if location is None:
-                raise ValueError(f"{path} 里已经没有条目 {entry['server']}：请先核对当前内容")
-            fragment = text[location["span"][0] : location["span"][1]]
-            if mcp_asset.sha256_bytes(fragment.encode("utf-8")) != mcp_asset.sha256_bytes(
-                entry["after_fragment"].encode("utf-8")
-            ):
-                raise ValueError(f"{path} 里条目 {entry['server']} 的片段与应用后的记录不一致：请先核对当前内容")
-            restored = mcp_config.splice(text, location["span"], entry["before_fragment"]).encode("utf-8")
-            if mcp_asset.sha256_bytes(restored) != entry["before_file_sha256"]:
-                raise ValueError(f"{path} 的片段不能还原成应用前的完整 sha256：未恢复")
-            targets.append(
-                {
-                    "adapter": entry["adapter"],
-                    "config_path": str(path),
-                    "server": entry["server"],
-                    "current_file_sha256": mcp_asset.sha256_bytes(data),
-                    "current_fragment_sha256": mcp_asset.sha256_bytes(fragment.encode("utf-8")),
-                    "restore_fragment_sha256": mcp_asset.sha256_bytes(entry["before_fragment"].encode("utf-8")),
-                    "restored_file_sha256": mcp_asset.sha256_bytes(restored),
-                    "before_fragment": entry["before_fragment"],
-                    "diff": render_fragment_diff(fragment, entry["before_fragment"]),
-                }
+            span = restore_span(path, text, entry)
+            restored, fragment = restore_target(
+                path,
+                text,
+                entry,
+                span,
+                mcp_asset.sha256_bytes(entry["after_fragment"].encode("utf-8")),
+                entry["before_file_sha256"],
             )
+            row = {
+                "adapter": entry["adapter"],
+                "config_path": str(path),
+                "server": entry["server"],
+                "current_file_sha256": mcp_asset.sha256_bytes(data),
+                "current_fragment_sha256": mcp_asset.sha256_bytes(fragment.encode("utf-8")),
+                "restore_fragment_sha256": mcp_asset.sha256_bytes(entry["before_fragment"].encode("utf-8")),
+                "restored_file_sha256": mcp_asset.sha256_bytes(restored.encode("utf-8")),
+                "before_fragment": entry["before_fragment"],
+                "span": list(span),
+                "diff": render_fragment_diff(fragment, entry["before_fragment"]),
+            }
+            if "project_key" in entry:
+                row["project_key"] = entry["project_key"]
+            targets.append(row)
     if not targets:
         raise ValueError(f"{fact['execution_id']} 的 journal 里没有可恢复的条目")
     return {
@@ -294,7 +347,8 @@ def render_restore_preview(plan: dict, plan_sha: str) -> str:
         lines.extend(
             [
                 "",
-                f"`{entry['adapter']}` · `{entry['config_path']}` · 条目 `{entry['server']}`",
+                f"`{entry['adapter']}` · `{entry['config_path']}` · 条目 `{entry['server']}`"
+                + (f" · 项目键 `{entry['project_key']}`" if entry.get("project_key") else ""),
                 "",
                 "```diff",
                 entry["diff"].rstrip("\n"),
@@ -324,16 +378,10 @@ def restore(phe: Path, args: argparse.Namespace, plan: dict, plan_sha: str, appr
         data, text = mcp_asset.read_config(path)
         if mcp_asset.sha256_bytes(data) != entry["current_file_sha256"]:
             raise ValueError(f"{path} 在恢复预览之后变了：请重新预览")
-        location = mcp_config.server_location(text, entry["server"])
-        if location is None:
-            raise ValueError(f"{path} 里已经没有条目 {entry['server']}：请重新预览")
-        fragment = text[location["span"][0] : location["span"][1]]
-        if mcp_asset.sha256_bytes(fragment.encode("utf-8")) != entry["current_fragment_sha256"]:
-            raise ValueError(f"{path} 里条目 {entry['server']} 的片段在恢复预览之后变了：请重新预览")
-        new_data = mcp_config.splice(text, location["span"], entry["before_fragment"]).encode("utf-8")
-        if mcp_asset.sha256_bytes(new_data) != entry["restored_file_sha256"]:
-            raise ValueError(f"{path} 的恢复结果与恢复预览不一致：请重新预览")
-        prepared.append((path, new_data, mcp_asset.file_mode(path)))
+        new_data, _fragment = restore_target(
+            path, text, entry, tuple(entry["span"]), entry["current_fragment_sha256"], entry["restored_file_sha256"]
+        )
+        prepared.append((path, new_data.encode("utf-8"), mcp_asset.file_mode(path)))
     targets = [Path(entry["config_path"]) for entry in plan["entries"]]
     writer = planning.product_writer(phe, targets, source)
     for path, new_data, mode in prepared:

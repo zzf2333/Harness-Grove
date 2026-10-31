@@ -121,19 +121,35 @@ class McpPreserveEnabledTest(McpFixture):
         self.assertEqual(self.poke_files()["pi"], self.original[self.pi_user])
         self.assertEqual(self.poke_files()["claude"], self.original[self.claude_project])
 
-    def test_enabled_change_is_not_applicable(self):
+    def test_adopt_accepts_a_disabled_pi_entry_as_the_first_target(self):
+        """Pi 条目带 `enabled: false` 时先登记也能通过：Claude 的 `.mcp.json` 没有启停字段，不因此拒绝登记。"""
         self.init()
-        self.asset_id = json.loads(self.adopt(f"pi={self.pi_user}").stdout)["asset_id"]
+        payload = json.loads(self.adopt(f"pi={self.pi_user}", f"claude={self.claude_project}").stdout)
+        self.asset_id = payload["asset_id"]
+        self.assertEqual([row["state"] for row in payload["targets"]], ["in_sync", "in_sync"])
+        definition = json.loads(self.definition().read_text(encoding="utf-8"))
+        self.assertIs(definition["enabled"], False)
         self.change = self.package()
+        self.assertEqual(self.preview().returncode, 0)
+        plan = json.loads(self.plan().read_text(encoding="utf-8"))
+        self.assertEqual([row["drift"] for row in plan["items"][0]["targets"]], [["args"], ["args"]])
+        self.assertEqual(self.apply().returncode, 0)
+        self.assertIs(json.loads(self.poke_files()["pi"])["mcpServers"]["demo"]["enabled"], False)
+
+    def test_enabled_change_without_a_claude_toggle_target_is_not_applicable(self):
+        """改启停要有 Claude 的启停目标：没有就整组不可执行，不退化成只改 Pi、把定义标成一致。"""
+        self.init()
+        self.asset_id = json.loads(self.adopt(f"pi={self.pi_user}", f"claude={self.claude_project}").stdout)["asset_id"]
         enabled = json.loads(self.definition().read_text(encoding="utf-8"))
         enabled["enabled"] = True
         self.change = self.package([self.item("P1", json.dumps(enabled, ensure_ascii=False, indent=2) + "\n")])
         self.assertEqual(self.preview().returncode, 0)
         plan = json.loads(self.plan().read_text(encoding="utf-8"))
         self.assertEqual(plan["items"][0]["state"], "not_applicable")
-        self.assertIn("enabled", plan["items"][0]["reason"])
+        self.assertIn("claude-toggle", plan["items"][0]["reason"])
         self.assertEqual(self.apply().returncode, 1)
         self.assertEqual(self.poke_files()["pi"], self.original[self.pi_user])
+        self.assertEqual(self.poke_files()["claude"], self.original[self.claude_project])
 
 
 class McpExplicitStdioTypeTest(McpFixture):
