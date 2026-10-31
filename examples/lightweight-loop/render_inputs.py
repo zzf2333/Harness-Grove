@@ -102,12 +102,21 @@ def main() -> int:
             },
             {
                 "item_id": "W3",
-                "evidence": [f"{session}:L9", f"{session}:L12", f"{config}:L4"],
+                "evidence": [
+                    f"{session}:L9",
+                    f"{session}:L10",
+                    f"{session}:L11",
+                    f"{session}:L12",
+                    f"{config}:L4",
+                ],
                 "prediction": {
-                    "why": "会话 L9、L12 两次因 Agent 顺手改相邻文件被用户叫停；"
+                    "why": "原文有两条叫停（L9、L12），但相邻文件的越界写入只有一次：L10 助手调用 edit 改 README.md、"
+                    "L11 返回“已写入 README.md”，且发生在 L9 明确叫停之后；L7、L8 改的是 config，不能算相邻越界。"
+                    "材料只支持“一次可见越界 + 之后两条叫停”，不能计成两次独立越界；"
                     "配置第 4 行只写“先别做时不要越界执行”，没写不能顺手做相邻改动",
                     "expected": "越界后需要用户叫停的情况减少；不丢原有“先别做时不越界”约束",
-                    "verify": "收益待验证：本轮不做行为实验；用户批准真实应用后，在观察窗内统计越界后需要叫停的次数",
+                    "verify": "收益待验证：本轮不做行为实验，单条合成会话也说不出真实环境里的越界频率；"
+                    "用户批准真实应用后，在观察窗内统计越界后需要叫停的次数",
                     "baseline": "待观察",
                 },
                 "target": {"asset_id": args.asset_id},
@@ -134,8 +143,16 @@ def main() -> int:
         "verdict": "observe",
         "prediction_met": "unknown",
         "reason": "收益待验证：只在临时沙箱应用，Host 未加载；观察窗内没有该环境的会话，"
-        "样例会话在应用之前，不能当观察证据",
-        "observations": [f"{session}:L9", f"{session}:L12", f"{config}:L4", str(change_path)],
+        "样例会话在应用之前，不能当观察证据；材料也只有一次可见的相邻文件越界写入（L10–L11），"
+        "不能把两条叫停当成已发生的两次越界",
+        "observations": [
+            f"{session}:L9",
+            f"{session}:L10",
+            f"{session}:L11",
+            f"{session}:L12",
+            f"{config}:L4",
+            str(change_path),
+        ],
         "next": "用户批准真实应用后，按 prediction.verify 在观察窗内统计“越界后需要叫停”的次数，再决定保留或调整",
     }
     review_path = inputs / "review-W3.json"

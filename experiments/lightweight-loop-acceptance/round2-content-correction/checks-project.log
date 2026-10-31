@@ -1,0 +1,94 @@
+# 项目检查（最终一次：提交前工作树内容；三条命令都不经管道，退出码逐条记录）
+时间(UTC): 2026-10-31T01:35:54Z
+基线提交: a21fcca492002d5daaccc584441a3e641569c983
+工作树: /Users/saonian/.pi/worktrees/Harness-Grove/pi-worktree-d21062ff-16b2-45dd-98c4-2721df069b93-s0-0
+python3: Python 3.15.0
+ruff: ruff 0.16.6
+
+$ python3 -m unittest discover -s tests -t tests
+.....................................................................................................................stop_reason: invalid_run:oracle_hash_changed
+stop_reason: invalid_run:oracle_hash_changed
+stop_reason: invalid_run:config_hash_changed
+stop_reason: pivot:cost_budget_exhausted
+stop_reason: pivot:cost_budget_exhausted
+stop_reason: invalid_run:config_hash_changed
+slot 1 base_left complete
+stop_reason: pivot:telemetry_missing
+slot 1 base_left complete
+stop_reason: pivot:per_invocation_cost_exceeded
+slot 1 base_left complete
+.slot 1 runner failed: simulated runner failure
+slot 1 runner failed: simulated runner failure
+..................................stop_reason: invalid_run:user_files_changed
+stop_reason: invalid_run:oracle_hash_changed
+stop_reason: invalid_run:oracle_hash_changed
+stop_reason: pivot:wall_budget_exhausted
+stop_reason: invalid_run:harness_hash_changed:base_left
+slot 1 base_left complete
+....stop_reason: pivot:telemetry_missing
+stop_reason: invalid_run:sandbox_runner_hash_missing
+stop_reason: invalid_run:sandbox_runner_hash_missing
+slot 1 base_left complete
+..stop_reason: pivot:telemetry_missing
+slot 1 base_left complete
+.stop_reason: pivot:telemetry_missing
+slot 1 base_left complete
+.stop_reason: pivot:telemetry_missing
+slot 1 base_left complete
+.....stop_reason: pivot:telemetry_missing
+slot 1 base_left complete
+..stop_reason: pivot:telemetry_missing
+stop_reason: invalid_run:config_hash_changed
+slot 1 base_left complete
+.stop_reason: pivot:telemetry_missing
+slot 1 base_left complete
+.........................slot 1 runner failed: simulated runner failure
+slot 1 runner failed: simulated runner failure
+slot 1 runner failed: simulated runner failure
+..slot 1 runner failed: oracle 目的路径逃出验收副本：oracle.txt -> /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/phe-sandbox-run-vnmln4y3/denied/victim.txt
+.......slot 2 runner failed: simulated runner failure
+...stop_reason: pivot:telemetry_missing
+stop_reason: invalid_run:proposal_hash_changed
+stop_reason: invalid_run:proposal_hash_changed
+stop_reason: invalid_run:proposal_hash_changed
+stop_reason: invalid_run:proposal_hash_changed
+stop_reason: invalid_run:config_hash_changed
+stop_reason: invalid_run:config_hash_changed
+stop_reason: pivot:runner_crashed_no_record
+slot 1 base_left complete
+slot 2 base_right complete
+slot 3 ablated complete
+.stop_reason: None
+slot 1 base_left complete
+slot 2 base_right complete
+slot 3 ablated complete
+.stop_reason: None
+slot 1 base_left complete
+slot 2 base_right complete
+slot 3 ablated complete
+.stop_reason: None
+slot 1 base_left complete
+slot 2 base_right complete
+slot 3 ablated complete
+......................................................................................................................................................
+----------------------------------------------------------------------
+Ran 358 tests in 45.654s
+
+OK
+stop_reason: None
+stop_reason: invalid_run:sandbox_runner_hash_changed
+stop_reason: invalid_run:sandbox_runner_hash_missing
+stop_reason: invalid_run:config_hash_changed
+stop_reason: invalid_run:config_hash_changed
+stop_reason: invalid_run:config_hash_changed
+stop_reason: invalid_run:config_hash_changed
+deployed r0001 -> claude: 2 条链接，journal /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/release-test-u0o6vhuu/phe/journal/20261031T013636Z.json
+----- unittest exit=0
+
+$ ruff check .
+All checks passed!
+----- ruff check exit=0
+
+$ ruff format --check .
+83 files already formatted
+----- ruff format exit=0

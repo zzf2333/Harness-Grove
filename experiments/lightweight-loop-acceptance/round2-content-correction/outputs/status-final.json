@@ -1,0 +1,66 @@
+{
+  "phe_home": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/phe",
+  "executions": [
+    {
+      "execution_id": "x0001",
+      "proposal_id": "W1",
+      "release": "r0001",
+      "state": "restored",
+      "applied_at": "2026-10-31T01:35:46+00:00",
+      "restored_at": "2026-10-31T01:35:46+00:00",
+      "before_sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66",
+      "after_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+      "latest_review": null
+    },
+    {
+      "execution_id": "x0002",
+      "proposal_id": "W3",
+      "release": "r0002",
+      "state": "restored",
+      "applied_at": "2026-10-31T01:35:46+00:00",
+      "restored_at": "2026-10-31T01:35:46+00:00",
+      "before_sha256": "4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880",
+      "after_sha256": "a98213676922a48ae0278eb6a4a3a62f6e237d81445a695b1eac996eae747421",
+      "latest_review": {
+        "kind": "review",
+        "at": "2026-10-31T01:35:46+00:00",
+        "execution_id": "x0002",
+        "proposal_id": "W3",
+        "record": {
+          "verdict": "observe",
+          "prediction_met": "unknown",
+          "reason": "收益待验证：只在临时沙箱应用，Host 未加载；观察窗内没有该环境的会话，样例会话在应用之前，不能当观察证据；材料也只有一次可见的相邻文件越界写入（L10–L11），不能把两条叫停当成已发生的两次越界",
+          "observations": [
+            "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L9",
+            "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L10",
+            "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L11",
+            "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L12",
+            "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/temper/config/AGENTS.md:L4",
+            "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/inputs/change.json"
+          ],
+          "next": "用户批准真实应用后，按 prediction.verify 在观察窗内统计“越界后需要叫停”的次数，再决定保留或调整"
+        },
+        "record_path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/inputs/review-W3.json",
+        "record_sha256": "8bedd319cb26261826daf1a370918a61f2460dd86e86988c2f6b07c734690384"
+      }
+    }
+  ],
+  "active": [],
+  "targets": [
+    {
+      "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/home/.claude/CLAUDE.md",
+      "release": null,
+      "sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66"
+    },
+    {
+      "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/home/.codex/AGENTS.md",
+      "release": null,
+      "sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66"
+    },
+    {
+      "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/home/.pi/agent/AGENTS.md",
+      "release": null,
+      "sha256": "33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66"
+    }
+  ]
+}

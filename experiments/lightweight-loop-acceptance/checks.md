@@ -1,5 +1,10 @@
 # 检查结果（逐条）
 
+> **后续轮次：当前结论与证据以新目录为准。** 下表是第一轮的 19 条检查，只覆盖“流程能否跑通、字节与账本
+> 对不对”，**没有核对 W3 证据里的事件计数**（“两条叫停”被写成“两次越界”）。这条内容缺陷已在第二轮纠正，
+> 检查项见 [`round2-content-correction/checks.md`](round2-content-correction/checks.md)；本文件保留为旧轮次
+> 记录，不覆盖、不重写。
+
 按 `examples/lightweight-loop/README.md` 在全新临时目录里复跑两次后得到的检查项。第一次运行在第 15 个
 bash 块（清理）失败，修正 README 后第二次复跑全部通过；失败现场保留在 `commands-run1.log` 与
 `outputs/cleanup-fix.log`。下面除 C13 注明外，证据都来自第二次（修正后）运行。

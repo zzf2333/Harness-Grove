@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-10-30 · 轻量评估示例的证据表述纠正
+
+- 纠正 `examples/lightweight-loop/` 的 W3 证据过度表述：合成会话只有两条叫停消息（L9、L12），相邻文件的越界写入只有一次（L10 助手调用 `edit` 改 `README.md`、L11 返回“已写入 README.md”），且发生在 L9 明确叫停之后；L7/L8 改的是 `config/AGENTS.md`，属于目标文件。合成原文不动，改的是报告与生成字段：`host-report.md` 的 W3 证据指针 / 为什么改 / 凭什么判断，`render_inputs.py` 的 W3 `evidence`（增 `:L10`、`:L11`）与 `prediction.why`，以及 W3 review 的 `reason` / `observations`。上一节“L9、L12 越界”的表述以本条为准。
+- 报告新增「材料边界」：`config/AGENTS.md` 是独立准备的演练基线、不是会话编辑后的快照；未提供 Retired 记录、没做退役匹配，不能声称没有历史冲突；两条叫停不是两个独立事件的证据。
+- 按 README 现有 15 个 bash 块在全新临时目录完整复跑（`runner.sh` 由 `build_runner.py` 从 README 机械拼出并逐块校验逐字一致），15 块全部 `exit=0`，证据采集段 24 项断言全过：新报告 sha256 `53699c1b…51a4`、`change_sha256=df31a0b7…31a2`、`source=sandbox_rehearsal` 只批 W1/W3；三入口实际字节里 W1/W3 生效、W2 重复句仍在（`grep -c` = 2）；账本 7 条事实来源全为演练、三行说明原文与 `change.json` 一致、无“已验证”字段；review 保持 `observe` / `unknown`；逆序恢复回原字节 `33385c10…`；临时目录已删除。
+- 本轮证据在 `experiments/lightweight-loop-acceptance/round2-content-correction/`（`commands.log`、`checks-project.log`、`outputs/`、报告与检查），上一轮日志保留不覆盖；`experiments/` 被忽略，用 `git add -f` 精确加入，同时把上一轮的 `report.md`、`checks.md` 顶部改为指向本轮。`tools/` 与高风险规则未改。
+- 验证：`python3 -m unittest discover -s tests -t tests` → 358 tests OK；`ruff check .`、`ruff format --check .` → 通过；三条命令的退出码逐条记在 `round2-content-correction/checks-project.log`。
+- 未验证：真实配置写入、Host 是否加载改后配置、观察窗内行为统计、`source=user` 批准路径、L2 对照实验。本轮只证明文本与原文、账本、字节一致，不证明 W3 有效。
+
 ## 2026-10-30 · 轻量评估闭环的可复跑示例
 
 - 新增 `examples/lightweight-loop/`：一份合成 pi 会话（13 行，L6 是“回答先给结论”的偏好，L9、L12 是用户叫停越界改相邻文件）、5 行最小配置 `config/AGENTS.md`（与 `tests/test_change_lightweight.py` 的 `LIGHT_BASE` 逐字节相同）、宿主手写的样例报告 `host-report.md`（W1 偏好 / W2 清理重复 / W3 收益待验证的假设，标注“不是工具自动诊断”）、`render_inputs.py`（标准库，不 import `tests/`，生成变更包、`source=sandbox_rehearsal` 的演练批准与 W3 的 `observe`/`unknown` review 记录）和 `README.md`。三个 patch 与测试里的 `PREFERENCE_PATCH` / `CLEANUP_PATCH` / `ASSUMPTION_PATCH` 逐字节相同；测试是机器断言，示例是给人逐条跑的同一流程。

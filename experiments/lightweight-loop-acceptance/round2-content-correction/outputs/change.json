@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "report": {
+    "path": "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/lightweight-loop/host-report.md",
+    "sha256": "53699c1b52e7a67743489b00d62312576f9e857992565a94b198d406930551a4"
+  },
+  "items": [
+    {
+      "item_id": "W1",
+      "evidence": [
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L6",
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/temper/config/AGENTS.md:L2"
+      ],
+      "prediction": {
+        "why": "用户明确要求“以后每次回答都先给结论，再解释理由”（会话 L6）；配置第 2 行要求先复述问题再回答，与新偏好冲突",
+        "expected": "先给结论，再复述问题；不丢“用户说先别做时，不要越界执行”这条约束",
+        "verify": "读一遍：措辞是否准确表达偏好、是否与其余行冲突；偏好不需要证明更优",
+        "baseline": "待观察"
+      },
+      "target": {
+        "asset_id": "asset-0001"
+      },
+      "patch": "--- a/config/AGENTS.md\n+++ b/config/AGENTS.md\n@@ -1,3 +1,3 @@\n 先给结论。\n-先复述问题再回答。\n+先给结论，再复述问题。\n 先给结论。\n"
+    },
+    {
+      "item_id": "W2",
+      "evidence": [
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/temper/config/AGENTS.md:L3"
+      ],
+      "prediction": {
+        "why": "配置第 1 行与第 3 行是同一句“先给结论。”，同一约束写了两处",
+        "expected": "同一约束只保留一处；保留第 1 行原文，不扩大授权",
+        "verify": "对照改前改后含义：仍有一条先给结论；收益待验证"
+      },
+      "target": {
+        "asset_id": "asset-0001"
+      },
+      "patch": "--- a/config/AGENTS.md\n+++ b/config/AGENTS.md\n@@ -1,4 +1,3 @@\n 先给结论。\n 先复述问题再回答。\n-先给结论。\n 用户说先别做时，不要越界执行。\n"
+    },
+    {
+      "item_id": "W3",
+      "evidence": [
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L9",
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L10",
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L11",
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L12",
+        "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/temper/config/AGENTS.md:L4"
+      ],
+      "prediction": {
+        "why": "原文有两条叫停（L9、L12），但相邻文件的越界写入只有一次：L10 助手调用 edit 改 README.md、L11 返回“已写入 README.md”，且发生在 L9 明确叫停之后；L7、L8 改的是 config，不能算相邻越界。材料只支持“一次可见越界 + 之后两条叫停”，不能计成两次独立越界；配置第 4 行只写“先别做时不要越界执行”，没写不能顺手做相邻改动",
+        "expected": "越界后需要用户叫停的情况减少；不丢原有“先别做时不越界”约束",
+        "verify": "收益待验证：本轮不做行为实验，单条合成会话也说不出真实环境里的越界频率；用户批准真实应用后，在观察窗内统计越界后需要叫停的次数",
+        "baseline": "待观察"
+      },
+      "target": {
+        "asset_id": "asset-0001"
+      },
+      "patch": "--- a/config/AGENTS.md\n+++ b/config/AGENTS.md\n@@ -3,3 +3,3 @@\n 先给结论。\n-用户说先别做时，不要越界执行。\n+用户说先别做时，不要越界执行，也不要顺手做相邻改动。\n 复盘时先读账本。\n"
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+== 会话原文：W3 引用到的行 ==
+L9 user: 停一下，我没让你改 README。先别做相邻改动。
+L10 assistant: toolCall edit {"path": "README.md", "newText": "整理后的说明"}
+L11 toolResult: 已写入 README.md
+L12 user: 不是让你顺手改别的文件，我说的是只动 config。停下来。
+
+== 配置原文 L1–L5（恢复后的共享文件）==
+L1 先给结论。
+L2 先复述问题再回答。
+L3 先给结论。
+L4 用户说先别做时，不要越界执行。
+L5 复盘时先读账本。
+== 事件计数（本轮的纠正对象）==
+带“停”的用户叫停行：['9', '12']
+非 config 的助手写入调用：(行号, 路径) = [('10', 'README.md')]
+[通过] 两条叫停消息存在（L9、L12）
+[通过] 相邻文件写入只有一次，且在 L9 叫停之后
+[通过] L11 是该调用的成功结果
+
+== change.json 的 W3 证据与三行说明 ==
+evidence = ["/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L9", "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L10", "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L11", "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/lightweight-loop/pi-root/sessions/--home-demo-proj--/2026-10-28T09-00-00-000Z_7c1d0c4e-2b5a-4f36-9d2e-6a1b0c3d5e7f.jsonl:L12", "/private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB/temper/config/AGENTS.md:L4"]
+prediction.why = 原文有两条叫停（L9、L12），但相邻文件的越界写入只有一次：L10 助手调用 edit 改 README.md、L11 返回“已写入 README.md”，且发生在 L9 明确叫停之后；L7、L8 改的是 config，不能算相邻越界。材料只支持“一次可见越界 + 之后两条叫停”，不能计成两次独立越界；配置第 4 行只写“先别做时不要越界执行”，没写不能顺手做相邻改动
+prediction.expected = 越界后需要用户叫停的情况减少；不丢原有“先别做时不越界”约束
+prediction.verify = 收益待验证：本轮不做行为实验，单条合成会话也说不出真实环境里的越界频率；用户批准真实应用后，在观察窗内统计越界后需要叫停的次数
+prediction.baseline = 待观察
+[通过] W3 证据含 L10、L11（助手调用与工具结果）
+[通过] W3 三行说明不再写“两次因 Agent 顺手改相邻文件被叫停”
+[通过] W3 三行说明写清一次可见越界与 L10/L11
+[通过] 报告不再写“两次因…被叫停”
+[通过] 报告写明 config 是独立基线、未提供 Retired、两条叫停不是两个独立事件
+[通过] W3 收益仍标“收益待验证”
+
+== 批准与来源 ==
+source = sandbox_rehearsal，items = ['W1', 'W3']，change_sha256 = df31a0b71e01f9d2184c5d51bc241e8fc3c1db5f146cf73222cae40e2e9231a2
+change.json 实际 sha256 = df31a0b71e01f9d2184c5d51bc241e8fc3c1db5f146cf73222cae40e2e9231a2
+[通过] 批准来源是 sandbox_rehearsal，只批 W1/W3
+[通过] 批准绑定的 hash 等于这份 change.json
+
+== 账本 ==
+事实 7 条，kind 顺序 = ['approval', 'apply', 'approval', 'apply', 'review', 'restore', 'restore']
+[通过] 来源全部 sandbox_rehearsal
+[通过] W2 从未入账
+[通过] 账本没有把批准或应用写成效果已验证
+[通过] 非 review 事实没有 prediction_met
+[通过] 入账的三行说明与 change.json 原文一致
+review 记录：[{"verdict": "observe", "prediction_met": "unknown"}]
+[通过] review 只有一条、记在 x0002、保持 observe/unknown
+[通过] review 的 observations 含 L10/L11
+
+== 应用与恢复的字节 ==
+x0001 before = 33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66（原文件）
+x0001 after  = 4d5f43965e509569941f588734a5c1f722dbc179b1fdc136072ac744816d5880
+x0002 after  = a98213676922a48ae0278eb6a4a3a62f6e237d81445a695b1eac996eae747421（W1+W3 生效）
+.pi/agent/AGENTS.md: sha256=33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66 软链=True
+.codex/AGENTS.md: sha256=33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66 软链=True
+.claude/CLAUDE.md: sha256=33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66 软链=True
+共享文件 sha256 = 33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66
+[通过] W1、W3 应用后字节不同于原始，且两次应用不同
+[通过] 恢复链回到原字节：x0001 restored = 原文件，x0002 restored = W1 之后
+[通过] 恢复后三个入口与共享文件、仓库原文逐字节相同 —— 33385c1002dbddc188f311a998d428b7bbf324397ec83a497925cd86654d1f66
+[通过] 恢复后三个入口仍是软链
+[通过] 恢复后没有残留发布链（active 为空）
+
+== 报告 hash ==
+沙箱内报告 sha256 = 53699c1b52e7a67743489b00d62312576f9e857992565a94b198d406930551a4
+仓库内报告 sha256 = 53699c1b52e7a67743489b00d62312576f9e857992565a94b198d406930551a4
+change.json 记录的 report.sha256 = 53699c1b52e7a67743489b00d62312576f9e857992565a94b198d406930551a4
+[通过] 报告 hash 一致（沙箱副本、仓库原文、change.json 记录）
+
+全部 24 项检查：通过
+WORK = /private/var/folders/49/3ffdfzyd1m73r41mf734k14h0000gn/T/tmp.emlGbvnBWB

@@ -1,5 +1,12 @@
 # 轻量评估闭环示例·首次使用者验收报告
 
+> **后续轮次：当前结论与证据以新目录为准。** 本文件是第一轮复跑记录：证明 15 个 bash 块能跑通、字节与
+> 账本对得上。但那一轮没有核对 W3 证据的**事件计数**，漏掉了“把两条叫停写成两次独立越界”的内容缺陷。
+> 报告与生成字段已在第二轮纠正，报告 sha256 与 `change_sha256` 因此重新生成。现在的结论与证据指向
+> [`round2-content-correction/report.md`](round2-content-correction/report.md) 与
+> [`round2-content-correction/checks.md`](round2-content-correction/checks.md)。本文件的旧日志保留、不覆盖；
+> 下文出现的 hash、临时目录路径与运行输出都属于上一轮。
+
 验收对象：仓库内新增的 `examples/lightweight-loop/`（README、合成会话、最小配置、宿主报告样例、
 `render_inputs.py`）。
 
@@ -21,7 +28,7 @@
 | `history.py digest` 生成摘要 | 工具生成 | 通过 | 1/1 会话、1 块，正文 4 条用户发言（L2/L6/L9/L12） |
 | 回读原文、读报告 | 宿主判断 | 通过 | `sed` 打印 L2/L6/L9/L12 与配置 L1–L4；报告里的原文与之一致（`outputs/pointer-consistency.txt`） |
 | `inventory.py --home` + `registry.py adopt --group` | 工具生成 | 通过 | 三个入口聚成一组，`asset-0001`，3 条 observed path |
-| `render_inputs.py` 生成变更包/批准/review 记录 | 工具生成 | 通过 | `change_sha256=9b7c43fc…`（第二次运行）；批准只含 W1、W3，`source=sandbox_rehearsal` |
+| `render_inputs.py` 生成变更包/批准/review 记录 | 工具生成 | 通过 | `change_sha256=9b7c43fc…`（第二次运行，报告文本已改，本轮新值 `df31a0b7…` 见新目录）；批准只含 W1、W3，`source=sandbox_rehearsal` |
 | `change.py apply` W1、W3 | 工具生成 | 通过 | `x0001`/`r0001`、`x0002`/`r0002`，前后 sha256 与 `status` 一致 |
 | W2 不批不生效 | 工具生成（`grep -c`） | 通过 | 三个入口仍有 2 行“先给结论。” |
 | W1、W3 在三个入口实际生效 | 工具生成（`cat`/`cmp`）+ 人眼核对 | 通过 | 第 2 行改对、第 4 行加了“也不要顺手做相邻改动” |
