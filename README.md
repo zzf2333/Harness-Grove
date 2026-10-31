@@ -8,12 +8,12 @@ Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 是�
 
 已交付的是零件与沙箱闭环，完成状态只在各自声明的范围内成立：
 
-- 产品路线：[docs/ROADMAP.md](docs/ROADMAP.md) R1–R4。R1（独立开始使用：安装/初始化、发现资产与 Host 入口）未开始；R2 的闭环代码已在沙箱跑通，真实写入未执行。
+- 产品路线：[docs/ROADMAP.md](docs/ROADMAP.md) R1–R4。R1（独立开始使用：安装/初始化、发现资产与 Host 入口）未开始；R2 的闭环代码已在沙箱跑通，安装用户在授权范围内更新自己配置的入口还没提供——现有 `release_deploy` 守卫明确拒绝真实 home 及 Host 入口路径，开发与验收继续用隔离模拟用户环境。
 - M1 的 A–D1 已在沙箱完成（盘点、登记、漂移检测、发布/部署/回滚）；D2（MCP、hooks、Codex config.toml）未开始，接管真实环境需用户另批，见 [docs/M1_PLAN.md](docs/M1_PLAN.md)。
 - M2 已完成（按原定 Gate 结项，2026-10-30）：历史采集、结构分组、`log`/`status` 续作记录、Codex Target 最小接口已完成。两个真实 Host 续作同一提案已通过：S1 阻塞交接（Pi 起草、真实 Codex 会话从文件续读并停在阻塞处），S2 正常冻结交接（Pi 起草、Codex 独立复核后冻结，主控补核快照绑定；未批准或运行 Target），见 [docs/M2_PLAN.md](docs/M2_PLAN.md)。Target 按需逐个适配：Claude Code 有 M-1/M0 真实运行证据；真实 Claude Code Target 实验 m2-real-002 启动 1/15 次后因服务端拒绝订阅登录（403）停在 `pivot:telemetry_missing`，加载链阻塞保留。Codex Target 真实运行、费用与隔离验证是后续适配项，不追加为 Gate。
 - M3a（历史阶段，未完成）：切片 A 完成，新增 `tools/proposal.py draft/check` 从 M2 分组产物生成经验候选提案并只读检查缺项；切片 B1 完成，`draft --retired <JSON>` / `check --retired <JSON>` 处理 Host 显式给出的有限 Retired 检索文件并核对 `unrelated` / `alternative` / `reopen` 关系。自动 Retired 检索（B2）、自动独立证据判断（C）暂停，D 缩小为改前写三行说明（为什么改 / 期待 / 凭什么判断），见 [docs/M3a_PLAN.md](docs/M3a_PLAN.md)。
 - 闭环切片 1（沙箱实现，R2 的零件）：`tools/history.py digest` 把真实会话整理为带源文件/行号指针的脱敏 Markdown 分块；宿主按 [Skill §11](skill/harness-evolve/SKILL.md#11-经验复盘闭环切片-1) 只读诊断、核对原文并生成可审批报告。已在真实会话上跑过摘要，报告与真实验收未在真实配置上执行。
-- 闭环切片 2（沙箱实现，R2 的零件）：`tools/change.py apply/status/restore` 把报告条目按批准应用到临时 home 的三个 Agent 入口，账本 `<phe-home>/ledger.jsonl` 只追加批准/应用/恢复事实，恢复按执行逆序；真实配置仍未写入。见 [docs/M3a_PLAN.md](docs/M3a_PLAN.md#闭环切片-2批准应用与恢复仅临时配置) 与 [Skill §12](skill/harness-evolve/SKILL.md#12-经验复盘应用闭环切片-2)。
+- 闭环切片 2（沙箱实现，R2 的零件）：`tools/change.py apply/status/restore` 把报告条目按批准应用到临时 home 的三个 Agent 入口，账本 `<phe-home>/ledger.jsonl` 只追加批准/应用/恢复事实，恢复按执行逆序；真实配置未写入（`change.py` 当前只在沙箱运行，守卫拒绝真实入口）。见 [docs/M3a_PLAN.md](docs/M3a_PLAN.md#闭环切片-2批准应用与恢复仅临时配置) 与 [Skill §12](skill/harness-evolve/SKILL.md#12-经验复盘应用闭环切片-2)。
 - 闭环切片 3（沙箱实现，R2 的零件）：`tools/change.py review-plan/review` 读账本给出每个执行的观察窗与原预测（三行说明），把宿主的保留/调整/撤销/继续观察连同证据指针与记录 sha256 追加为 `review` 事实；`status` 附最新 review。工具只记录、不判断效果，`revert` 仍需用户批准后才 `restore`。演练在切片 2 账本副本上跑通，见 [docs/M3a_PLAN.md](docs/M3a_PLAN.md#闭环切片-3复盘账本对照原预测) 与 [Skill §13](skill/harness-evolve/SKILL.md#13-复盘记录闭环切片-3)。
 - M-1 已完成：spike-001 判定 **go**（2026-10-28，25 次运行，7 项门槛全部通过）；真实规则信号为 inconclusive。M0 已完成：生产等价基线复验 c-002 判定 go（15 次，规则信号 inconclusive）。运行产物位于被忽略的 `experiments/`。
 
@@ -41,7 +41,7 @@ Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 是�
 
 ## 仓库与用户资产的区别
 
-本仓库是**源码**：`tools/` 是产品代码，`skill/harness-evolve/` 是可移植 Skill 源码，`examples/` 是手写合成示例，测试只写临时目录。用户的真实 Harness 资产、发布、绑定和账本在仓库外的 PHE_HOME（产品规划默认 `~/.phe`，当前没有安装/初始化入口）；真实 Host 入口是 `~/.pi`、`~/.codex`、`~/.claude`、`~/.agents` 及项目级目录。仓库里没有、也不提交这些内容。
+本仓库是**源码**：`tools/` 是产品代码，`skill/harness-evolve/` 是可移植 Skill 源码，`examples/` 是手写合成示例，测试只写临时目录。目标是用户的 Harness 资产、发布、绑定、账本、证据摘要与报告都在仓库外的 PHE_HOME（产品规划默认 `~/.phe`，当前没有安装/初始化入口）；真实 Host 入口是 `~/.pi`、`~/.codex`、`~/.claude`、`~/.agents` 及项目级目录。规范上，新增提交不引入用户会话、真实配置或本机绝对路径。现状：早期 `experiments/` 下用 `git add -f` 加入的工件含本机绝对路径，`episodes/`、`reports/` 仍是开发期写入位置；两者都未清理，不把清理当作已完成。
 
 ## 目录约定
 
