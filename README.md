@@ -2,13 +2,70 @@
 
 Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 是面向所有用户的开源产品：用户安装后，结合自己已有的完整 Agent Harness（指令、Skills、MCP、Hooks、扩展、工具配置）、行为习惯和会话反馈，持续个性化优化，帮助驾驭 Agent。它用可追溯的证据、默认轻量的评估（值得时才做有限成本的实验）和人工批准来改动配置；资产管理是基础，评测是手段。
 
-产品当前还在 R1：仓库里有可复用的零件和沙箱闭环，**没有安装/初始化入口，也没有任何真实配置被写入**。排程见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+产品当前还在 R1：仓库里有可复用的零件和沙箱闭环，`tools/workspace.py` 提供克隆后即可用的初始化与只读发现入口（**不是安装包**），**没有任何真实配置被写入**。排程见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+
+## 克隆后开始使用（R1：初始化 + 只读发现）
+
+这叫“克隆后开始使用”，不是安装包：没有安装命令，没有默认 PHE_HOME，也不写任何真实 Host 配置。
+下面整段流程只写一个新开的临时工作区 `$WORK`：合成 Host 树、仓库外的 PHE_HOME、无关的 cwd。
+命令可以直接复制，把 `SRC` 换成你 clone 下来的仓库路径（`-I` 让 Python 不读当前目录与用户 site-packages）。
+
+```bash
+WORK=$(cd "$(mktemp -d)" && pwd -P); SRC=/path/to/Harness-Grove
+mkdir -p "$WORK/host/.claude/skills/demo" "$WORK/host/.claude/rules" "$WORK/host/.pi/agent" \
+    "$WORK/host/.codex" "$WORK/project/.claude/skills/proj-skill" "$WORK/elsewhere"
+printf '共享指令：回答先给结论。\n' > "$WORK/shared-AGENTS.md"
+printf '# Claude 指令\n' > "$WORK/host/.claude/CLAUDE.md"
+printf -- '---\nname: demo\n---\n演示 skill\n' > "$WORK/host/.claude/skills/demo/SKILL.md"
+printf '{"servers": {"demo": {"command": "demo"}}}\n' > "$WORK/host/.pi/agent/mcp.json"
+printf '风格规则\n' > "$WORK/host/.claude/rules/style.md"
+ln -s "$WORK/shared-AGENTS.md" "$WORK/host/.pi/agent/AGENTS.md"
+ln -s "$WORK/shared-AGENTS.md" "$WORK/host/.codex/AGENTS.md"
+printf '项目指令\n' > "$WORK/project/AGENTS.md"
+printf -- '---\nname: proj-skill\n---\n' > "$WORK/project/.claude/skills/proj-skill/SKILL.md"
+cd "$WORK/elsewhere"
+
+python3 -I "$SRC/tools/workspace.py" init --phe-home "$WORK/phe"
+python3 -I "$SRC/tools/workspace.py" discover --phe-home "$WORK/phe" \
+    --home "$WORK/host" --project "$WORK/project"
+```
+
+`init` 建出 `<PHE_HOME>/assets/`、`<PHE_HOME>/releases/` 和格式版本标记 `<PHE_HOME>/workspace.json`；
+重复运行保留已有数据，不迁移、不覆盖。登记表、账本与绑定按实际操作创建，`init` 不预建。
+`--phe-home` 也可以用 `PHE_HOME` 环境变量给，命令行优先；两者都没给就报错退出 2，不会默认落到 `~/.phe`。
+
+`discover` 只读盘点，把结果写进 PHE_HOME：
+
+| 文件 | 内容 |
+|---|---|
+| `<PHE_HOME>/reports/discovery.md` | 人可读清单：来源路径、软链目标、Host 入口、逻辑类型、登记状态、能力限制、`load_chain unverified` |
+| `<PHE_HOME>/reports/discovery.json` | 同一份结果的结构化版本：ObservedAsset 字段 + 管理状态 + 登记状态 + 覆盖摘要与扫描范围 |
+
+看报告：`less "$WORK/phe/reports/discovery.md"`。它不改输入文件、软链、登记表或配置，同一 fixture 连跑两次字节一致。
+
+可选：把共享指令登记成基线（`registry.py adopt` 只写登记表，不改被登记文件），再跑一次 `discover`，
+报告里那条资产会显示“已登记 asset-0001（Active）”，其余仍是“未登记”：
+
+```bash
+python3 -I "$SRC/tools/inventory.py" --home "$WORK/host" --project "$WORK/project" \
+    --out "$WORK/phe/registry/inventory.json"
+python3 -I "$SRC/tools/registry.py" adopt --inventory "$WORK/phe/registry/inventory.json" \
+    --registry "$WORK/phe/registry/assets.json" --group "$WORK/shared-AGENTS.md"
+python3 -I "$SRC/tools/workspace.py" discover --phe-home "$WORK/phe" \
+    --home "$WORK/host" --project "$WORK/project"
+```
+
+这一次运行告诉你什么：机器上有哪些 Harness 资产、从哪个文件或软链来、哪个 Host 入口在读、PHE 到哪一步能管
+（`沙箱可托管` / `部分可托管` / `仅观察` / `未支持`）。它**不**证明这些配置被 Host 加载过：每条都标 `load_chain unverified`。
+MCP 只有文件级观察，Hooks 没有候选路径所以列“未支持”。下一步是 R2（用会话证据生成可逐条批准的改动），
+那一轮的写入入口还没有提供。本流程的验收记录见 [docs/acceptance/r1.md](docs/acceptance/r1.md)。
+看完后清理：`rm -rf "$WORK"`（全部内容都只在这个临时目录里）。
 
 ## 当前状态
 
 已交付的是零件与沙箱闭环，完成状态只在各自声明的范围内成立：
 
-- 产品路线：[docs/ROADMAP.md](docs/ROADMAP.md) R1–R4。R1（独立开始使用：安装/初始化、发现资产与 Host 入口）未开始；R2 的闭环代码已在沙箱跑通，安装用户在授权范围内更新自己配置的入口还没提供——现有 `release_deploy` 守卫明确拒绝真实 home 及 Host 入口路径，开发与验收继续用隔离模拟用户环境。
+- 产品路线：[docs/ROADMAP.md](docs/ROADMAP.md) R1–R4。R1（独立开始使用）的初始化与只读发现入口已交付：`tools/workspace.py init/discover` 在沙箱验收（见 [docs/acceptance/r1.md](docs/acceptance/r1.md)），报告写在显式 PHE_HOME 的 `reports/` 下；仍未提供安装包、默认 PHE_HOME、真实 Host 写入与加载验证。R2 的闭环代码已在沙箱跑通，安装用户在授权范围内更新自己配置的入口还没提供——现有 `release_deploy` 守卫明确拒绝真实 home 及 Host 入口路径，开发与验收继续用隔离模拟用户环境。
 - M1 的 A–D1 已在沙箱完成（盘点、登记、漂移检测、发布/部署/回滚）；D2（MCP、hooks、Codex config.toml）未开始，接管真实环境需用户另批，见 [docs/M1_PLAN.md](docs/M1_PLAN.md)。
 - M2 已完成（按原定 Gate 结项，2026-10-30）：历史采集、结构分组、`log`/`status` 续作记录、Codex Target 最小接口已完成。两个真实 Host 续作同一提案已通过：S1 阻塞交接（Pi 起草、真实 Codex 会话从文件续读并停在阻塞处），S2 正常冻结交接（Pi 起草、Codex 独立复核后冻结，主控补核快照绑定；未批准或运行 Target），见 [docs/M2_PLAN.md](docs/M2_PLAN.md)。Target 按需逐个适配：Claude Code 有 M-1/M0 真实运行证据；真实 Claude Code Target 实验 m2-real-002 启动 1/15 次后因服务端拒绝订阅登录（403）停在 `pivot:telemetry_missing`，加载链阻塞保留。Codex Target 真实运行、费用与隔离验证是后续适配项，不追加为 Gate。
 - M3a（历史阶段，未完成）：切片 A 完成，新增 `tools/proposal.py draft/check` 从 M2 分组产物生成经验候选提案并只读检查缺项；切片 B1 完成，`draft --retired <JSON>` / `check --retired <JSON>` 处理 Host 显式给出的有限 Retired 检索文件并核对 `unrelated` / `alternative` / `reopen` 关系。自动 Retired 检索（B2）、自动独立证据判断（C）暂停，D 缩小为改前写三行说明（为什么改 / 期待 / 凭什么判断），见 [docs/M3a_PLAN.md](docs/M3a_PLAN.md)。
@@ -22,6 +79,7 @@ Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 是�
 | 文件 | 内容 | 什么时候读 |
 |---|---|---|
 | [docs/ROADMAP.md](docs/ROADMAP.md) | **当前唯一排程**：产品目标、三个空间、Harness 资产现状矩阵、R1–R4 各自场景/复用/缺口/验收/依赖/完成标准 | 想知道现在做什么、下一步做什么 |
+| [docs/acceptance/r1.md](docs/acceptance/r1.md) | R1 验收记录：初始化与只读发现的命令、退出码、断言、剩余缺口与未验证项 | 想复核 R1 交付或重跑首次使用流程时 |
 | [docs/PHE_SPEC.md](docs/PHE_SPEC.md) | 产品契约：边界、三个空间、用户流程、架构、术语与状态、生命周期、资产库共同契约、安全、历史阶段与评估口径 | 想了解产品边界与长期怎么设计 |
 | [skill/harness-evolve/SKILL.md](skill/harness-evolve/SKILL.md) | 可移植 Agent Skill：起草 → 冻结 → 用户批准 → `run` → `judge` 的操作顺序与硬规则 | 准备在宿主 Agent 里跑一次规则消融评测时 |
 | [docs/M2_PLAN.md](docs/M2_PLAN.md) | M2 历史采集、证据分组、跨 Host 续作的切片与隐私约束（历史阶段） | 做 M2 相关维护 |
@@ -41,10 +99,11 @@ Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 是�
 
 ## 仓库与用户资产的区别
 
-本仓库是**源码**：`tools/` 是产品代码，`skill/harness-evolve/` 是可移植 Skill 源码，`examples/` 是手写合成示例，测试只写临时目录。目标是用户的 Harness 资产、发布、绑定、账本、证据摘要与报告都在仓库外的 PHE_HOME（产品规划默认 `~/.phe`，当前没有安装/初始化入口）；真实 Host 入口是 `~/.pi`、`~/.codex`、`~/.claude`、`~/.agents` 及项目级目录。规范上，新增提交不引入用户会话、真实配置或本机绝对路径。现状：早期 `experiments/` 下用 `git add -f` 加入的工件含本机绝对路径，`episodes/`、`reports/` 仍是开发期写入位置；两者都未清理，不把清理当作已完成。
+本仓库是**源码**：`tools/` 是产品代码，`skill/harness-evolve/` 是可移植 Skill 源码，`examples/` 是手写合成示例，测试只写临时目录。目标是用户的 Harness 资产、发布、绑定、账本、证据摘要与报告都在仓库外的 PHE_HOME（产品规划默认 `~/.phe`；当前只有克隆后的 `tools/workspace.py init --phe-home <目录>`，没有安装包，也没有创建过默认目录）；真实 Host 入口是 `~/.pi`、`~/.codex`、`~/.claude`、`~/.agents` 及项目级目录。规范上，新增提交不引入用户会话、真实配置或本机绝对路径。现状：早期 `experiments/` 下用 `git add -f` 加入的工件含本机绝对路径，`episodes/`、`reports/` 仍是开发期写入位置；两者都未清理，不把清理当作已完成。
 
 ## 目录约定
 
+- `tools/workspace.py`：R1 的用户入口，克隆后从任意工作目录用 `python3 -I <源码>/tools/workspace.py` 运行，不是安装包。`init --phe-home <目录>`（或 `PHE_HOME` 环境变量，命令行优先；没有默认目录）建出 `assets/`、`releases/` 与格式版本标记 `workspace.json`；已有工作区保留数据、不迁移，版本不符时拒绝并说明。`discover --phe-home <目录> --home <显式 Host 根> [--project <根> …] [--registry <登记表>]` 复用 `inventory.py` 的候选路径表与分组做只读盘点，读 `<PHE_HOME>/registry/assets.json`（缺省位置）标记登记状态，把 `reports/discovery.md`（人可读）和 `reports/discovery.json`（结构化，不含运行时间所以可复现）写进 PHE_HOME；不 adopt、不导入、不部署、不改输入。覆盖摘要按逻辑类型列“发现 N 条 / 未发现 / 未支持”，Hooks 这类没有候选路径的类型记“未支持”、不猜路径；每条记录带管理状态（`沙箱可托管` / `部分可托管` / `仅观察` / `未支持`）与 `load_chain unverified`。项目级范围只在传了 `--project` 时扫描，没传时报告写“未扫描”，不写成“没有”。
 - `tools/m1/run_spike.py`：M-1 最小 Runner，只用标准库；一次调用跑一个 slot，产出写到 `experiments/<id>/`。
 - `tools/phe.py`：M0 评测入口；`run <实验目录>` 按已批准 proposal 调度，`judge <实验目录> [--out <结果路径>]` 判定。组角色由 `harness.variants[*].remove` 推导（两个空列表为基线，`real_rule` 为真实规则，`required_control` / `redundant_control` 可缺省）；次数、顺序、数值门槛和预算读取 proposal，执行参数读取 config。`gates.version` 缺省为 v1，新模板使用 v2；缺少控制组的对应门槛输出 `not_applicable`。Target 由 `proposal.target.agent` 选择：`claude-code` 保持旧默认命令；`codex` 使用 `codex exec --json --ephemeral --ignore-user-config -s workspace-write -C <work> -m <proposal.target.model_id> -o <output>/last-message.txt <prompt>`。`config.target_agent` 只用于声明同一选择，与 proposal 冲突时拒绝启动；`config.target_argv` 只替代 Claude 默认命令供不调用模型的本地验证，Codex 拒绝这个覆盖、只用规范 argv（本地契约验证在测试层替换 subprocess），`argv.json` 记录完整实际 argv。Codex JSONL 取最后一次 `turn.completed` 的 thread 累计用量，TOK 只算 input+output；缺 usage、坏行、非零退出和失败事件保留 error 语义，不补零，最后一个 turn 未闭合也按截断处理。费用没有来源，保持 `None` 并继续 `pivot:telemetry_missing`；不提供 max-turns 预算控制。Codex 指纹只覆盖 `~/.codex/AGENTS.md` 和 `config.toml`，不读 auth。真实 Codex 会话隔离与费用仍未验证（详见 [docs/M2_RUN_CONTROLS.md](docs/M2_RUN_CONTROLS.md)）。`run --pause-after-new-slots N` 在完成 N 个新 slot 后、启动下一个 Target 前主动暂停：退出码 0、不写 `stop.json`，续跑按原 schedule 跳过已完成；墙钟预算按 `runs.jsonl` 里已记录的执行时长为累计，人工等待不计入。`config.sandbox` 声明后用固定路径的 macOS `/usr/bin/sandbox-exec` 在执行层把 Target 及其子进程、外置验收器和后续 Git 采集限制为只能写 runner 为本 slot 创建的三个临时目录（工作目录、专用 tmp、输出子目录）；沙箱程序和写目录都不可配置，每个 slot 启动前用实际 policy 和完整允许清单实测，新实验还冻结 runner 模块 Hash（Codex 实验无论有无 `sandbox` 都要求完整三项，要求取自冻结 proposal 的原始 `target.agent`），不可用或配置越权就拒绝启动；验收前覆盖可信测试时按真实路径核对目的文件，逃出验收副本的链接、绝对路径和 `..` 直接拒绝并记下原因（详见 [docs/M2_RUN_CONTROLS.md](docs/M2_RUN_CONTROLS.md)）。`log <实验目录> --host {claude,codex,pi} --step {draft,freeze,approve,run,judge,report} [--note <说明>]` 追加一条续作记录到 `experiments/<id>/host_log.jsonl`（在 proposal 冻结哈希之外，不改 proposal.json）；`status <实验目录>` 只读推导阶段（`empty` → `drafted` → `frozen` → `approved` → `running` → `judged` → `reported`），输出 `stage`、各文件是否存在的 `evidence`、`last_log`、`inconsistent`（日志声称的步骤比文件证据靠后）和 `notes`（坏行行号、证据链缺口），不写任何文件。旧 `tools/m1/` 入口保留供冻结实验引用。
 - `tools/inventory.py`：M1 切片 A 的只读盘点；`--home`、`--project`（可多个）指定扫描根，`--out` 写 ObservedAsset JSON（缺省打印到 stdout）。每条记录带软链目标、断链标记、Hash、`status: unmanaged`、`load_chain: unverified`；顶层 `groups` 按真实路径聚合共享条目。`agent` 取 `claude`、`codex`、`pi` 或 `shared`：`shared` 表示跨工具共享目录（目前是 `~/.agents/skills`，Codex 和 Pi 都读、Claude Code 不读），这类记录另带 `readers`，单一 Agent 的目录不记（`readers` 来自本机观察，未按官方文档核实）。`settings*.json`、`.mcp.json`、`config.toml` 只记 Hash 和顶层键名，不记值。

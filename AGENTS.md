@@ -12,7 +12,7 @@
 ## 三个分离的空间
 
 - **源码仓库（本仓库）：** 代码、Skill、测试、文档与手写合成示例。规范：新增内容不引入用户会话、真实配置或本机绝对路径，测试 fixture 全部手写合成。现状：早期 `experiments/` 下用 `git add -f` 加入的演练工件里有本机绝对路径，属开发期 legacy 用法，尚未清理；不声称仓库当前已经干净。
-- **每用户 PHE_HOME：** 资产源、发布、绑定、账本，以及该用户的证据摘要与报告，在仓库外。默认 `~/.phe` 只是产品规划，当前没有安装/初始化命令；开发和验收用显式隔离目录。现在摘要与报告仍写在仓库内被忽略的 `episodes/`、`reports/`，是开发期 legacy 用法，产物路径调整列入 R1/R2。
+- **每用户 PHE_HOME：** 资产源、发布、绑定、账本，以及该用户的证据摘要与报告，在仓库外。默认 `~/.phe` 只是产品规划；现有的是克隆后的初始化与发现入口 `tools/workspace.py init/discover`（不是安装包，无默认路径，不建 `~/.phe`）；开发和验收用显式隔离目录。发现报告已写到 `<PHE_HOME>/reports/`；摘要与复盘报告仍写在仓库内被忽略的 `episodes/`、`reports/`，是开发期 legacy 用法，产物路径调整仍在 R2。
 - **Host 实际配置入口：** `~/.pi`、`~/.codex`、`~/.claude`、`~/.agents` 和项目级目录，归用户所有。产品正常使用由安装用户在自己的 PHE_HOME 与入口上按具体 diff、目标路径和恢复方式批准更新；当前 `release_deploy` 守卫明确拒绝真实 home 及这些入口路径，安装用户的写入入口排在 R2，不改守卫。
 
 ## 验证与完成口径
@@ -25,8 +25,8 @@
 
 ## 当前阶段：按 ROADMAP 补齐产品主线
 
-- 当前排程唯一来源：[docs/ROADMAP.md](docs/ROADMAP.md) 的 R1–R4。当前焦点是 R1（安装/初始化与发现）；R2（指令上的持续个性化闭环）依赖 R1 的初始化与入口发现；R3a–R3e（Skills、MCP、Hooks、扩展与工具配置）的契约可并行设计与沙箱验收；R4 的实例隔离核对可以提前做。不把 R1–R4 当成只能串行的固定顺序，也不把 R4 定成“必须最后才能开始”。
-- 已完成的是零件和沙箱闭环：`history.py digest` 生成摘要，`tools/proposal.py draft/check` 生成候选提案，`tools/change.py apply/status/restore/review-plan/review` 在临时配置上跑通批准、应用、复盘与恢复，Skill §11–§13 编排这条流程。它们是 R2 的沙箱实现，不是产品完成；安装用户在授权范围内更新自己配置的入口仍未提供。
+- 当前排程唯一来源：[docs/ROADMAP.md](docs/ROADMAP.md) 的 R1–R4。R1 的初始化与只读发现入口已交付（`tools/workspace.py init/discover`，沙箱验收，证据在 [docs/acceptance/r1.md](docs/acceptance/r1.md)）；当前焦点是 R2（指令上的持续个性化闭环），它依赖 R1 已提供的初始化与入口发现；R3a–R3e（Skills、MCP、Hooks、扩展与工具配置）的契约可并行设计与沙箱验收；R4 的实例隔离核对可以提前做。不把 R1–R4 当成只能串行的固定顺序，也不把 R4 定成“必须最后才能开始”。
+- 已交付的是零件、沙箱闭环与 R1 入口：`tools/workspace.py init/discover`（克隆后从任意目录用 `python3 -I <源码>/tools/workspace.py` 运行，报告写 `<PHE_HOME>/reports/`）；`history.py digest` 生成摘要，`tools/proposal.py draft/check` 生成候选提案，`tools/change.py apply/status/restore/review-plan/review` 在临时配置上跑通批准、应用、复盘与恢复，Skill §11–§13 编排这条流程。R2 部分是沙箱实现，不是产品完成；安装用户在授权范围内更新自己配置的入口仍未提供。
 - 复用现有 `tools/` 实现和 Skill 串联，不新建通用框架，不建第二套任务账本或资产布局。
 - M3a 的 B2（自动 Retired 检索）、C（自动独立性判定）暂停，由宿主显式写出依据；D 只保留“改动前写下预测和验证方法”。L2 对照实验是可选手段，只在有争议的改动上用。
 

@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026-10-31 · R1 交付：克隆后初始化与只读发现（`tools/workspace.py`）
+
+- 新增 `tools/workspace.py`（只用标准库，无新依赖、无打包框架）：`init --phe-home <目录>` 建 `assets/`、`releases/` 与格式版本标记 `workspace.json`，重复运行保留数据、版本不符时拒绝且不写；`discover --phe-home <目录> --home <显式 Host 根> [--project …] [--registry …]` 复用 `inventory.py` 的候选路径表与分组做只读盘点，读 `<PHE_HOME>/registry/assets.json`（缺省位置，沿用 `registry.py` 现有默认文件名 `registry/assets.json`，没建资产类型目录）标记登记状态，把 `reports/discovery.md` 与 `reports/discovery.json` 写进 PHE_HOME。不 adopt、不导入、不部署、不改输入。
+- 入口按“克隆后开始使用”交付，不冒充安装包：从任意 cwd 用 `python3 -I <源码>/tools/workspace.py` 运行，没有默认 PHE_HOME（只认 `--phe-home` 或 `PHE_HOME`，命令行优先，两者都缺退出 2），不读真实 home；用户入口没塞进 `phe.py` 实验 CLI。
+- 报告内容：每类资产的来源路径、软链目标、Host 入口、逻辑类型、登记状态（已登记 `<asset_id>` / 未登记）、管理状态（`沙箱可托管` / `部分可托管` / `仅观察` / `未支持`）与 `load_chain unverified`；覆盖摘要按 10 个 `kind` 列“发现 N 条 / 未发现 / 未支持”，Hooks 无候选路径记未支持、不编造路径；MCP 只写文件级观察；Skills 只写发布/部署能力；项目级范围没传 `--project` 时写“未扫描”。报告不含运行时间，同 fixture 同路径两次运行字节一致。
+- 测试 `tests/test_workspace.py`（15 个）：先写契约测试，确认入口不存在时这组用例失败（退出码 2、14 项红），再实现转绿。覆盖 init 骨架/幂等/版本不符、`PHE_HOME` 环境变量与命令行优先、缺参退出码、发现报告字段与三态、共享软链与来源、输入前后不变、输出只在 PHE_HOME、两次字节一致、未初始化拒绝、已有登记表状态、项目级未扫描边界。
+- 文档：README 新增「克隆后开始使用」可复制流程（全合成 Host）；ROADMAP R1 写清已交付项与剩余（安装包、默认路径、Host 加载验证、legacy 产物路径）；SPEC 升到 v0.9（PHE_HOME 布局加 `workspace.json`、`registry/assets.json`、`reports/`）；AGENTS 当前阶段改为 R1 入口已交付、焦点转 R2；验收证据在 `docs/acceptance/r1.md`。
+- 验证：`python3 -m unittest tests.test_workspace` → 15 tests OK（exit 0）；`python3 -m unittest discover -s tests -t tests` → 373 tests OK（exit 0）；`ruff check .` → All checks passed（exit 0）；`ruff format --check .` → 86 files already formatted（exit 0）；`docs/acceptance/r1.md` 的复跑命令全部退出码符合预期。日志在仓库外。
+- 未验证：Host 是否加载或触发这些配置（每条 `load_chain unverified`）；安装包与默认 `~/.phe`；MCP 条目级语义、Hooks、工具配置值级模型；项目级部署与绑定。未读真实 Host 配置，未调用 Host 或付费服务，未推送。
+
 ## 2026-10-31 · 计划文档定点纠正：隔离验收、数据归属与 R3/R4 依赖
 
 - 依据：上一版 ROADMAP/SPEC/AGENTS/README 计划审查后的定点纠正。只改文档，不扩范围，不动 `tools/` 与守卫代码。

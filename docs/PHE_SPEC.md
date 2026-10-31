@@ -1,6 +1,6 @@
 # Personal Harness Evolution（PHE）· 产品与架构规范
 
-**版本：** v0.8 · 2026-10-31
+**版本：** v0.9 · 2026-10-31
 **状态：** 产品契约与设计基线。当前开发排程只在 [ROADMAP](ROADMAP.md)；已运行的真实实验及结论见 [README](../README.md)「当前状态」和各历史阶段计划。本文写长期设计与验收口径，命令、数据结构和效果以路线、计划与代码为准。
 **配套文档：** 排程与完成状态见 [ROADMAP](ROADMAP.md)；M-1 的执行细节见 [M-1 评测可行性探针协议](M-1_PROTOCOL.md)；版本变化见 [CHANGELOG](CHANGELOG.md)。
 
@@ -39,7 +39,7 @@
 | 空间 | 内容 | 归属与写入边界 |
 |---|---|---|
 | 开源源码仓库 | 代码、Skill、测试、文档、手写合成示例 | 公开仓库。规范：新增内容不引入用户会话、真实配置或本机绝对路径；测试 fixture 全部手写合成。早期 `experiments/` 下用 `git add -f` 加入的工件含本机路径，属开发期 legacy 用法，尚未清理 |
-| 每用户 `PHE_HOME` | 资产源、不可变发布、绑定、账本、暂存与 journal，以及该用户的证据摘要与报告 | 归用户，在仓库外；默认 `~/.phe` 是产品规划，当前没有安装/初始化入口；开发与验收用显式隔离目录。摘要与报告现在仍在仓库内被忽略的 `episodes/`、`reports/`，是开发期 legacy 用法 |
+| 每用户 `PHE_HOME` | 资产源、不可变发布、绑定、账本、暂存与 journal，以及该用户的证据摘要与报告 | 归用户，在仓库外；默认 `~/.phe` 是产品规划，当前只有克隆后的初始化入口 `tools/workspace.py init`（显式 `--phe-home` 或 `PHE_HOME`，无默认路径）；开发与验收用显式隔离目录。发现报告已写在 `<PHE_HOME>/reports/`；摘要与报告仍在仓库内被忽略的 `episodes/`、`reports/`，是开发期 legacy 用法 |
 | 用户 Host 入口 | `~/.pi`、`~/.codex`、`~/.claude`、`~/.agents` 及项目级目录里实际生效的文件与链接 | 归用户；部署改动须用户按具体 diff、目标路径和恢复方式批准。当前 `release*.py` / `change.py` 的守卫拒绝真实 home 及其下这些路径，安装用户的正常写入入口排在 [ROADMAP](ROADMAP.md) R2，不改守卫 |
 
 会话历史留在原 Host 目录，PHE 只保存源文件指针与脱敏摘要。目标归属是这些摘要、报告、账本与资产都在仓库外 `PHE_HOME` 下；现在 `episodes/`、`reports/`（被 Git 忽略）仍是开发期用法，路径调整列入 R1/R2。项目测试与示例在临时目录里独立复现，不依赖开发者电脑的真实配置；涉及 Host 加载或触发的结论在一次性隔离 Host 里验证。
@@ -57,7 +57,7 @@
 
 ### 2.1 第一次运行：先盘点，再接管
 
-第一次使用前要有一个 PHE_HOME（资产源与账本）和能读取 Host 入口的运行环境；这一步的安装/初始化入口还只在规划里（[ROADMAP](ROADMAP.md) R1），当前没有可直接运行的命令。初始化完成后，下面的流程假设 PHE_HOME 已就绪。
+第一次使用前要有一个 PHE_HOME（资产源与账本）和能读取 Host 入口的运行环境。当前的初始化与发现入口是克隆后的 `tools/workspace.py`（不是安装包，也没有默认 PHE_HOME）：`init --phe-home <目录>` 建目录骨架与格式版本标记，`discover --home <显式 Host 根>` 把只读发现报告写到 `<PHE_HOME>/reports/`，不改任何 Host 配置。首次使用流程见 [README](../README.md)。初始化完成后，下面的流程假设 PHE_HOME 已就绪。
 
 用户在 Codex、Claude Code 或 Pi 里说：
 
@@ -271,7 +271,7 @@ Proposal：draft → frozen → evaluated → closed
 
 ## 5. 统一的 Harness 资产库（M1 起）
 
-**逻辑资产只有一份来源，正式部署使用不可变的 Release。** 开发期间写入类功能只在沙箱验证，见 [M1_PLAN](M1_PLAN.md)「原则：开发与使用分离」。`~/.phe/` 是将来的用户部署目录，当前没有安装/初始化入口，也没有创建过。现有 `release*.py` / `change.py` 的守卫拒绝真实 home 及其下 Host 入口，所以“安装用户在授权范围内更新自己配置”需要新增正常入口（[ROADMAP](ROADMAP.md) R2），不是放宽或绕过守卫；开发和验收继续用隔离模拟用户环境。
+**逻辑资产只有一份来源，正式部署使用不可变的 Release。** 开发期间写入类功能只在沙箱验证，见 [M1_PLAN](M1_PLAN.md)「原则：开发与使用分离」。`~/.phe/` 是将来的用户部署目录，当前没有创建过；已提供的 R1 入口是克隆后的 `tools/workspace.py init/discover`（显式目录、只建骨架与写发现报告），它不写 Host 配置，也不是安装包。现有 `release*.py` / `change.py` 的守卫拒绝真实 home 及其下 Host 入口，所以“安装用户在授权范围内更新自己配置”需要新增正常入口（[ROADMAP](ROADMAP.md) R2），不是放宽或绕过守卫；开发和验收继续用隔离模拟用户环境。
 
 **逻辑类型与物理存储分开：** 逻辑资产类型指指令、Skill、MCP 条目、Hook、扩展/子代理定义、工具与权限配置；物理存储用 `asset_id`（`asset-0001` 起的高水位编号）定位。一个逻辑资产被多个 Host 入口共享时只有一个 `asset_id`。各资产类型的实现与缺口见 [ROADMAP](ROADMAP.md)「完整 Harness 资产」，本文只写共同契约。
 
@@ -291,11 +291,15 @@ Proposal：draft → frozen → evaluated → closed
 
 ```text
 <PHE_HOME>/
+  workspace.json                  # 工作区格式版本标记（tools/workspace.py init）
   assets/<asset_id>/content/      # 资产内容
   assets/<asset_id>/asset.json    # asset_id / kind / name / source / imported_at
   releases/rNNNN/manifest.json    # 每个文件的 sha256、size、asset_id
   releases/rNNNN/files/<asset_id>/
   bindings.json                   # agent -> { 入口路径: release }
+  registry/assets.json            # 登记表（registry.py adopt 写入；没登记就没有该文件）
+  reports/discovery.md            # R1 只读发现报告（人可读）
+  reports/discovery.json          # 同一份结果的结构化版本
   ledger.jsonl                    # approval / apply / restore / review 只追加事实
   journal/                        # 每次 deploy 的旧状态，供 rollback/restore
   staging/                        # apply 的暂存目录
@@ -348,7 +352,7 @@ Proposal：draft → frozen → evaluated → closed
 
 ### 当前路线（2026-10-31 重排）
 
-上表的 M 阶段是已交付的证据与契约来源，**不是当前排程**。当前排程只有 [ROADMAP](ROADMAP.md) 的 R1–R4：R1 独立开始使用（初始化、发现现有资产与 Host 入口）；R2 首条持续个性化闭环（指令：会话与偏好 → 三行说明与 diff → 逐条批准 → 更新 → 下次增量复盘）；R3 把同一闭环扩到 Skills、MCP、Hooks、扩展与工具配置，逐类验收；R4 多用户、多周期维护。R2 完成不等于产品完成。
+上表的 M 阶段是已交付的证据与契约来源，**不是当前排程**。当前排程只有 [ROADMAP](ROADMAP.md) 的 R1–R4：R1 独立开始使用（初始化、发现现有资产与 Host 入口；已交付初始化与只读发现入口 `tools/workspace.py`，沙箱验收）；R2 首条持续个性化闭环（指令：会话与偏好 → 三行说明与 diff → 逐条批准 → 更新 → 下次增量复盘）；R3 把同一闭环扩到 Skills、MCP、Hooks、扩展与工具配置，逐类验收；R4 多用户、多周期维护。R2 完成不等于产品完成。
 
 经验复盘闭环（摘要 → 报告 → 批准应用 → 复盘）的沙箱实现是 R2 的零件：`history.py digest`、`change.py apply/status/restore/review-plan/review` 与 Skill §11–§13。安装用户批准后写入真实入口的入口还没提供（当前守卫拒绝真实路径），排在 R2；写入仍按 §6 逐条批准。M3a B2（自动 Retired 检索）和 C（自动独立性判定）暂停，由宿主显式写出依据；D 只保留改动前写下三行说明（为什么改、期待什么、凭什么判断）。L2 对照实验是可选手段，只在有争议的改动上使用；默认评估方式见 [§2.5](#25-怎么评估一条改动默认轻量值得时才实验2026-10-30)。下面保留原实验路线的 Gate 与退出条件,供选择实验时使用。
 
