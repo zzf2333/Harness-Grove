@@ -240,7 +240,7 @@ python3 -I tools/proposal.py check --experiment-id <实验 ID> [--retired <Retir
 
 §11–§13 的命令留在沙箱：`history.py`、`change.py` 与 `release*.py` 的守卫拒绝真实 home 及其下 `.claude`、`.codex`、
 `.pi`、`.phe`、`.agents`。在自己机器上按用户批准更新配置用 `tools/personalize.py`：它复用同一套发布内容、patch、
-登记表读取、journal、绑定与账本格式，但写入范围只来自你批准的那份计划，不查旧沙箱守卫。
+登记表读取、journal、绑定与账本格式。`source=user` 按批准计划限定写入范围；`sandbox_rehearsal` 还须通过旧沙箱的真实环境拒绝条件。
 
 ```bash
 T=<源码>/tools/personalize.py
@@ -283,4 +283,3 @@ python3 -I "$T" restore --phe-home "$PHE_HOME" --execution x0001 --plan <恢复�
 
 边界与演练入口相同：只覆盖单个 instructions 资产 + 多个 Host 软链入口，不碰普通文件入口、skill、MCP、Hooks（R3）。
 验收记录见 [docs/acceptance/r2.md](../../docs/acceptance/r2.md)。
-
