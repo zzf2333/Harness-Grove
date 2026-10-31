@@ -1,109 +1,17 @@
 """R1 入口 tools/workspace.py 的契约验收：初始化、幂等、只读发现报告、登记状态与稳定输出。
 
 全部在临时目录里跑：合成 Host 树 + 仓库外的 PHE_HOME + 无关 cwd，不读真实 home。
+夹具在 workspace_fixture.py。
 """
 
-import hashlib
 import json
 import os
 import shutil
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-TOOL = ROOT / "tools" / "workspace.py"
-INVENTORY = ROOT / "tools" / "inventory.py"
-REGISTRY = ROOT / "tools" / "registry.py"
-
-
-def write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-
-
-def run_cli(tool: Path, *args: str, cwd: Path, env: dict | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, "-I", str(tool), *args],
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=str(cwd),
-        env=env,
-    )
-
-
-def snapshot(root: Path) -> dict[str, str]:
-    """路径 → 类型与内容指纹；软链只记指向，不跟随。"""
-    data = {}
-    for path in sorted(root.rglob("*")):
-        key = str(path.relative_to(root))
-        if path.is_symlink():
-            data[key] = "link:" + os.readlink(path)
-        elif path.is_file():
-            data[key] = "file:" + hashlib.sha256(path.read_bytes()).hexdigest()
-        else:
-            data[key] = "dir"
-    return data
-
-
-class WorkspaceFixture(unittest.TestCase):
-    """合成 Host 根（共享指令软链 + Skill + MCP 配置 + 未托管文件）、项目根、仓外 PHE_HOME。"""
-
-    def setUp(self):
-        # 先取真实路径，macOS 的 /var 软链会让路径断言变复杂。
-        self.tmp = Path(os.path.realpath(tempfile.mkdtemp(prefix="workspace-test-")))
-        self.addCleanup(shutil.rmtree, self.tmp)
-        self.shared = self.tmp / "shared" / "AGENTS.md"
-        self.host = self.tmp / "host"
-        self.project = self.tmp / "project"
-        self.phe = self.tmp / "phe"
-        self.elsewhere = self.tmp / "elsewhere"
-        self._build_fixture()
-        self.elsewhere.mkdir()
-        self.registry_path = self.phe / "registry" / "assets.json"
-
-    def _build_fixture(self):
-        write(self.shared, "共享指令：回答先给结论。\n")
-        write(self.host / ".claude/CLAUDE.md", "# Claude 指令\n")
-        skill = self.host / ".claude/skills/demo"
-        write(skill / "SKILL.md", "---\nname: demo\n---\n演示 skill\n")
-        write(skill / "notes.md", "说明\n")
-        write(self.host / ".pi/agent/mcp.json", '{"servers": {"demo": {"command": "demo"}}}\n')
-        # 未托管、盘点不支持的托管路径：rules 目录里的普通文件。
-        write(self.host / ".claude/rules/style.md", "风格规则\n")
-        write(self.host / ".claude/agents/reviewer.md", "复核者定义\n")
-        for entry in (self.host / ".pi/agent/AGENTS.md", self.host / ".codex/AGENTS.md"):
-            entry.parent.mkdir(parents=True, exist_ok=True)
-            os.symlink(self.shared, entry)
-        write(self.project / "AGENTS.md", "项目指令\n")
-        write(self.project / ".claude/skills/proj-skill/SKILL.md", "---\nname: proj-skill\n---\n项目 skill\n")
-
-    def init(self, *extra: str, env: dict | None = None) -> subprocess.CompletedProcess:
-        return run_cli(TOOL, "init", "--phe-home", str(self.phe), *extra, cwd=self.elsewhere, env=env)
-
-    def discover(self, *extra: str, env: dict | None = None) -> subprocess.CompletedProcess:
-        return run_cli(
-            TOOL,
-            "discover",
-            "--phe-home",
-            str(self.phe),
-            "--home",
-            str(self.host),
-            "--project",
-            str(self.project),
-            *extra,
-            cwd=self.elsewhere,
-            env=env,
-        )
-
-    def report_md(self) -> str:
-        return (self.phe / "reports" / "discovery.md").read_text(encoding="utf-8")
-
-    def report_json(self) -> dict:
-        return json.loads((self.phe / "reports" / "discovery.json").read_text(encoding="utf-8"))
+from workspace_fixture import INVENTORY, REGISTRY, ROOT, TOOL, WorkspaceFixture, run_cli, snapshot, write
 
 
 class InitTests(WorkspaceFixture):
@@ -181,20 +89,20 @@ class DiscoverTests(WorkspaceFixture):
         self.assertTrue(all(record["registry_status"] == "unregistered" for record in records))
         self.assertTrue(all(record["registry_asset_id"] is None for record in records))
         self.assertEqual(self.data["registry"], {"path": str(self.registry_path), "present": False})
-        management = {record["kind"]: record["management"] for record in records}
-        self.assertEqual(
-            management,
-            {
-                "instructions": "sandbox_managed",
-                "skill": "sandbox_partial",
-                "mcp": "observe_only",
-                "rules": "observe_only",
-            },
-        )
         mcp = [record for record in records if record["kind"] == "mcp"]
         self.assertEqual(len(mcp), 1)
         self.assertEqual(mcp[0]["top_level_keys"], ["servers"])
         self.assertIn("读不到 server 条目", mcp[0]["management_note"])
+
+    def test_management_comes_from_the_entry_not_the_kind_alone(self):
+        records = self.records_by_path()
+        expected = {
+            self.host / ".claude/CLAUDE.md": "sandbox_managed",
+            self.host / ".claude/skills/demo": "sandbox_partial",
+            self.host / ".pi/agent/mcp.json": "observe_only",
+            self.host / ".claude/rules/style.md": "observe_only",
+        }
+        self.assertEqual({path: records[str(path)]["management"] for path in expected}, expected)
 
     def test_shared_instructions_keep_source_and_entries(self):
         shared = [record for record in self.data["records"] if record["resolved_path"] == str(self.shared)]
@@ -311,6 +219,65 @@ class RegisteredAssetTests(WorkspaceFixture):
         others = [record for record in data["records"] if record["registry_status"] == "unregistered"]
         self.assertGreater(len(others), 0)
         self.assertIn("已登记 asset-0001", self.report_md())
+
+
+class SourceCopyTests(unittest.TestCase):
+    """从源码副本运行：导入本地模块不能在源码树里留下 __pycache__ 或其他文件。"""
+
+    def test_source_copy_is_unchanged(self):
+        tmp = Path(os.path.realpath(tempfile.mkdtemp(prefix="workspace-src-")))
+        self.addCleanup(shutil.rmtree, tmp)
+        source = tmp / "src"
+        shutil.copytree(ROOT / "tools", source / "tools", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        write(tmp / "host" / ".claude/CLAUDE.md", "# 指令\n")
+        phe = tmp / "phe"
+        elsewhere = tmp / "elsewhere"
+        elsewhere.mkdir()
+        tool = source / "tools" / "workspace.py"
+        before = snapshot(source)
+        result = run_cli(tool, "init", "--phe-home", str(phe), cwd=elsewhere)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = run_cli(tool, "discover", "--phe-home", str(phe), "--home", str(tmp / "host"), cwd=elsewhere)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(snapshot(source), before)
+        self.assertFalse((source / "tools" / "__pycache__").exists())
+
+
+class SubagentDefinitionTests(WorkspaceFixture):
+    """子代理定义：盘点归成 instructions，但逻辑类型未支持，报告只能标成只读观察。"""
+
+    def setUp(self):
+        super().setUp()
+        self.assertEqual(self.init().returncode, 0)
+        self.assertEqual(self.discover().returncode, 0)
+        self.records = self.records_by_path()
+
+    def test_subagent_definitions_and_their_directories_are_observe_only(self):
+        paths = (
+            self.host / ".claude/agents",
+            self.host / ".claude/agents/reviewer.md",
+            self.host / ".pi/agent/agents",
+            self.host / ".pi/agent/agents/planner.md",
+        )
+        for path in paths:
+            record = self.records[str(path)]
+            self.assertEqual(record["kind"], "instructions", path)
+            self.assertEqual(record["management"], "observe_only", path)
+            self.assertIn("子代理", record["management_note"], path)
+            self.assertIn("未支持", record["management_note"], path)
+
+    def test_report_shows_observe_only_for_subagent_entries(self):
+        lines = self.report_md().splitlines()
+        definition = next(line for line in lines if "reviewer.md" in line)
+        directory = next(line for line in lines if line.startswith(f"- `{self.host / '.claude/agents'}` ·"))
+        for line in (definition, directory):
+            self.assertIn("能力 仅观察", line)
+            self.assertNotIn("沙箱可托管", line)
+
+    def test_single_file_instruction_keeps_sandbox_capability(self):
+        self.assertEqual(self.records[str(self.host / ".claude/CLAUDE.md")]["management"], "sandbox_managed")
+        coverage = {row["kind"]: row for row in self.report_json()["coverage"]}
+        self.assertIn("子代理定义", coverage["instructions"]["note"])
 
 
 if __name__ == "__main__":

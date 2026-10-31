@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 2026-10-31 · R1 第 1 轮审查修复：源码树输出边界、子代理能力标注、部署后的登记身份
+
+- 依据：R1 实现（候选提交 `3edfb91`）的第 1 轮独立审查指出的三项 P1。三项都先用正常 CLI 场景复现失败，再改 `tools/workspace.py`，没有重写入口。
+- `workspace.py` 在导入本地模块前设 `sys.dont_write_bytecode = True`：`python3 -I` 只隔离用户 site 和当前目录，不关字节码写入，所以从源码副本运行时会在 `tools/` 下生成 `__pycache__`。现在源码树一个字节都不变，README 的 `python3 -I "$SRC/tools/workspace.py" …` 命令不变。
+- 子代理定义（`.claude/agents`、`.pi/agent/agents`，含目录节点）在盘点里仍归 `instructions`（`kind` 枚举没有 agent），但报告以前按 kind 套成 `沙箱可托管`。现在改标 `仅观察`，说明写明“子代理逻辑类型未支持、不导入也不部署”，目录节点不继承单文件指令的能力；instructions 覆盖摘要同样注明。判断只用盘点已有的路径，不加分类框架。
+- 登记状态以前只按当前 `resolved_path` 匹配：`release deploy` 把入口换成发布文件的软链后，已登记入口被报成未登记并丢掉 `asset_id`。现在登记表索引同时收登记源与 `observed` 入口路径，先按入口认身份，当前目标另外比较；JSON 新增 `registry_target` 与 `registry_target_matches`，Markdown 在目标变了时写“当前入口 …，不是登记源 …”。只处理正常发布流程，不新增防护。
+- 测试：夹具抽到 `tests/workspace_fixture.py`；`tests/test_workspace.py` 新增源码副本快照与子代理能力断言；新增 `tests/test_workspace_release.py` 走 adopt → import → release → deploy → discover 验证部署后仍认出登记身份。新增用例在候选版本上是 `FAILED (failures=4, errors=1)`，修复后转绿。
+- 文档：`docs/acceptance/r1.md` 追加本轮的红/绿证据（保留上一节原结论），并修正机器断言命令与数量；README 同步源码副本不写字节码、子代理能力与登记身份口径。P2（用 Hash 是否存在推断目录节点，skill 目录会被写成实体文件）本轮不采纳，已在验收记录列为后续。
+- 验证：`python3 -m unittest discover -s tests -t tests` → 379 tests OK（exit 0）；`ruff check .` → All checks passed（exit 0）；`ruff format --check .` → 89 files already formatted（exit 0）；README 流程在全新源码副本 + 无关 cwd 上重跑：源码树与输入前后不变，写入只在 `$PHE_HOME`。日志在仓库外。
+- 未验证：Host 是否加载或触发这些配置；安装包与默认 `~/.phe`。本轮未读真实 Host 配置，未调用 Host，未推送。
+
 ## 2026-10-31 · R1 交付：克隆后初始化与只读发现（`tools/workspace.py`）
 
 - 新增 `tools/workspace.py`（只用标准库，无新依赖、无打包框架）：`init --phe-home <目录>` 建 `assets/`、`releases/` 与格式版本标记 `workspace.json`，重复运行保留数据、版本不符时拒绝且不写；`discover --phe-home <目录> --home <显式 Host 根> [--project …] [--registry …]` 复用 `inventory.py` 的候选路径表与分组做只读盘点，读 `<PHE_HOME>/registry/assets.json`（缺省位置，沿用 `registry.py` 现有默认文件名 `registry/assets.json`，没建资产类型目录）标记登记状态，把 `reports/discovery.md` 与 `reports/discovery.json` 写进 PHE_HOME。不 adopt、不导入、不部署、不改输入。

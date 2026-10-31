@@ -12,6 +12,8 @@ import os
 import sys
 from pathlib import Path
 
+# 本地模块必须导入，但不能在源码目录留下 __pycache__：从源码副本运行时源码树应当一个字节都不变。
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from release_deploy import load_sibling
 
@@ -35,6 +37,12 @@ MANAGEMENT_LABELS = {
 DIRECTORY_NOTE = "只记一层条目；导入会按物理形状分类，逻辑类型与启用状态未支持。"
 NO_IMPORT_NOTE = "只记一层条目；没有导入、发布或部署路径。"
 
+# inventory 的候选表把 `.claude/agents`、`.pi/agent/agents` 记成 instructions：kind 枚举里没有 agent。
+# 这些位置放的是子代理定义，逻辑类型未支持，所以标成只读观察，不继承单文件指令的能力。
+SUBAGENT_DIRS = ((".claude", "agents"), (".pi", "agent", "agents"))
+SUBAGENT_NOTE = "子代理定义：kind 枚举里没有 agent，逻辑类型未支持；只读观察，不导入也不部署。"
+SUBAGENT_DIR_NOTE = "子代理定义目录：只记一层条目；子代理逻辑类型未支持，不导入也不部署。"
+
 # 逻辑类型 → 中文名、PHE 当前能力、限制。顺序就是报告里的顺序。
 # hook 在盘点里没有候选路径（hooks 写在 settings.json 里），列在这里是为了让覆盖摘要不漏这一类。
 KIND_ROWS = (
@@ -44,7 +52,8 @@ KIND_ROWS = (
         "sandbox_managed",
         (
             "沙箱可用 import → release → deploy 与 change.py apply/restore；只覆盖单文件指令，"
-            "Host 是否加载未验证；`.claude/agents`、`.pi/agent/agents` 里的定义也记成 instructions。"
+            "Host 是否加载未验证；子代理定义（`.claude/agents`、`.pi/agent/agents`）的逻辑类型未支持，"
+            "条目单独标成仅观察。"
         ),
     ),
     (
@@ -125,19 +134,55 @@ def load_registry(path: Path) -> dict | None:
     return registry_tool.read_registry(path)
 
 
+def registered_index(registry: dict | None) -> dict[str, dict]:
+    """登记身份索引：登记的真实路径与 observed 入口路径都指向同一个资产。
+
+    发布部署后入口指向 release 文件，登记表的 resolved_path 仍是原来源；入口路径不变，
+    所以按入口认出登记身份，当前目标另外比较。
+    """
+    index: dict[str, dict] = {}
+    if registry is None:
+        return index
+    for asset in registry["assets"]:
+        index.setdefault(asset["resolved_path"], asset)
+        for observed in asset["observed"]:
+            index.setdefault(observed["path"], asset)
+    return index
+
+
+def subagent_note(path: str) -> str | None:
+    """子代理定义（含它的目录节点）的说明；不是这两处的路径返回 None。"""
+    parts = Path(path).parts
+    for suffix in SUBAGENT_DIRS:
+        size = len(suffix)
+        if parts[-size:] == suffix:
+            return SUBAGENT_DIR_NOTE
+        if parts[-size - 1 : -1] == suffix:
+            return SUBAGENT_NOTE
+    return None
+
+
 def describe(record: dict, registered: dict[str, dict]) -> dict:
     """在 ObservedAsset 字段上补管理状态与登记状态。"""
     row = KIND_INDEX[record["kind"]]
-    asset = registered.get(record["resolved_path"]) if record["resolved_path"] is not None else None
+    management, note = row["management"], row["note"]
+    subagent = subagent_note(record["path"])
+    if subagent is not None:
+        management, note = "observe_only", subagent
+    asset = registered.get(record["path"])
+    if asset is None and record["resolved_path"] is not None:
+        asset = registered.get(record["resolved_path"])
     described = dict(record)
     described.update(
         {
             "label": row["label"],
-            "management": row["management"],
-            "management_note": row["note"],
+            "management": management,
+            "management_note": note,
             "registry_status": "registered" if asset else "unregistered",
             "registry_asset_id": asset["asset_id"] if asset else None,
             "registry_state": asset["state"] if asset else None,
+            "registry_target": asset["resolved_path"] if asset else None,
+            "registry_target_matches": (asset["resolved_path"] == record["resolved_path"]) if asset else None,
         }
     )
     return described
@@ -194,7 +239,7 @@ def scope_rows(records: list[dict], home: Path, projects: list[Path]) -> list[di
 
 def discovery(phe: Path, home: Path, projects: list[Path], registry_path: Path) -> dict:
     registry = load_registry(registry_path)
-    registered = {asset["resolved_path"]: asset for asset in registry["assets"]} if registry else {}
+    registered = registered_index(registry)
     records = [describe(record, registered) for record in inventory_tool.collect(home, projects)]
     records.sort(key=sort_key)
     return {
@@ -238,6 +283,9 @@ def entry_line(record: dict) -> str:
         parts.append("顶层键名 " + keys_text(record["top_level_keys"]))
     if record["registry_status"] == "registered":
         parts.append(f"已登记 {record['registry_asset_id']}（{record['registry_state']}）")
+        if not record["registry_target_matches"]:
+            current = f"`{record['resolved_path']}`" if record["resolved_path"] else "无法解析"
+            parts.append(f"当前入口 {current}，不是登记源 `{record['registry_target']}`")
     else:
         parts.append("未登记")
     parts.append("能力 " + MANAGEMENT_LABELS[record["management"]])
@@ -248,7 +296,7 @@ def entry_line(record: dict) -> str:
 def render_markdown(data: dict) -> str:
     registry = data["registry"]
     registry_line = (
-        f"`{registry['path']}`（已存在：按 resolved_path 匹配登记状态）"
+        f"`{registry['path']}`（已存在：按 observed 入口认登记身份，当前目标单独比较）"
         if registry["present"]
         else f"`{registry['path']}`（不存在：全部未登记）"
     )
