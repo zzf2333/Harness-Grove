@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026-10-31 · R1 第 2 轮审查修复：登记身份索引分开来源与历史入口
+
+- 依据：R1 第 2 轮独立审查新增的 P1（第 1 轮三项已修复）。`workspace.py` 的 `registered_index` 把登记来源 `resolved_path` 和 `observed` 入口路径合成一个字典并用 `setdefault`，按入口优先认身份；入口改指另一个文件并重新登记后，旧资产仍占着入口路径，报告认不出新登记的资产。
+- 复现（修前红，真实隔离 CLI）：共享指令 A 的两个入口 `adopt --group A` → `asset-0001`；把 `.codex/AGENTS.md` 改指 B，重新 `inventory` 后 `adopt --path <codex 入口>` → `asset-0002`；`discover` 仍报 `asset-0001` / 登记源 A / `registry_target_matches=false`，应为 `asset-0002` / B / `true`。
+- 修复：拆成两个索引，`registered_index` 返回 `sources`（按登记来源路径）与 `entries`（按 `observed` 入口路径）；新增 `registered_asset`，入口当前解析目标命中登记来源就直接认那个资产，命中不了（发布部署换成 release 文件软链）才按入口路径认；同一入口重新登记到另一个来源时以最近登记的资产为准。报告字段、登记表格式与 Markdown 文案不变；不加锁、不加 fallback。
+- 测试：`tests/test_workspace_release.py` 抽出共用初始化 `AdoptedSharedGroup`，新增 `RelinkedEntryTests` 断言换绑后两个入口分别认 `asset-0002`/B 与 `asset-0001`/A；`DeployedEntryTests` 契约不变。新用例在候选版本上是 `FAILED (failures=1)`，修复后 `Ran 2 tests / OK`。
+- 文档：`docs/acceptance/r1.md` 追加本轮红/绿证据并注明替代第 1 轮第 3 项的身份索引顺序；README 同步新的匹配顺序；机器断言数量改为 22 / 380。P2（用 Hash 是否存在推断目录节点）不在本轮范围，仍列后续。
+- 验证：`python3 -m unittest discover -s tests -t tests -p "test_workspace*.py"` → 22 tests OK（exit 0）；`python3 -m unittest discover -s tests -t tests` → 380 tests OK（exit 0）；`ruff check .` → All checks passed（exit 0）；`ruff format --check .` → 89 files already formatted（exit 0）。日志在仓库外。
+- 未验证：Host 是否加载或触发这些配置；安装包与默认 `~/.phe`。本轮未读真实 Host 配置，未调用 Host，未推送。
+
 ## 2026-10-31 · R1 第 1 轮审查修复：源码树输出边界、子代理能力标注、部署后的登记身份
 
 - 依据：R1 实现（候选提交 `3edfb91`）的第 1 轮独立审查指出的三项 P1。三项都先用正常 CLI 场景复现失败，再改 `tools/workspace.py`，没有重写入口。

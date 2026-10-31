@@ -134,20 +134,31 @@ def load_registry(path: Path) -> dict | None:
     return registry_tool.read_registry(path)
 
 
-def registered_index(registry: dict | None) -> dict[str, dict]:
-    """登记身份索引：登记的真实路径与 observed 入口路径都指向同一个资产。
+def registered_index(registry: dict | None) -> tuple[dict[str, dict], dict[str, dict]]:
+    """登记身份索引：(按登记来源路径, 按 observed 入口路径)。
 
-    发布部署后入口指向 release 文件，登记表的 resolved_path 仍是原来源；入口路径不变，
-    所以按入口认出登记身份，当前目标另外比较。
+    两个索引分开：入口当前指向的正是某个登记的来源路径时，认那个资产；发布部署后入口
+    指向 release 文件，来源不在表里，再按入口路径认登记身份。合成一个索引会让旧资产
+    的 observed 入口遮住后来登记的来源。
     """
-    index: dict[str, dict] = {}
+    sources: dict[str, dict] = {}
+    entries: dict[str, dict] = {}
     if registry is None:
-        return index
+        return sources, entries
     for asset in registry["assets"]:
-        index.setdefault(asset["resolved_path"], asset)
+        sources.setdefault(asset["resolved_path"], asset)
+        # 同一入口换绑到另一个来源并重新登记时，以最近登记的资产为准。
         for observed in asset["observed"]:
-            index.setdefault(observed["path"], asset)
-    return index
+            entries[observed["path"]] = asset
+    return sources, entries
+
+
+def registered_asset(record: dict, sources: dict[str, dict], entries: dict[str, dict]) -> dict | None:
+    """当前解析目标已登记就直接认它的资产；否则按入口路径认（部署后入口指向 release 文件）。"""
+    resolved = record["resolved_path"]
+    if resolved is not None and resolved in sources:
+        return sources[resolved]
+    return entries.get(record["path"])
 
 
 def subagent_note(path: str) -> str | None:
@@ -162,16 +173,14 @@ def subagent_note(path: str) -> str | None:
     return None
 
 
-def describe(record: dict, registered: dict[str, dict]) -> dict:
+def describe(record: dict, sources: dict[str, dict], entries: dict[str, dict]) -> dict:
     """在 ObservedAsset 字段上补管理状态与登记状态。"""
     row = KIND_INDEX[record["kind"]]
     management, note = row["management"], row["note"]
     subagent = subagent_note(record["path"])
     if subagent is not None:
         management, note = "observe_only", subagent
-    asset = registered.get(record["path"])
-    if asset is None and record["resolved_path"] is not None:
-        asset = registered.get(record["resolved_path"])
+    asset = registered_asset(record, sources, entries)
     described = dict(record)
     described.update(
         {
@@ -239,8 +248,8 @@ def scope_rows(records: list[dict], home: Path, projects: list[Path]) -> list[di
 
 def discovery(phe: Path, home: Path, projects: list[Path], registry_path: Path) -> dict:
     registry = load_registry(registry_path)
-    registered = registered_index(registry)
-    records = [describe(record, registered) for record in inventory_tool.collect(home, projects)]
+    sources, entries = registered_index(registry)
+    records = [describe(record, sources, entries) for record in inventory_tool.collect(home, projects)]
     records.sort(key=sort_key)
     return {
         "format_version": WORKSPACE_FORMAT,
@@ -296,7 +305,7 @@ def entry_line(record: dict) -> str:
 def render_markdown(data: dict) -> str:
     registry = data["registry"]
     registry_line = (
-        f"`{registry['path']}`（已存在：按 observed 入口认登记身份，当前目标单独比较）"
+        f"`{registry['path']}`（已存在：先按登记来源认身份，发布目标按 observed 入口认，当前目标单独比较）"
         if registry["present"]
         else f"`{registry['path']}`（不存在：全部未登记）"
     )
