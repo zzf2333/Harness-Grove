@@ -284,7 +284,7 @@ Proposal：draft → frozen → evaluated → closed
   common/AGENTS.md                # 跨 Agent 共享指令
   skills/                         # 共享 Skill 来源
   hooks/                          # 共享 Hook 脚本
-  mcp/catalog.yaml                # MCP 统一逻辑定义，按平台渲染
+  mcp/<名字>/server.json          # MCP 统一逻辑定义（JSON，无 YAML 依赖），按平台渲染
   agent-specific/                 # 只能属于某个 Agent 的部分
   retired/                        # 历史负样本与退役理由
 ```
@@ -323,13 +323,13 @@ Proposal：draft → frozen → evaluated → closed
 |---|---|---|
 | 共享指令 | 软链接、原生加载或 Claude `@` 引用 | 版本、优先级、是否重复加载 |
 | Skills | 共享目录软链接或原生搜索路径 | 能否真正被发现和触发，而不只是文件存在 |
-| MCP | 统一的逻辑 Catalog，按平台渲染配置 | 不覆盖未托管的条目，不写出密钥 |
+| MCP | 统一的逻辑定义按平台渲染成条目，只替换托管条目的跨度 | 不覆盖未托管的条目，不写出密钥 |
 | Hooks / Extensions | 底层脚本共享，按平台包装 | 权限、安全边界、事件语义差异 |
 
 - 所有 Active 绑定都指向不可变的 Release。候选 V2 在隔离目录里测试，不直接改写可变的共享文件，避免同时影响所有 Agent。
 - 软链接减少的是重复维护，**不一定减少 Token**。
 - 只有在建立已知基线之后才会出现 `ExternalChange`。扫描、评测、审批和发布之前，都要核对实际文件内容的 Hash、软链接及其目标、加载顺序，以及工具和依赖的指纹。发现冲突就停止覆盖，由用户审查后选择 `adopt / reconcile / leave_unmanaged`。
-- 各 Agent 的指令文件名、加载优先级、Skill 搜索路径和软链接支持，都由对应的 Adapter 在实际版本上探测，不依赖文档中的版本断言。MCP 先共享逻辑定义，再按平台渲染，不能假定所有客户端都用同一种配置文件。
+- 各 Agent 的指令文件名、加载优先级、Skill 搜索路径和软链接支持，都由对应的 Adapter 在实际版本上探测，不依赖文档中的版本断言。MCP 先共享逻辑定义，再按平台渲染，不能假定所有客户端都用同一种配置文件。R3b 第一片只实现两个 JSON 适配器（Pi 的 `mcpServers`、Claude Code 项目级 `.mcp.json`），托管对象是配置里的一个条目而不是整份文件；凭证值不进逻辑定义，非引用型字面值让该条目不可托管。
 - 各类资产当前做到哪一步（设计、已实现、验证、未支持）以 [ROADMAP](ROADMAP.md) 的现状矩阵为准；矩阵里标“未支持”的能力不是承诺，不写在验收里。
 
 ## 6. 安全与发布权限

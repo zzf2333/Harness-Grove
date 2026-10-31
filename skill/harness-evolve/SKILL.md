@@ -254,6 +254,9 @@ python3 -I "$T" cycle-record --phe-home "$PHE_HOME" --cycle <周期> --record <�
 python3 -I "$T" cycle-plan --phe-home "$PHE_HOME" --cycle <下一周期>
 python3 -I "$T" restore-preview --phe-home "$PHE_HOME" --execution x0001 --cycle <周期>
 python3 -I "$T" restore --phe-home "$PHE_HOME" --execution x0001 --plan <恢复计划> --approval <恢复批准>
+# MCP（R3b 第一片）：登记已存在的条目，再走上面的 preview / apply / restore
+python3 -I "$T" mcp-adopt --phe-home "$PHE_HOME" --server <条目名> --target pi=<配置路径> --target claude=<配置路径>
+python3 -I "$T" mcp-drift --phe-home "$PHE_HOME" [--asset-id <id>]
 ```
 
 与演练入口的区别，逐条记牢：
@@ -289,5 +292,18 @@ python3 -I "$T" restore --phe-home "$PHE_HOME" --execution x0001 --plan <恢复�
    登记里移出或换成软链之后才能继续。文件集合对得上**不代表** Host 发现了它，也不代表会触发——`review` 仍记 `observe` /
    `unknown`；隔离 Host 的发现与显式展开证据见 [docs/acceptance/r3a.md](../../docs/acceptance/r3a.md)。
 
-边界：一次只处理一个资产（单个 instructions 文件或一个 Skill 目录）+ 多个 Host 软链入口，不碰未受管的普通文件或目录，
-MCP、Hooks、扩展与工具配置留给 R3b–R3e。R2 的验收记录见 [docs/acceptance/r2.md](../../docs/acceptance/r2.md)。
+9. **MCP 是配置里的一个条目（R3b 第一片）。** 先登记已存在的 server：`mcp-adopt --server <名字> --target pi=<路径>
+   [--target claude=<路径>]`，只接受 Pi 的用户级 `~/.pi/agent/mcp.json`、项目级 `.pi/mcp.json` 与 Claude Code 项目级
+   `.mcp.json`；它只写 PHE_HOME（逻辑定义 `<PHE_HOME>/assets/<id>/content/server.json` 与 `asset.json` 的 `mcp.targets`
+   绑定），不碰 Host。之后 `preview` / `apply` / `review` / `restore-preview` / `restore` 与指令、Skill 完全同一条链路：
+   唯一区别是 `apply` 只替换各配置里 `mcpServers` 下托管成员的值跨度，未托管的 server 与文件外围字节不动，文件权限位
+   保留；`restore` 按 journal 的 `mcp_fragments` 片段反向拼接，并核对两侧文件 sha256。`mcp-drift` 只读报条目级漂移。
+   凭证口径：`env` / `headers` 的值只能是 `${NAME}` 引用，`url` 不带内联认证；其他字面值或 `oauth` / `timeout` /
+   `exposure` / `description` / `headersHelper` / `!command` 等字段让条目不可托管并报出字段名，工具不读值、不脱敏后写回。
+   `mcpServers` 里没有这个 server、或要新增 / 删除条目时不适用，计划标 `not_applicable`；Codex 的 `config.toml` 与
+   Claude 的启用开关都不在本片。文件对得上**不代表** Host 加载了这个 server，也不代表连得上。
+
+边界：一次只处理一个资产（单个 instructions 文件、一个 Skill 目录或一个 MCP 条目）+ 多个 Host 入口，不碰未受管的普通
+文件或目录；MCP 只支持上面两种 JSON 格式的已存在条目，新增 / 删除、Codex TOML、Hooks、扩展与工具配置留给 R3c–R3e。
+R2 的验收记录见 [docs/acceptance/r2.md](../../docs/acceptance/r2.md)，R3b 第一片见
+[docs/acceptance/r3b.md](../../docs/acceptance/r3b.md)。

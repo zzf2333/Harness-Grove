@@ -10,7 +10,7 @@
 
 **重排原因：** 旧排程把评测能力和沙箱样例当成了产品完成（M1 只到沙箱、M2 只到历史采集、M3a 只到草稿检查），而真正的产品主线——用户如何开始用、如何覆盖完整 Harness 资产、如何跨周期累积——没有排进去。本版把主线写成 R1–R4，历史阶段只作为证据和契约来源。
 
-**事实与规划的标记：** 本文标为“已实现/验证”的只指当前代码与已有证据；“未支持”是缺口。R1–R4 是排程。已交付：R1 的初始化与只读发现入口（沙箱验收，[acceptance/r1.md](acceptance/r1.md)）、R2 的产品入口（文件层验收，[acceptance/r2.md](acceptance/r2.md)）、R3a 的 Skills 文件层闭环与一次隔离 Host 的发现/显式展开（[acceptance/r3a.md](acceptance/r3a.md)）。仍缺：安装包与默认 `~/.phe`、真实 Host 加载验证、R3b–R3e、R4，以及模型自主选用与收益证据。
+**事实与规划的标记：** 本文标为“已实现/验证”的只指当前代码与已有证据；“未支持”是缺口。R1–R4 是排程。已交付：R1 的初始化与只读发现入口（沙箱验收，[acceptance/r1.md](acceptance/r1.md)）、R2 的产品入口（文件层验收，[acceptance/r2.md](acceptance/r2.md)）、R3a 的 Skills 文件层闭环与一次隔离 Host 的发现/显式展开（[acceptance/r3a.md](acceptance/r3a.md)）、R3b 第一片的 MCP 条目级更新（[acceptance/r3b.md](acceptance/r3b.md)）。仍缺：安装包与默认 `~/.phe`、真实 Host 加载验证、R3b 的新增/删除与 Codex、R3c–R3e、R4，以及模型自主选用与收益证据。
 
 ---
 
@@ -201,15 +201,41 @@
 
 **场景：** 同一个 MCP server 在 Claude Code 和 Pi 各写一份配置，参数已经漂移。用户想维护一份逻辑定义、按平台渲染，不覆盖未托管的 server，也不碰密钥。
 
-**现状：** 只按文件记 Hash 与顶层键名。
+**现状（2026-10-31）：** 第一片（更新已存在的条目）已交付，文件层在隔离合成环境验收，证据见
+[acceptance/r3b.md](acceptance/r3b.md)。逻辑定义在 `assets/<asset_id>/content/server.json`，适配器在
+`tools/mcp_config.py`（Pi 用户级 / 项目级 `mcp.json`、Claude Code 项目级 `.mcp.json`）；`mcp-adopt` 登记已存在的
+条目并显式记 `asset_id` / `adapter` / `config_path` / `server`，`preview` 把逻辑定义 diff 与每个 Host 的渲染差异放进
+同一份计划，`apply` 只替换 `mcpServers` 下托管成员的值跨度（未托管 server 与外围字节不动），journal 记
+`kind=mcp_fragments` 的托管前后片段，`restore` 反向拼接并核对两侧 sha256；`mcp-drift` 报条目级字段漂移。账本、
+`execution_id`、`status` / `review` 与 R2 共用。原先四项缺口的状态：
 
-**缺口与交付物：** 条目级模型（server 标识、命令/URL、传输、启用状态；不含凭证值）；两份配置的识别与比对；渲染与合并规则（未托管条目不覆盖）；产物不含明文凭证。
+1. 已做（第一片）：条目级模型与两份配置的识别/比对。模型含 server 标识、transport、`command` / `args` / `env` /
+   `cwd` / `url` / `headers`，**不含凭证值**（`env` / `headers` 只接受 `${NAME}` 引用）。
+2. 已做（第一片）：渲染与合并规则——未托管条目不覆盖、字节不变；Claude 的 HTTP 条目补 `"type": "http"`，Pi 不写
+   `type`，Claude 条目没有 `cwd` / `enabled`。
+3. 部分：产物不含明文凭证。合成标记串证明了未托管内容不进预览、计划、journal、发布与账本；非引用型字面值本身
+   不被支持，因此不会被脱敏后写回。没有通用 secret 扫描，也不声称能识别所有内联凭证。
+4. 未做：新增 / 删除条目、Codex 的 `config.toml`、`enabled` 的落点（Claude 在 `~/.claude.json`）、Host 是否加载与
+   能否连接。
 
-**验收：** 沙箱两份 Host 配置各含 2 个 server（一个托管、一个未托管），渲染后托管条目一致、未托管条目字节不变、产物无凭证；drift 能报条目级差异；apply/review/restore 走同一账本。
+**缺口与交付物：**
 
-**依赖：** 共享布局；条目级配置模型是 R3b/R3c/R3e 共用的能力——契约可并行设计，集成时共用同一模型。不依赖 R3a 的目录资产或 `change.py` 的多文件 patch。
+1. 新增 / 删除 server 条目（含 PHE 首次写入一个 Host 条目文件）。
+2. Codex 的 `~/.codex/config.toml` 读法（本片只有二进制层面的观察，未对照官方文档）。
+3. 启用 / 禁用开关的真实落点：Claude 按项目记在 `~/.claude.json`，需要先确认写它是否属于同一次批准可覆盖的范围。
+4. Host 加载与连接证据：隔离 Host 里真的发现该 server、或在允许的环境里确认连接。
 
-**完成 / 停止：** 上述验收通过即完成。读取凭证值、调用云服务、安装 server 都不在本路线。
+**验收：** 第一片已在隔离环境按本段口径跑完：两份合成 JSON 配置各含一个托管与一个未托管 server（4 空格与 2 空格
+缩进、外围键不同）→ `mcp-adopt` → `preview`（三行说明 + 逻辑定义 diff + 各 Host 渲染差异）→ 只批准托管条目 →
+`apply` → `mcp-drift`（外部手改报 `drifted`）→ `review` → `restore-preview` → 单独批准 → `restore`；两个文件的字节与
+权限位回到应用前，未托管标记串不进任何 PHE 产物。Host 是否加载、能否连上都没有验证。
+
+**依赖：** 共享布局；条目级配置模型是 R3b/R3c/R3e 共用的能力——契约可并行设计，集成时共用同一模型。不依赖 R3a 的
+目录资产或 `change.py` 的多文件 patch。
+
+**完成 / 停止：** 第一片按“更新已存在的两个 JSON 格式条目 + 未托管字节不变 + 凭证不进产物 + 同一账本”判定完成
+（2026-10-31）；新增 / 删除、Codex、`enabled` 落点、加载与连接不在第一片的完成条件内，仍记未支持或 `unknown`。
+读取凭证值、调用云服务、安装 server 都不在本路线。
 
 #### R3c Hooks
 

@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-10-31 · R3b 第一片交付：MCP 条目级更新的产品闭环
+
+- 背景：R3b 要把 R2 的“预览 → 逐条批准 → 应用 → 复盘 → 恢复”扩到 MCP。此前只按文件记 Hash 与顶层键名，改一个 server 就得整体重写配置，未托管条目和密钥都有被覆盖或带出来的风险。本片只做“更新已存在的条目”，新增 / 删除、Codex TOML、`enabled` 落点与 Host 加载/连接都留给后续。
+- 条目模型与适配器（新增 `tools/mcp_config.py`）：逻辑定义含 `server` / `transport` / `command` / `args` / `env` / `cwd` / `url` / `headers` / `enabled`，不含凭证值。`mcpServers` 下目标成员的值跨度用 `JSONDecoder.raw_decode` 加小范围扫描定位，写入只拼接这一段，未托管 server 与文件外围字节不动，也从不 `json.dumps` 整份文件。缩进步长取自文件自身；Claude 的 HTTP 条目渲染 `"type": "http"`，Pi 不写 `type`，Claude 条目没有 `cwd` / `enabled`。`env` / `headers` 只接受含 `${NAME}` 的引用，`url` 不带 userinfo，其他字面值、`oauth` / `timeout` / `exposure` / `description` / `headersHelper` / `!command` 让条目不可托管并报字段名；不读值、不执行 `!command`、不做通用 secret 扫描。
+- 产品入口（新增 `tools/personalize_mcp.py`、`personalize_mcp_plan.py`、`personalize_mcp_apply.py`）：`mcp-adopt` 从已存在的条目投影出逻辑定义与绑定（`asset.json` 的 `mcp.targets` 记 adapter / config_path / scope / server），只写 PHE_HOME；`preview` 把逻辑定义 diff 与每个 Host 的渲染差异放进同一份计划；`apply` 先核对每个目标整份文件与托管片段的 sha256，再渲染、拼接、写回并恢复原权限位；journal 记 `kind=mcp_fragments` 的托管前后片段、目标与两侧完整文件 sha256（不复制整份配置）；`restore` 反向拼接并核对两侧 sha256；`mcp-drift` 只读报条目级漂移。
+- 复用：`personalize.py` 加两个命令，`personalize_plan` / `personalize_apply` / `personalize_restore` 按 `asset.kind=mcp` 与 `asset_kind=mcp` 分派；批准（计划原始字节 + 条目）、`execution_id`、账本、`status` / `review` 全部沿用 R2，没有第二套引擎。`asset_content.write_asset` 接受 `kind` 与额外元数据段。
+- 发现报告：`tools/workspace.py` 的 MCP 能力行改成“产品入口部分可托管”，写明只支持两种 JSON 格式的已存在条目、只替换托管跨度，新增/删除、Codex TOML、`enabled` 落点、连接与加载都不支持；`tests/workspace_fixture.py` 的合成键名从 `servers` 改成官方 `mcpServers`。
+- 测试（新增 `tests/test_personalize_mcp.py`）：两个合成配置（4 空格 / 2 空格缩进、外围键不同，各含托管 `demo` 与未托管 `unmanaged`）跑 adopt → preview → 只批准 P1 → apply → drift → 外部手改 → review → restore-preview → 单独批准 → restore；断言托管跨度外字节不变、未托管标记串不进预览/计划/journal/发布/账本、外部手改报 `drifted` 且挡住恢复、预览后改文件拒绝执行、权限位（`0644` / `0600`）回到应用前、缺条目报 `missing` 且不创建、不支持的目标形状与字段被拒绝。红：同一份用例放在 base `72eac32` 的导出树里跑，8 项失败于 `invalid choice: 'mcp-adopt'`；加回实现后 9 项全绿。
+- 文档：新增 [docs/acceptance/r3b.md](acceptance/r3b.md)（官方格式依据与核对日期、合成输入、可机械提取的命令序列、逐块退出码与关键输出、契约与实现位置对照、红→绿、未验证项）；README 新增「R3b（第一片）」段与最小可跑输入/批准形状、目录约定（`tools/mcp_config.py`）与文档地图；ROADMAP R3b 现状/缺口/验收/完成口径与顶部已交付清单同步；AGENTS 当前阶段与 MCP 写入路径约束；SPEC 逻辑布局的 YAML 示例改成实际的 `server.json`、适配器表与 §5 说明同步；Skill §14 补第 9 条与 `mcp-adopt` / `mcp-drift` 命令。
+- 验证：`python3 -m unittest discover -s tests -t tests` → 421 tests OK（exit 0）；`-k test_personalize_mcp` → 9 tests OK；`-k test_workspace` → 22 tests OK；`ruff check .` → All checks passed（exit 0）；`ruff format --check .` → 113 files already formatted（exit 0）；`docs/acceptance/r3b.md` 的命令序列在隔离临时目录里从无关 cwd 跑完，逐块 exit 0，两个配置恢复后 `cmp` 与原始字节一致。日志在仓库外。
+- 未验证：Host 是否加载这个条目、能否连上 server、有没有收益（`review` 仍记 `observe` / `unknown`）；新增 / 删除条目、Codex `~/.codex/config.toml`、`enabled` 的真实落点（Claude 在 `~/.claude.json`）、非引用型 `env` / `headers` 字面值与 `oauth` 等字段；未读真实 Host 配置或凭证、未启动 MCP 连接、未调用付费服务、未推送；仓库无类型检查配置，未跑 typecheck。
+
 ## 2026-10-31 · R3a 第 1 轮审查修复：暂存残留、删除 patch、旧计划兼容与资产原名
 
 - 依据：R3a 候选 `709a523` 的第 1 轮独立审查（3 项 P1 + 1 项 P2）。四项都先用会失败的用例复现，再改最小代码；没有新增防护、锁、重试或版本 fallback，也没有回退旧 R2 / instructions 路径与 `change.py` 守卫。

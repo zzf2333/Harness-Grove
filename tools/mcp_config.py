@@ -9,7 +9,7 @@ server 与文件外围字节原样保留，不用 `json.dumps` 重写整个文�
 `headersHelper` 等本片不支持的字段会让该条目不可托管，并明确报出字段名（不做通用 secret 扫描，也不声称
 能识别所有内联凭证）。
 
-官方依据（2026-11-01 核对）：
+官方依据（2026-10-31 核对）：
 
 - Pi 1.4.0 `docs/mcp.md`：`mcpServers`；stdio 用 `command` / `args` / `env` / `cwd`；HTTP 用 `url` / `headers`；
   `type` 可选（`stdio` / `http` / `streamable-http`），`sse` 被拒；`enabled: false` 保留条目不连接；
