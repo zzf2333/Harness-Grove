@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 from test_release import rmtree_force
@@ -48,12 +49,23 @@ PATCH_P2 = """--- a/config/AGENTS.md
 +复盘时先读账本，并对照原预测。
 """
 
+# 六行合成会话：L1 会话头，L2/L3 与 L5/L6 都是用户消息（可作证据指针），L4 是助手回复。
+# 两个周期的证据分别落在 L2/L3 与 L5/L6，行号、角色、原文与时间戳都能按指针回读。
 PI_SESSION = """\
-{"type":"session","id":"{sid}","cwd":"/home/synthetic/proj","timestamp":"2026-10-30T09:00:00.000Z","version":"0"}
-{"type":"message","timestamp":"2026-10-30T09:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"以后回答先给结论。"}]}}
-{"type":"message","timestamp":"2026-10-30T09:00:02.000Z","message":{"role":"user","content":[{"type":"text","text":"不对，复盘时也要对照原预测。"}]}}
-{"type":"message","timestamp":"2026-10-30T09:00:03.000Z","message":{"role":"assistant","content":[{"type":"text","text":"收到。"}]}}
+{{"type":"session","id":"{sid}","cwd":"/home/synthetic/proj","timestamp":"{day}T09:00:00.000Z","version":"0"}}
+{{"type":"message","timestamp":"{day}T09:00:01.000Z","message":{{"role":"user","content":[{{"type":"text","text":"以后回答先给结论。"}}]}}}}
+{{"type":"message","timestamp":"{day}T09:00:02.000Z","message":{{"role":"user","content":[{{"type":"text","text":"不对，复盘时也要对照原预测。"}}]}}}}
+{{"type":"message","timestamp":"{day}T09:00:03.000Z","message":{{"role":"assistant","content":[{{"type":"text","text":"收到，先给结论。"}}]}}}}
+{{"type":"message","timestamp":"{day}T09:00:04.000Z","message":{{"role":"user","content":[{{"type":"text","text":"{evidence_a}"}}]}}}}
+{{"type":"message","timestamp":"{day}T09:00:05.000Z","message":{{"role":"user","content":[{{"type":"text","text":"{evidence_b}"}}]}}}}
 """
+
+C1_EVIDENCE = ("这几条约束都要保留。", "下次复盘先读账本再改。")
+C2_EVIDENCE = ("恢复前先给我看预览。", "不要再顺手改相邻文件。")
+
+
+def pi_session(sid: str, day: str, evidence: tuple[str, str]) -> str:
+    return PI_SESSION.format(sid=sid, day=day, evidence_a=evidence[0], evidence_b=evidence[1])
 
 
 def write(path: Path, text: str) -> None:
@@ -63,6 +75,21 @@ def write(path: Path, text: str) -> None:
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def moment(value: str) -> datetime:
+    """合成时间戳：会话用 `...Z`，周期记录用 `+00:00`，比较前统一成同一口径。"""
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def session_lines(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def evidence_at(path: Path, line: int) -> dict:
+    """按 `L<行号>`（1 起算）回读那一行的角色、原文与时间戳：断言指向的是原文，不是指针字符串。"""
+    row = session_lines(path)[line - 1]
+    return {"role": row["message"]["role"], "text": row["message"]["content"][0]["text"], "ts": row["timestamp"]}
 
 
 def run_cli(tool: Path, *args: str, cwd: Path) -> subprocess.CompletedProcess:
@@ -119,14 +146,8 @@ class PersonalizeFixture(unittest.TestCase):
         self.pi_root = self.tmp / "pi-root"
         self.session_c1 = self.pi_root / "sessions/--home-synthetic-proj--/2026-10-30T09-00-00-000Z_c1.jsonl"
         self.session_c2 = self.pi_root / "sessions/--home-synthetic-proj--/2026-10-31T09-00-00-000Z_c2.jsonl"
-        write(self.session_c1, PI_SESSION.replace("{sid}", "c1"))
-        write(
-            self.session_c2,
-            PI_SESSION.replace("{sid}", "c2")
-            .replace("2026-10-30T09:00:0", "2026-10-31T09:00:0")
-            .replace("以后回答先给结论。", "恢复前先给我看预览。")
-            .replace("不对，复盘时也要对照原预测。", "不要再顺手改相邻文件。"),
-        )
+        write(self.session_c1, pi_session("c1", "2026-10-30", C1_EVIDENCE))
+        write(self.session_c2, pi_session("c2", "2026-10-31", C2_EVIDENCE))
         self.report = self.out / "report.md"
         write(self.report, REPORT_TEXT)
 
@@ -166,7 +187,7 @@ class PersonalizeFixture(unittest.TestCase):
         self.change = self.package(
             [
                 self.item("P1", PATCH_P1, 2, "user_preference"),
-                self.item("P2", PATCH_P2, 4, "hypothesis"),
+                self.item("P2", PATCH_P2, 3, "hypothesis"),
             ]
         )
 
@@ -233,6 +254,9 @@ class PersonalizeFixture(unittest.TestCase):
         return path
 
     def cycle_record(self, name: str, cycle: str, lines: list[int], summary: str, source: Path | None = None) -> Path:
+        """周期记录：`from_ts`/`to_ts` 取该会话消息时间的首末值，覆盖记录里的行。"""
+        session = source or (self.session_c1 if cycle == "c1" else self.session_c2)
+        stamps = [row["timestamp"] for row in session_lines(session) if row["type"] == "message"]
         data = {
             "schema_version": 1,
             "cycle": cycle,
@@ -240,11 +264,11 @@ class PersonalizeFixture(unittest.TestCase):
             "summary": summary,
             "processed_evidence": [
                 {
-                    "source_path": str(source or (self.session_c1 if cycle == "c1" else self.session_c2)),
+                    "source_path": str(session),
                     "lines": lines,
                     "kind": "user_preference",
-                    "from_ts": "2026-10-30T09:00:00+00:00",
-                    "to_ts": "2026-10-31T09:00:00+00:00",
+                    "from_ts": moment(min(stamps)).isoformat(),
+                    "to_ts": moment(max(stamps)).isoformat(),
                 }
             ],
             "next_observations": ["恢复预览与批准是否按计划执行", "下一周期只收新证据"],

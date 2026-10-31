@@ -2,11 +2,13 @@
 
 写入范围在计划里定：`ApprovedScope` 只放行「本次计划列明的入口路径（精确匹配）」和「显式 PHE_HOME 产物」，
 不按整个 home 放行，也不查真实环境。这与旧沙箱入口（`release_deploy.sandbox_roots` 拒绝真实 home 及其下的
-`.claude`、`.codex`、`.pi`、`.phe`、`.agents`）是两套政策，互不影响，本文件不调用旧守卫也不改它。
+`.claude`、`.codex`、`.pi`、`.phe`、`.agents`）是两套政策，互不影响，本文件不直接调用旧守卫，也不改它；
+只有 `source=sandbox_rehearsal` 的批准叠加那个拒绝条件，因为演练批准不是用户批准。
 
 `preview` 只写 `<PHE_HOME>/reports/<cycle>/`：人可读预览、机读计划与计划 sha256。计划绑定报告与变更包的
 sha256、每个入口的当前形态与内容 sha256、每条目的当前/预期内容 sha256 与实际 diff；批准记录绑定这份计划的
-原始字节，输入或目标变了就要重新预览。`restore-preview` 同理绑定账本执行、journal 与恢复后的实际内容。
+原始字节，输入或目标变了就要重新预览。恢复预览在 `personalize_restore.py`，绑定账本执行、journal 与恢复后
+的实际内容。
 """
 
 import argparse
@@ -20,13 +22,14 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import change
-from change_ledger import read_json, read_ledger, require
+from change_ledger import require
 from release_deploy import (
     GuardError,
     Writer,
     current_state,
     load_sibling,
     read_registry,
+    refusal_reason,
     under,
     utc_now,
     write_target,
@@ -58,8 +61,25 @@ class ApprovedScope:
         raise GuardError(f"拒绝写入计划之外的路径：{path}")
 
 
-def product_writer(phe_home: Path, targets: list[Path] | None = None) -> Writer:
+def product_writer(phe_home: Path, targets: list[Path] | None = None, source: str | None = None) -> Writer:
+    """产品写入策略：显式 PHE_HOME + 计划列明的入口。
+
+    `source=sandbox_rehearsal` 叠加旧沙箱的真实环境拒绝条件（`release_deploy.refusal_reason`）：演练批准不是
+    用户批准，不获得真实 home、`.phe` 或 Host 入口的写入能力；`source=user` 按计划列明的精确范围放行。
+    """
+    if source == "sandbox_rehearsal":
+        for path in [phe_home, *(targets or [])]:
+            reason = refusal_reason(Path(path))
+            if reason is not None:
+                raise GuardError(f"演练批准不能写入真实环境：{reason}")
     return Writer(ApprovedScope(phe_home, targets or []).check)
+
+
+def require_planned_workspace(plan: dict, phe_home: Path) -> None:
+    """执行写入前的核对：实际规范化 PHE_HOME 必须就是这份计划所在的工作区。"""
+    recorded = Path(require(plan, "phe_home", "计划"))
+    if Path(os.path.realpath(recorded)) != Path(os.path.realpath(phe_home)):
+        raise ValueError(f"计划属于 PHE_HOME {recorded}，本次执行的是 {phe_home}：请重新预览")
 
 
 def json_text(data: dict) -> str:
@@ -130,6 +150,25 @@ def entry_rows(asset: dict) -> list[dict]:
     return rows
 
 
+def require_same_content(entries: list[dict], content_sha: str) -> None:
+    """共享入口必须都读同一份内容：预览的 diff 只按一份基线算，分叉时不生成可执行计划。
+
+    R2 只支持多入口共享一份内容，不支持多来源合并：某个入口读的已经是另一份内容时，应用会把它现有的
+    内容直接换成这份 diff 的结果，展示的改动就不等于那个入口实际发生的事。
+    """
+    differing = [
+        f"{entry['path']}（{entry['sha256']}）"
+        for entry in entries
+        if entry["writable"] and entry["sha256"] != content_sha
+    ]
+    if differing:
+        raise ValueError(
+            "这些入口读的内容与计划要改的那份不同，不支持多来源合并："
+            + "；".join(differing)
+            + "。请先让它们指向同一份内容，再重新预览"
+        )
+
+
 def single_asset(package: dict, registry: dict) -> dict:
     """R2 一次只处理一个资产：所有条目必须指向同一个 asset_id。"""
     assets = []
@@ -166,6 +205,7 @@ def build_plan(phe: Path, args: argparse.Namespace) -> dict:
     content_file = change.effective_file(asset)
     base = content_file.read_bytes()
     entries = entry_rows(asset)
+    require_same_content(entries, change.sha256_bytes(base))
     items, missing = [], []
     for item in require(package, "items", "变更包"):
         item_id = require(item, "item_id", "变更包条目")
@@ -347,131 +387,6 @@ def cmd_preview(args: argparse.Namespace) -> int:
                 "host_writes": plan["host_writes"],
                 "items": [item["item_id"] for item in plan["items"]],
                 "missing": plan["missing"],
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
-    return 0
-
-
-# 恢复预览：绑定账本执行、journal 与恢复后的实际内容。
-
-
-def restorable(phe: Path, execution_id: str) -> tuple[dict, list[Path]]:
-    """账本里可恢复的那次执行：必须还是倒数第一个生效中的应用（同一资产逆序恢复）。"""
-    from change_ledger import executions
-
-    facts = read_ledger(phe)
-    items = executions(facts)
-    execution = next((item for item in items if item["execution_id"] == execution_id), None)
-    if execution is None:
-        raise ValueError(f"账本里没有执行：{execution_id}")
-    if execution["state"] == "restored":
-        raise ValueError(f"{execution_id} 已经恢复过")
-    active = [item for item in items if item["state"] == "applied"]
-    if active[-1]["execution_id"] != execution_id:
-        raise ValueError(f"同一资产只支持逆序恢复：先恢复 {active[-1]['execution_id']}，再恢复 {execution_id}")
-    fact = next(fact for fact in facts if fact["kind"] == "apply" and fact["execution_id"] == execution_id)
-    return fact, [phe / relative for relative in fact["journals"]]
-
-
-def build_restore_plan(phe: Path, execution_id: str, cycle: str) -> dict:
-    fact, journal_paths = restorable(phe, execution_id)
-    entries = []
-    for journal_path in reversed(journal_paths):
-        journal = read_json(journal_path)
-        for entry in reversed(journal["entries"]):
-            path = Path(entry["path"])
-            state, target = current_state(path)
-            entries.append(
-                {
-                    "agent": journal["agent"],
-                    "path": str(path),
-                    "current": {"state": state, "target": target, "sha256": sha_of(path)},
-                    "restore": {
-                        "state": entry["state"],
-                        "old_target": entry["old_target"],
-                        "content_sha256": sha_of(Path(entry["old_target"])) if entry["old_target"] else None,
-                    },
-                }
-            )
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "kind": RESTORE_PLAN_KIND,
-        "cycle": cycle,
-        "created_at": utc_now(),
-        "phe_home": str(phe),
-        "execution_id": execution_id,
-        "proposal_id": fact["proposal_id"],
-        "release": fact["release"],
-        "journals": fact["journals"],
-        "entries": entries,
-        "host_writes": [entry["path"] for entry in entries],
-        "phe_writes": ["bindings.json", "ledger.jsonl"],
-        "restore_note": "恢复按 journal 逆序把入口链接指回应用前的目标；应用前的共享来源文件本身从未被改过",
-    }
-
-
-def render_restore_preview(plan: dict, plan_sha: str) -> str:
-    lines = [
-        f"# 恢复预览 · 周期 {plan['cycle']}",
-        "",
-        f"- 生成时间：{plan['created_at']}",
-        f"- 执行：`{plan['execution_id']}`（提案 `{plan['proposal_id']}`，发布 `{plan['release']}`）",
-        f"- 恢复计划 sha256：`{plan_sha}`（恢复批准绑定这份计划的原始字节）",
-        f"- journal：{'、'.join(f'`{path}`' for path in plan['journals'])}",
-        "",
-        "| Agent | 入口 | 当前形态 | 当前 sha256 | 恢复后 | 恢复后内容 sha256 |",
-        "|---|---|---|---|---|---|",
-    ]
-    for entry in plan["entries"]:
-        current, restore = entry["current"], entry["restore"]
-        current_text = f"软链 → `{current['target']}`" if current["state"] == "symlink" else current["state"]
-        restore_text = (
-            f"指向 `{restore['old_target']}`" if restore["state"] == "symlink" else "删除入口（应用前不存在）"
-        )
-        lines.append(
-            f"| {entry['agent']} | `{entry['path']}` | {current_text} | `{current['sha256']}` | "
-            f"{restore_text} | `{restore['content_sha256']}` |"
-        )
-    lines.extend(
-        [
-            "",
-            "## 写入范围",
-            "",
-            "Host 入口（只这些）：",
-            "",
-            *[f"- `{path}`" for path in plan["host_writes"]],
-            "",
-            f"PHE_HOME 产物：{'、'.join(f'`{path}`' for path in plan['phe_writes'])}（相对 `<PHE_HOME>`）",
-            "",
-            f"说明：{plan['restore_note']}。恢复只追加账本事实，不表示提案无效或 retired。",
-            "",
-        ]
-    )
-    return "\n".join(lines) + "\n"
-
-
-def cmd_restore_preview(args: argparse.Namespace) -> int:
-    phe = workspace(args.phe_home)
-    plan = build_restore_plan(phe, args.execution, args.cycle)
-    directory = phe / "reports" / args.cycle
-    writer = product_writer(phe)
-    plan_path = directory / f"restore-{args.execution}.json"
-    plan_sha = write_document(writer, plan_path, json_text(plan))
-    writer.write_bytes(directory / f"restore-{args.execution}.sha256", (plan_sha + "\n").encode("utf-8"))
-    preview_path = directory / f"restore-{args.execution}.md"
-    write_document(writer, preview_path, render_restore_preview(plan, plan_sha))
-    print(
-        json.dumps(
-            {
-                "cycle": plan["cycle"],
-                "execution_id": plan["execution_id"],
-                "plan": str(plan_path),
-                "plan_sha256": plan_sha,
-                "preview": str(preview_path),
-                "host_writes": plan["host_writes"],
             },
             ensure_ascii=False,
             indent=2,

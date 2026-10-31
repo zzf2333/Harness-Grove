@@ -32,6 +32,7 @@ import change
 import change_review
 import personalize_apply as applying
 import personalize_plan as planning
+import personalize_restore as restoring
 from change_ledger import append_ledger, read_ledger, require
 from history_digest import build_digest
 from release_deploy import GUARD_EXIT_CODE, GuardError, load_sibling
@@ -198,7 +199,7 @@ def cmd_cycle_plan(args: argparse.Namespace) -> int:
 COMMANDS = {
     "preview": planning.cmd_preview,
     "apply": applying.cmd_apply,
-    "restore-preview": planning.cmd_restore_preview,
+    "restore-preview": restoring.cmd_restore_preview,
     "restore": applying.cmd_restore,
     "status": cmd_status,
     "review-plan": cmd_review_plan,

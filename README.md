@@ -14,13 +14,14 @@ Harness Grove 是 Personal Harness Evolution（PHE）的开发仓库。PHE 是�
 WORK=$(cd "$(mktemp -d)" && pwd -P); SRC=/path/to/Harness-Grove
 mkdir -p "$WORK/host/.claude/skills/demo" "$WORK/host/.claude/rules" "$WORK/host/.pi/agent" \
     "$WORK/host/.codex" "$WORK/project/.claude/skills/proj-skill" "$WORK/elsewhere"
-printf '共享指令：回答先给结论。\n' > "$WORK/shared-AGENTS.md"
-printf '# Claude 指令\n' > "$WORK/host/.claude/CLAUDE.md"
+printf '先给结论。\n先复述问题再回答。\n用户说先别做时，不要越界执行。\n复盘时先读账本。\n' \
+    > "$WORK/shared-AGENTS.md"
 printf -- '---\nname: demo\n---\n演示 skill\n' > "$WORK/host/.claude/skills/demo/SKILL.md"
 printf '{"servers": {"demo": {"command": "demo"}}}\n' > "$WORK/host/.pi/agent/mcp.json"
 printf '风格规则\n' > "$WORK/host/.claude/rules/style.md"
-ln -s "$WORK/shared-AGENTS.md" "$WORK/host/.pi/agent/AGENTS.md"
+ln -s "$WORK/shared-AGENTS.md" "$WORK/host/.claude/CLAUDE.md"
 ln -s "$WORK/shared-AGENTS.md" "$WORK/host/.codex/AGENTS.md"
+ln -s "$WORK/shared-AGENTS.md" "$WORK/host/.pi/agent/AGENTS.md"
 printf '项目指令\n' > "$WORK/project/AGENTS.md"
 printf -- '---\nname: proj-skill\n---\n' > "$WORK/project/.claude/skills/proj-skill/SKILL.md"
 cd "$WORK/elsewhere"
@@ -58,7 +59,7 @@ python3 -I "$SRC/tools/workspace.py" discover --phe-home "$WORK/phe" \
 这一次运行告诉你什么：机器上有哪些 Harness 资产、从哪个文件或软链来、哪个 Host 入口在读、PHE 到哪一步能管
 （`沙箱可托管` / `部分可托管` / `仅观察` / `未支持`）。它**不**证明这些配置被 Host 加载过：每条都标 `load_chain unverified`。
 MCP 只有文件级观察，Hooks 没有候选路径所以列“未支持”。本流程的验收记录见 [docs/acceptance/r1.md](docs/acceptance/r1.md)。
-看完后清理：`rm -rf "$WORK"`（R2 流程会留下只读发布，先 `chmod -R u+w "$WORK/phe"` 再删）。
+清理放在 R2 流程末尾（发布是只读的，要先赋可写再删）；**R1 跑完不要先删 `$WORK`**，下面那一段接着用这份合成环境。
 
 ## R2：用你批准的改动更新自己的指令
 
@@ -66,36 +67,82 @@ MCP 只有文件级观察，Hooks 没有候选路径所以列“未支持”。�
 （`tools/change.py`、`tools/release*.py`）共用发布、journal、绑定和账本格式，但写入政策是分开的：
 
 - 旧沙箱入口仍拒绝真实 home 及其下 `.claude`、`.codex`、`.pi`、`.phe`、`.agents`，只用于演练。
-- 产品入口按**你批准的那份计划**写：只写计划里列出的 Host 入口，加上显式 `<PHE_HOME>` 产物。
+- 产品入口按**你批准的那份计划**写：只写计划里列出的 Host 入口，加上显式 `<PHE_HOME>` 产物。执行前还核对实际
+  `--phe-home` 就是计划里那个工作区、每个入口当前读的还是计划要改的那份内容；演练批准（`sandbox_rehearsal`）沿用旧
+  沙箱的真实环境拒绝条件，不获得真实 home、`.phe` 或 Host 入口的写入能力。
 
-先准备一份变更包和一条批准记录（都是普通 JSON；报告由宿主写，工具不生成也不解析 Markdown）：
+先准备合成输入：一份宿主写的报告、两周期各一份会话记录，和一份带两条目的机读变更包（都是普通 JSON，
+工具不生成也不解析 Markdown）。
 
 ```bash
-mkdir -p "$WORK/out"
+mkdir -p "$WORK/out" "$WORK/pi-root/sessions/--home-synth-proj--"
 printf '# 合成报告\n\n宿主写的示例，不是自动诊断。\n' > "$WORK/out/report.md"
-cat > "$WORK/out/change.json" <<'JSON'
-{
-  "schema_version": 1,
-  "report": {"path": "<WORK>/out/report.md", "sha256": "<报告文件的 sha256>"},
-  "items": [
-    {
-      "item_id": "P1",
-      "kind": "user_preference",
-      "evidence": ["<WORK>/pi-root/sessions/.../c1.jsonl:L2"],
-      "prediction": {
-        "why": "用户在合成会话里说回答先给结论",
-        "expected": "先给结论；不丢“用户说先别做时不越界”",
-        "verify": "读一遍入口内容；收益待验证，没有 Host 加载证据时记 unknown"
-      },
-      "target": {"asset_id": "asset-0001"},
-      "patch": "--- a/config/AGENTS.md\n+++ b/config/AGENTS.md\n@@ -1,3 +1,3 @@\n 先给结论。\n-先复述问题再回答。\n+先给结论，再复述问题。\n 用户说先别做时，不要越界执行。\n"
+cat > "$WORK/pi-root/sessions/--home-synth-proj--/c1.jsonl" <<'JSONL'
+{"type":"session","id":"c1","cwd":"/home/synthetic/proj","timestamp":"2026-10-30T09:00:00.000Z","version":"0"}
+{"type":"message","timestamp":"2026-10-30T09:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"以后回答先给结论。"}]}}
+{"type":"message","timestamp":"2026-10-30T09:00:02.000Z","message":{"role":"user","content":[{"type":"text","text":"不对，复盘时也要对照原预测。"}]}}
+{"type":"message","timestamp":"2026-10-30T09:00:03.000Z","message":{"role":"assistant","content":[{"type":"text","text":"收到，先给结论。"}]}}
+{"type":"message","timestamp":"2026-10-30T09:00:04.000Z","message":{"role":"user","content":[{"type":"text","text":"这几条约束都要保留。"}]}}
+{"type":"message","timestamp":"2026-10-30T09:00:05.000Z","message":{"role":"user","content":[{"type":"text","text":"下次复盘先读账本再改。"}]}}
+JSONL
+cat > "$WORK/pi-root/sessions/--home-synth-proj--/c2.jsonl" <<'JSONL'
+{"type":"session","id":"c2","cwd":"/home/synthetic/proj","timestamp":"2026-10-31T09:00:00.000Z","version":"0"}
+{"type":"message","timestamp":"2026-10-31T09:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"以后回答先给结论。"}]}}
+{"type":"message","timestamp":"2026-10-31T09:00:02.000Z","message":{"role":"user","content":[{"type":"text","text":"不对，复盘时也要对照原预测。"}]}}
+{"type":"message","timestamp":"2026-10-31T09:00:03.000Z","message":{"role":"assistant","content":[{"type":"text","text":"收到，先给结论。"}]}}
+{"type":"message","timestamp":"2026-10-31T09:00:04.000Z","message":{"role":"user","content":[{"type":"text","text":"恢复前先给我看预览。"}]}}
+{"type":"message","timestamp":"2026-10-31T09:00:05.000Z","message":{"role":"user","content":[{"type":"text","text":"不要再顺手改相邻文件。"}]}}
+JSONL
+python3 - "$WORK" <<'PY'
+import hashlib, json, pathlib, sys
+
+work = pathlib.Path(sys.argv[1])
+report = work / "out/report.md"
+sessions = work / "pi-root/sessions/--home-synth-proj--"
+
+
+def item(item_id, line, kind, why, patch):
+    return {
+        "item_id": item_id,
+        "kind": kind,
+        "evidence": [f"{sessions}/c1.jsonl:L{line}"],
+        "prediction": {
+            "why": why,
+            "expected": f"{item_id} 生效；不丢“用户说先别做时不越界”",
+            "verify": "读一遍入口内容；收益待验证，没有 Host 加载证据时记 unknown",
+        },
+        "target": {"asset_id": "asset-0001"},
+        "patch": patch,
     }
-  ]
+
+
+change = {
+    "schema_version": 1,
+    "report": {"path": str(report), "sha256": hashlib.sha256(report.read_bytes()).hexdigest()},
+    "items": [
+        item(
+            "P1",
+            2,
+            "user_preference",
+            "宿主按 c1:L2 的用户原话起草：回答先给结论",
+            "--- a/config/AGENTS.md\n+++ b/config/AGENTS.md\n@@ -1,3 +1,3 @@\n 先给结论。\n"
+            "-先复述问题再回答。\n+先给结论，再复述问题。\n 用户说先别做时，不要越界执行。\n",
+        ),
+        item(
+            "P2",
+            3,
+            "hypothesis",
+            "宿主按 c1:L3 的用户原话提出假设：复盘时对照原预测",
+            "--- a/config/AGENTS.md\n+++ b/config/AGENTS.md\n@@ -3,2 +3,2 @@\n 用户说先别做时，不要越界执行。\n"
+            "-复盘时先读账本。\n+复盘时先读账本，并对照原预测。\n",
+        ),
+    ],
 }
-JSON
+(work / "out/change.json").write_text(json.dumps(change, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
 ```
 
-`report.path` 与 `sha256` 要写实际路径和摘要（`shasum -a 256 "$WORK/out/report.md"` 的第一列）。然后：
+预览，然后读它：
 
 ```bash
 T="$SRC/tools/personalize.py"
@@ -104,48 +151,152 @@ python3 -I "$T" preview --phe-home "$WORK/phe" --change "$WORK/out/change.json" 
 less "$WORK/phe/reports/c1/preview.md"
 ```
 
-预览只写 `<PHE_HOME>/reports/c1/`，不动 Host。**批准就是宿主按用户原话写一份绑定计划 sha256 的记录**（工具不自动造
-`source=user`）：
+预览只写 `<PHE_HOME>/reports/c1/`，不动 Host。**批准就是宿主按用户原话写一份绑定计划 sha256 的记录**（工具不
+自动造批准）。下面用合成夹具代写批准记录：第一条 `source=user` 只是**夹具来源，不代表任何真实用户同意**；
+第二条 `source=sandbox_rehearsal` 是演练批准，它没有真实 home、`.phe` 或 Host 入口的写入能力。
 
 ```bash
-cat > "$WORK/out/approval.json" <<'JSON'
-{
-  "schema_version": 1,
-  "approval_id": "approve-001",
-  "source": "user",
-  "plan_sha256": "<preview 输出的 plan_sha256>",
-  "items": ["P1"],
-  "note": "用户原话：这条可以"
+approve_apply() {  # $1 计划文件 $2 批准记录 $3 批准 ID $4 来源 $5… 获批条目
+  python3 - "$@" <<'PY'
+import hashlib, json, pathlib, sys
+
+plan, out, approval_id, source, *items = sys.argv[1:]
+record = {
+    "schema_version": 1,
+    "approval_id": approval_id,
+    "source": source,
+    "plan_sha256": hashlib.sha256(pathlib.Path(plan).read_bytes()).hexdigest(),
+    "items": items,
+    "note": "夹具：合成批准，不代表真实用户同意",
 }
-JSON
-python3 -I "$T" apply --phe-home "$WORK/phe" --plan "$WORK/phe/reports/c1/plan.json"     --item P1 --approval "$WORK/out/approval.json"
+pathlib.Path(out).write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+}
+approve_restore() {  # $1 恢复计划 $2 批准记录 $3 批准 ID $4 来源 $5 执行 ID
+  python3 - "$@" <<'PY'
+import hashlib, json, pathlib, sys
+
+plan, out, approval_id, source, execution = sys.argv[1:]
+record = {
+    "schema_version": 1,
+    "approval_id": approval_id,
+    "source": source,
+    "execution": execution,
+    "plan_sha256": hashlib.sha256(pathlib.Path(plan).read_bytes()).hexdigest(),
+    "note": "夹具：合成恢复批准，不代表真实用户同意",
+}
+pathlib.Path(out).write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+}
+
+approve_apply "$WORK/phe/reports/c1/plan.json" "$WORK/out/approval.json" approve-001 user P1
+python3 -I "$T" apply --phe-home "$WORK/phe" --plan "$WORK/phe/reports/c1/plan.json" \
+    --item P1 --approval "$WORK/out/approval.json"
+# 第二条要重新预览：P1 已经把入口内容改了，旧计划里的“当前内容”不再成立。
+python3 -I "$T" preview --phe-home "$WORK/phe" --change "$WORK/out/change.json" --cycle c1
+approve_apply "$WORK/phe/reports/c1/plan.json" "$WORK/out/approval-rehearsal.json" approve-002 sandbox_rehearsal P2
+python3 -I "$T" apply --phe-home "$WORK/phe" --plan "$WORK/phe/reports/c1/plan.json" \
+    --item P2 --approval "$WORK/out/approval-rehearsal.json"
 python3 -I "$T" status --phe-home "$WORK/phe"
 ```
 
 没被批准的条目不会生效；预览之后变更包、入口形态或入口内容任何一处变了，`apply` 都退出 1 要求重新预览——它不会
-拿旧计划执行另一份 diff。应用成功只说明入口指向了 PHE 发布，**不说明 Host 加载过，也不说明变好了**。
+拿旧计划执行另一份 diff。执行前还核对两件事：实际 `--phe-home` 必须就是计划里的那个工作区（在 A 批准、换
+`--phe-home` B 执行会退出 1），每个入口现在读的必须还是计划要改的那份内容（共享入口已经分叉时预览就停下）。
+应用成功只说明入口指向了 PHE 发布，**不说明 Host 加载过，也不说明变好了**。
 
-复盘与下一周期：
+复盘与下一周期（记录都是普通 JSON，证据指针是会话文件 + `L<行号>`）：
 
 ```bash
+cat > "$WORK/out/review.json" <<JSON
+{
+  "verdict": "observe",
+  "prediction_met": "unknown",
+  "reason": "只在合成 home 应用；Host 是否加载未验证",
+  "observations": ["$WORK/pi-root/sessions/--home-synth-proj--/c1.jsonl:L2"],
+  "next": "按 prediction.verify 在观察窗内统计；没有行为证据前记 unknown"
+}
+JSON
+cat > "$WORK/out/cycle-c1.json" <<JSON
+{
+  "schema_version": 1,
+  "cycle": "c1",
+  "recorded_at": "2026-10-31T12:00:00+00:00",
+  "summary": "第一周期：只改了偏好一条，收益未知",
+  "processed_evidence": [
+    {
+      "source_path": "$WORK/pi-root/sessions/--home-synth-proj--/c1.jsonl",
+      "lines": [2, 3],
+      "kind": "user_preference",
+      "from_ts": "2026-10-30T09:00:00+00:00",
+      "to_ts": "2026-10-30T09:00:05+00:00"
+    }
+  ],
+  "next_observations": ["恢复预览与批准是否按计划执行", "下一周期只收新证据"]
+}
+JSON
+cat > "$WORK/out/cycle-c2.json" <<JSON
+{
+  "schema_version": 1,
+  "cycle": "c2",
+  "recorded_at": "2026-10-31T13:00:00+00:00",
+  "summary": "第二周期：只新增证据，旧预测仍可读",
+  "processed_evidence": [
+    {
+      "source_path": "$WORK/pi-root/sessions/--home-synth-proj--/c2.jsonl",
+      "lines": [5, 6],
+      "kind": "user_preference",
+      "from_ts": "2026-10-31T09:00:00+00:00",
+      "to_ts": "2026-10-31T09:00:05+00:00"
+    }
+  ],
+  "next_observations": ["下一周期对照这两条观察"]
+}
+JSON
+
 python3 -I "$T" review-plan --phe-home "$WORK/phe"       # 观察窗 + 原预测
 python3 -I "$T" review --phe-home "$WORK/phe" --execution x0001 --record "$WORK/out/review.json"
 python3 -I "$T" digest --phe-home "$WORK/phe" --cycle c1 --host pi --root "$WORK/pi-root"
 python3 -I "$T" cycle-record --phe-home "$WORK/phe" --cycle c1 --record "$WORK/out/cycle-c1.json"
 python3 -I "$T" cycle-plan --phe-home "$WORK/phe" --cycle c2
+python3 -I "$T" digest --phe-home "$WORK/phe" --cycle c2 --host pi --root "$WORK/pi-root" --since 2026-10-31
+python3 -I "$T" cycle-record --phe-home "$WORK/phe" --cycle c2 --record "$WORK/out/cycle-c2.json"
+python3 -I "$T" cycle-plan --phe-home "$WORK/phe" --cycle c3
 ```
 
 `cycle-plan` 读回上一周期的证据范围（源文件路径 + `L<行号>` + 原文 ts）、三行说明和复盘结论；`cycle.at` 与 `review.at`
 是记录时间，**不是**已处理证据水位。下一周期只收上一周期没处理过的证据，重复计入会被拒。
 
-撤销也要先预览、再批准：
+撤销也要先预览、再批准，而且只允许逆序：
 
 ```bash
+python3 -I "$T" restore-preview --phe-home "$WORK/phe" --execution x0002 --cycle c2
+approve_restore "$WORK/phe/reports/c2/restore-x0002.json" "$WORK/out/approval-restore.json" approve-restore-002 sandbox_rehearsal x0002
+python3 -I "$T" restore --phe-home "$WORK/phe" --execution x0002 \
+    --plan "$WORK/phe/reports/c2/restore-x0002.json" --approval "$WORK/out/approval-restore.json"
 python3 -I "$T" restore-preview --phe-home "$WORK/phe" --execution x0001 --cycle c2
-python3 -I "$T" restore --phe-home "$WORK/phe" --execution x0001     --plan "$WORK/phe/reports/c2/restore-x0001.json" --approval "$WORK/out/approval-restore.json"
+approve_restore "$WORK/phe/reports/c2/restore-x0001.json" "$WORK/out/approval-restore-user.json" approve-restore-001 user x0001
+python3 -I "$T" restore --phe-home "$WORK/phe" --execution x0001 \
+    --plan "$WORK/phe/reports/c2/restore-x0001.json" --approval "$WORK/out/approval-restore-user.json"
 ```
 
-恢复只允许逆序（先撤销最后一次生效的执行），并把入口链接指回应用前的目标，字节回到原样。本流程的验收记录见
+恢复执行前会复核入口形态、入口当前内容与恢复目标的实际内容：预览之后任何一处变了都退出 1，要求重新预览。
+
+核对结果，并从末尾清理这个临时工作区（发布是只读的，要先赋可写再删）：
+
+```bash
+readlink "$WORK/host/.claude/CLAUDE.md" "$WORK/host/.codex/AGENTS.md" "$WORK/host/.pi/agent/AGENTS.md"
+shasum -a 256 "$WORK/shared-AGENTS.md" "$WORK/host/.pi/agent/AGENTS.md"
+python3 -c 'import json,sys; print([json.loads(line)["kind"] for line in open(sys.argv[1], encoding="utf-8")])' \
+    "$WORK/phe/ledger.jsonl"
+chmod -R u+w "$WORK"
+cd "$SRC"
+rm -rf "$WORK"
+test ! -e "$WORK" && echo "临时工作区已删除"
+```
+
+两个 `shasum` 相同说明恢复回到了应用前字节；软链目标回到 `$WORK/shared-AGENTS.md`；账本的 `kind` 序列是
+`approval, apply, approval, apply, review, cycle, cycle, restore, restore`。本流程的验收记录见
 [docs/acceptance/r2.md](docs/acceptance/r2.md)；**R2 只覆盖指令这一类资产和一个用户周期**，Skill、MCP、Hooks 是 R3。
 
 ## 当前状态
@@ -198,7 +349,7 @@ python3 -I "$T" restore --phe-home "$WORK/phe" --execution x0001     --plan "$WO
 - `tools/registry.py`：M1 切片 B/C 的登记与漂移检测；`adopt --inventory <盘点> --registry <登记表> (--path <p> | --group <resolved_path>)` 把选中的盘点条目登记为 `Active(origin=imported, evidence_status=unverified)`。资产按真实路径认定，`observed` 记录所有指向它的 agent/path；只写登记表，不改被登记文件。默认登记表 `registry/assets.json`（被 Git 忽略）。同一真实路径不重复登记；`access_error`、断链或无法解析真实路径的条目拒绝登记，退出码 1。`drift --inventory <新盘点> --registry <登记表> [--out <文件>]` 只读对比基线，输出 `content_changed`、`symlink_target_changed`、`missing`、`unreadable` 四类 `ExternalChange` 和 `changes` 计数（缺省打印到 stdout）；不更新登记表，未登记的新文件不算漂移，有变化也只报告不自动接受。
 - `tools/release.py`：M1 切片 D1 的沙箱导入、发布、部署与回滚（写入层与 deploy/rollback 在 `tools/release_deploy.py`，绑定发布校验在 `tools/release_verify.py`）。`import --registry <登记表> --inventory <盘点>` 把选中资产复制进 `--phe-home/assets/<asset_id>/`（skill 复制整个目录）；`release` 构建不可写发布 `releases/rNNNN/`，`manifest.json` 记每个文件的 sha256 和 `asset_id`，编号走高水位不复用；`deploy --agent <x> --release <编号> --registry <登记表>` 先盘点 `--home` 做漂移检查，任何 `ExternalChange` 都中止且不动链接，全部检查通过后写 journal、逐条原子替换软链、最后写 `bindings.json`，中途失败按 journal 回滚；`rollback --journal <文件>` 按 journal 倒序恢复旧状态。`--home`、`--phe-home` 必填，按文件身份（含大小写别名）判断，等于真实 home、是它的祖先，或落在 `~/.claude`、`~/.codex`、`~/.pi`、`~/.phe`、`~/.agents`、`~/AI/temper` 之内时在任何写入前退出 2；所有写入先过 `guarded_write_path()`。deploy 不改登记表，基线不变；PHE 自己部署的链接由 deploy 预检按 `bindings.json` 识别——已绑定、精确指向该绑定 release 对应文件且该发布按 manifest 校验通过的链接不算漂移，单独运行 `registry drift` 仍会把它们报成 `symlink_target_changed`。
 - `tools/change.py`：闭环切片 2/3 的批准、应用、恢复与复盘（写入仍经 `tools/release_deploy.py` 的 `Sandbox`，账本事实与推导在 `tools/change_ledger.py`，复盘入口在 `tools/change_review.py`）。`apply --change <变更包> --item <P1> --approval <批准记录> --registry <登记表> --phe-home <临时 PHE_HOME> --home <临时 home>` 从目标入口当前实际生效的内容起算，用 `git apply` 把该条目 patch 打到 `<phe-home>/staging/<执行 ID>/`，按 `release import` 的同一 `asset.json` 格式重建资产，再走既有 `release` 与逐 Agent `deploy`；三个入口全部完成后才向 `<phe-home>/ledger.jsonl` 追加 `approval` 和 `apply` 事实，失败保留 journal/发布但不追加、不重试。变更包带报告路径与 sha256（apply 重算，不一致退出 1）、条目 ID、证据、`prediction`（`why` / `expected` / `verify` / 可缺的 `baseline`）、目标 asset id 和 patch；工具只要求整个 `prediction` 存在，内部键不校验、原样入账，旧变更包继续可用；批准记录用 `change_sha256` 绑定确定版本的变更包与 `items`，`source` 只有 `user` 和 `sandbox_rehearsal`。`status --phe-home` 从事实推导每个执行是 `applied` 还是 `restored`、当前生效栈，附最新 `latest_review`，并读文件给出入口现在的发布和 sha256，不写任何东西。`restore --execution x0001` 按 journal 逆序恢复，只允许恢复当前最后一条生效的执行，恢复后按 journal 的 `old_target` 重新绑定到更早的 PHE 发布，下一次 deploy 才不会被漂移预检当成 ExternalChange；恢复只追加 `restore` 事实，不表示提案无效或 retired。`review-plan --phe-home` 只读列出每个执行（含已恢复）的观察窗（应用到恢复，未恢复的 `to` 为 `null`）、原预测、证据、报告引用和全部 review 历史；`review --execution x0001 --record <JSON> --phe-home` 只追加一条 `review` 事实（`verdict` ∈ keep/adjust/revert/observe、`prediction_met` ∈ met/not_met/unknown、`reason`、`observations` 证据指针、`next`，加记录路径与原始字节 sha256），不改执行状态、不调用 restore、不碰配置和发布，同一执行可多次 review 且旧行不改写；守卫只查 `--phe-home`。本轮只支持单个 instructions 资产 + 三个 Agent 软链入口。
-- `tools/personalize.py`：R2 的产品入口（计划与预览在 `tools/personalize_plan.py`，执行在 `tools/personalize_apply.py`），复用 `release.py` / `release_deploy.py` / `change.py` / `change_ledger.py` / `change_review.py` 的业务函数，不建第二套引擎。`preview` 读报告、变更包、登记表与每个入口当前生效的内容，写 `<PHE_HOME>/reports/<cycle>/preview.md`、`plan.json` 与 `plan.sha256`（不写 Host）：计划绑定报告与变更包的 sha256、每个入口的形态与内容 sha256、每条目的实际 diff 与前后 sha256、写入范围与恢复方式；上一轮已应用的条目打不上当前内容时标 `not_applicable`，不挡同包其他条目。`apply` 要求批准记录绑定计划原始字节（`plan_sha256`）并覆盖该条目，只写计划列明的入口与显式 `<PHE_HOME>` 产物；变更包、报告、入口形态或内容在预览之后变了就退出 1，要求重新预览。`restore-preview` / `restore` 同理先预览（绑定账本执行、journal 与恢复后的实际内容）、再批准；`status` / `review-plan` / `review` 直接读写自己的 PHE_HOME 账本，`status` 多补一列批准来源；`digest` 用 `history_digest.build_digest` 的纯逻辑把摘要写进 `<PHE_HOME>/episodes/<cycle>/digest/`；`cycle-record` 追加周期事实（`processed_evidence` 带源文件路径、行号、类别与原文时间范围，重复上一周期的证据退出 1），`cycle-plan` 读回上一周期的证据范围、预测与结论并写明记录时间不是水位。写入范围由 `personalize_plan.ApprovedScope` 判定（计划内入口精确匹配 + PHE_HOME，外加原子替换的同目录临时链接名），不查旧沙箱守卫；旧入口的行为与守卫不变。
+- `tools/personalize.py`：R2 的产品入口（计划、预览与恢复预览在 `tools/personalize_plan.py` / `tools/personalize_restore.py`，执行在 `tools/personalize_apply.py`），复用 `release.py` / `release_deploy.py` / `change.py` / `change_ledger.py` / `change_review.py` 的业务函数，不建第二套引擎。`preview` 读报告、变更包、登记表与每个入口当前生效的内容，写 `<PHE_HOME>/reports/<cycle>/preview.md`、`plan.json` 与 `plan.sha256`（不写 Host）：计划绑定报告与变更包的 sha256、每个入口的形态与内容 sha256、每条目的实际 diff 与前后 sha256、写入范围与恢复方式；共享入口分叉（某个入口读的内容和计划要改的那份不同）时直接失败，不做多来源合并。`apply` 要求批准记录绑定计划原始字节（`plan_sha256`）并覆盖该条目；上一轮已应用的条目打不上当前内容时在预览里标 `not_applicable`，不挡同包其他条目。执行前核对实际 `--phe-home` 与计划一致、每个入口的内容 sha256 与计划基线一致，只写计划列明的入口与显式 `<PHE_HOME>` 产物；变更包、报告、入口形态或内容在预览之后变了就退出 1，要求重新预览。`restore-preview` / `restore` 同理先预览（绑定账本执行、journal、入口当前内容与恢复目标内容）、再批准，执行前复核形态、链接与两侧内容；相对软链按链接所在目录解析，恢复写回原始相对路径。`status` / `review-plan` / `review` 直接读写自己的 PHE_HOME 账本，`status` 多补一列批准来源；`digest` 用 `history_digest.build_digest` 的纯逻辑把摘要写进 `<PHE_HOME>/episodes/<cycle>/digest/`；`cycle-record` 追加周期事实（`processed_evidence` 带源文件路径、行号、类别与原文时间范围，重复上一周期的证据退出 1），`cycle-plan` 读回上一周期的证据范围、预测与结论并写明记录时间不是水位。写入范围由 `personalize_plan.ApprovedScope` 判定（计划内入口精确匹配 + PHE_HOME，外加原子替换的同目录临时链接名），不查旧沙箱守卫；`source=sandbox_rehearsal` 另叠加 `release_deploy.refusal_reason` 的真实环境保护，`source=user` 才按计划精确范围写。旧入口的行为与守卫不变。
 - `tools/rehearse_change.py`：闭环切片 2 演练，只读真实报告与用户级 `config/AGENTS.md`，把字节复制到 `--out` 下，在临时 home 的三个入口软链上应用 P1、P2 并逆序恢复；P1/P2 的 patch 在 `tools/rehearse_change_input.py`（手工从报告提取，不解析 Markdown）。批准写 `source=sandbox_rehearsal`，命令、断言、发布、journal、账本和恢复所需文件全部留在 `--out`（本轮产物在 `experiments/loop-apply-001/`，被 Git 忽略）。
 - `tools/rehearse_review.py`：闭环切片 3 演练，把切片 2 的 `experiments/loop-apply-001/phe/` 复制到 `--out/phe`（原目录不改），先 `review-plan`，再对真实演练执行写 `observe`/`unknown` 的 review；然后在 `--out/synthetic/` 下另建一套【合成】沙箱（小 base + 三个软链入口 + 独立 PHE_HOME），apply 合成条目 `S1` 后不 restore，`to` 是 `null`，取样上界取演练声明的模拟复盘时刻 `cutoff = 应用时刻 + 60 分钟`，窗口是 `[应用时刻, cutoff)`，合成会话时间戳按相对实际 `applied_at` 的偏移生成，按窗口两端取样后手算 `cwd does not exist` 次数，结论按窗口内计数推导，并放一条晚于 `cutoff` 的命中证明不计入；另用零宽窗口样例证明窗口外的命中（含恰好等于端点的一条）不计入观察。合成沙箱与真实演练账本分开。合成数据与取样逻辑在 `tools/rehearse_review_synthetic.py`，报告渲染在 `tools/rehearse_review_report.py`。命令、断言、记录和报告留在 `--out`（本轮产物在 `experiments/loop-review-001/`，被 Git 忽略）；结论只说明复盘流程可运行，不证明规则有效。
 - `tools/proposal.py`：M3a 的本地草稿与只读检查（候选结构在 `tools/proposal_candidate.py`，显式 Retired 输入与关系核对在 `tools/proposal_retired.py`，共用输入校验在 `tools/proposal_input.py`），只用标准库。`draft --groups <分组 JSON> --candidate <Host 候选 JSON> [--retired <Retired 检索 JSON>] --experiment-id <id>` 只新建 `experiments/<id>/proposal.json`：形状取自 `examples/m-1/proposal.template.json`，只改实验身份、`status=draft` 和 artifact 路径，追加 `candidate` 段。Host 候选 JSON 只有 `groups`、`hypothesis`、`predictions`、`retired_review`；证据只从分组 JSON 解析 `source_path`/`line`/`ts`，绑定分组文件原始字节 sha256 和选中组 ID，不复制 `excerpt`，不接受 Host 自填引用或检索结果字段。缺假设/预测字段可保存并逐项报告；未知 metric、组不存在或同一 ID 对应多份内容、畸形 JSON/类型、已存在的实验目录（含冻结目录）和路径穿越/软链逃逸都拒绝。

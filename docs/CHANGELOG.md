@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-10-31 · R2 第 1 轮审查修复：执行前绑定核对、共享入口一致性、README 与文档可执行
+
+- 依据：R2 候选（`86fe094` + `f0f7083`）第 1 轮独立审查的 6 项 P1 与 1 项 P2。七项都先用会失败的用例或机械提取复现，再改最小代码；没有新增防护框架、锁或重试。
+- 执行前绑定 PHE_HOME：`personalize_plan.require_planned_workspace` 在写入前比较规范化 PHE_HOME 与计划的，不一致就退出 1 要求重新预览；`apply` 与 `restore` 都先调。修前在 A 预览批准后 `--phe-home B` 执行会在 B 里建出发布与账本（用例 `0 != 1`）。
+- `sandbox_rehearsal` 不再获得真实入口写入能力：`product_writer(..., source)` 让演练批准叠加旧沙箱的 `release_deploy.refusal_reason`（真实 home、`.phe` 与 Host 入口范围），`source=user` 仍只按计划的精确范围写。旧守卫、CLI 拒绝测试与 `PROTECTED_SUBPATHS` 一行未动。
+- 恢复绑定内容：恢复计划记录入口当前内容与恢复目标内容的 sha256，执行前复核入口形态、链接、当前内容与目标内容，任一变化都要求重新预览；相对 `old_target` 按链接自身所在目录解析摘要（修前按 cwd，得到 `None`），恢复仍写回原始相对字符串。
+- 共享入口分叉：`preview` 逐入口读基线，某个可写入口读的内容与计划要改的那份不同就直接失败（`不支持多来源合并`），不生成可执行计划；`apply` 逐入口核对记录的内容 sha256，不只首入口。
+- 两周期夹具与指针：`tests/personalize_fixture.py` 的合成会话改成六行（L2/L3/L5/L6 都是用户消息），周期记录的 `from_ts`/`to_ts` 取该会话消息时间首末值；`tests/test_personalize_cycles.py` 按指针回读角色、原文、时间戳与行号，断言两周期行号不重叠，不再只比较指针字符串。修前 `L5` 回读 `IndexError`、`L4` 是助手消息、记录时间范围早于消息。
+- 结构：恢复预览（`restorable`、`build_restore_plan`、`render_restore_preview`、`cmd_restore_preview`）从 `tools/personalize_plan.py` 移到 `tools/personalize_restore.py`，`restore-preview` 改指新模块；职责本来就是独立一块，也让 `personalize_plan.py` 回到 20000 字节上限内。`Writer`、`deploy_paths`、`build_digest` 这些既有提取未动。
+- README：R1 段统一成 4 行共享指令与三个软链入口（`.claude/CLAUDE.md` 不再是普通文件），R2 段补齐两周期合成会话、报告、变更包、两条批准（`user` 与 `sandbox_rehearsal` 各一）、复盘、周期记录与恢复批准；清理移到 R2 末尾，先 `chmod -R u+w` 再删并核对。修前旧 README 的 R2 段跑不通：`report.path` 还是占位符、会话/复盘/周期/恢复批准都不存在，恢复块退出 1。
+- 文档：`docs/acceptance/r2.md` 新增「第 1 轮审查修复」一节，含旧 README 命令块的机械提取红证据、逐项红→绿、本轮 8 个块的退出码与关键输出核对、清理核对；`docs/acceptance/r1.md` 说明两个文档的夹具差异；Skill §14 补执行前绑定、共享入口分叉与恢复内容绑定三条。上一轮记录里的虚误通过声明按实际执行改正（见下）。
+- 验证：`python3 -m unittest discover -s tests -t tests -p "test_personalize*.py"` 修前 17 tests / 7 failures，修后 17 tests OK；全量 `python3 -m unittest discover -s tests -t tests` → 397 tests OK；`ruff check .` → `Ruff: No issues found`；`ruff format --check .` → 98 files already formatted；README 的 8 个 bash 块从仓库副本（不含 `.git` 与 ignored）+ 无关 cwd 机械提取执行，逐块退出码都是 0，关键输出逐条核对（计划两条目、两个执行与批准来源、两周期回读、恢复后 sha256 回到应用前、账本 `kind` 序列、临时工作区已删除）。日志与转写都在仓库外。
+- 未验证：Host 是否加载或触发这些入口（`review` 仍只能记 `observe`/`unknown`）；收益量化；安装包与默认 `~/.phe`；仓库无类型检查配置，本轮未跑 typecheck。
+
 ## 2026-10-31 · R2 交付：产品批准入口（预览 → 批准 → 应用 → 复盘 → 跨次 → 恢复）
 
 - 新增 `tools/personalize.py`（计划与预览在 `tools/personalize_plan.py`，执行在 `tools/personalize_apply.py`，只用标准库、无新依赖），把闭环做成安装用户在明确授权范围内可跑的入口。写入政策与旧沙箱入口分开：`ApprovedScope` 只放行「本次计划列明的入口路径（精确匹配）」和「显式 PHE_HOME 产物」，外加原子替换用的同目录临时链接名；`change.py`、`release*.py` 的 `PROTECTED_SUBPATHS`、`refusal_reason`、`sandbox_roots` 与 CLI 守卫调用一行未改，仍拒绝真实 home 及 Host 入口路径，继续只用于演练。
@@ -10,7 +24,8 @@
 - 共享逻辑做了最小提取，语义不变：`release_deploy` 新增 `Writer`（策略对象）与 `Sandbox` 子类、抽出 `deploy_paths`；`change` 抽出 `git_apply` 并让执行函数接受 `Writer`；`change_review` 抽出 `build_review_row`；`change_ledger.append_ledger` 参数改名；`history_digest` 抽出纯函数 `build_digest`；`release` 的复制/冻结/收集接受 `Writer`。
 - 测试：新增 `tests/personalize_fixture.py`（合成 home 三个共享入口 + 仓外 PHE_HOME + 仓库副本 + 无关 cwd）、`tests/test_personalize.py`（预览只读、选择性应用、两条批准来源分支、预览失效三例、批准绑定、逆序恢复与恢复绑定、账本视图）、`tests/test_personalize_cycles.py`（两周期增量、重复证据被拒、旧守卫与产品入口的写入政策对照——用 `mock.patch` 把合成 home 变成“真实 home”，旧入口退出 2 且不写，产品入口按计划写）。先写用例确认入口不存在时 11 项全红，实现后转绿；中途两处实现缺口（同目录临时链接名、上一轮条目已不适用）按失败证据补齐。
 - 文档：新增 [docs/acceptance/r2.md](acceptance/r2.md)（命令、退出码、关键输出、负例、两套政策对照、红→绿、剩余缺口）；README 新增「R2：用你批准的改动更新自己的指令」可复制流程与 `tools/personalize.py` 目录说明；Skill 新增 §14 产品入口，并在 §11–§13 标注它们是演练入口；ROADMAP R2 现状/缺口/验收/完成口径、AGENTS 当前阶段、SPEC §2.2 与 §7 同步（版本 v0.10）。
-- 验证：`python3 -m unittest discover -s tests -t tests -p "test_personalize*.py"` → 11 tests OK（exit 0）；全量 `python3 -m unittest discover -s tests -t tests` → 391 tests OK（exit 0）；`ruff check .` → All checks passed（exit 0）；`ruff format --check .` → 96 files already formatted（exit 0）；README/acceptance 的命令串在仓库副本 + 无关 cwd + 临时 home/PHE_HOME 上逐条重跑，退出码与断言符合记录。日志在仓库外。
+- 验证：`python3 -m unittest discover -s tests -t tests -p "test_personalize*.py"` → 11 tests OK（exit 0）；全量 `python3 -m unittest discover -s tests -t tests` → 391 tests OK（exit 0）；`ruff check .` → All checks passed（exit 0）；`ruff format --check .` → 96 files already formatted（exit 0）。日志在仓库外。
+- **修正（第 1 轮审查后）：** 本条原还写“README/acceptance 的命令串……逐条重跑，退出码与断言符合记录”。这句实际没有执行绑定：当时 README 的 R2 段接着只有一行的共享指令、引用不存在的会话/复盘/周期/恢复批准，跑不通；文末清理的 `rm -rf` 退出 1，也被当成完成。保留原记录，真实执行与退出码见上一条与 [docs/acceptance/r2.md](acceptance/r2.md) 的「第 1 轮审查修复」一节。
 - 未验证：Host 是否加载或触发这些入口（`review` 只能记 `observe`/`unknown`）；安装包、默认 `~/.phe`、安装引导；收益量化；skill/MCP/Hooks 与普通文件入口（R3）。本轮未读真实 Host 配置，未启动 Host，未推送。
 
 ## 2026-10-31 · R1 第 2 轮审查修复：登记身份索引分开来源与历史入口

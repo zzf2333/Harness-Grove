@@ -2,8 +2,9 @@
 
 执行只写两类路径：计划列明的 Host 入口，以及显式 PHE_HOME 产物。批准记录绑定计划的原始字节
 （`plan_sha256`）和条目或执行 ID；`source=user` 由宿主按用户确认写成记录，工具不自动造用户批准，
-`sandbox_rehearsal` 仍是演练批准。变更包、报告、入口当前形态或内容在预览之后变了就拒绝执行，
-要求重新预览，不拿旧计划执行另一份 diff。发布内容、journal、绑定与账本都复用既有格式。
+`sandbox_rehearsal` 仍是演练批准（沿用旧沙箱的真实环境拒绝条件）。写入之前核对：实际规范化 PHE_HOME 就是
+计划里的那个工作区，每个入口现在读的还是计划要改的内容，恢复目标的实际内容也未变。变更包、报告、入口
+当前形态或内容在预览之后变了就拒绝执行，要求重新预览，不拿旧计划执行另一份 diff。
 """
 
 import argparse
@@ -16,6 +17,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import change
 import personalize_plan as planning
+import personalize_restore as restoring
 import release as release_tool
 import release_deploy
 from change_ledger import append_ledger, next_execution_id, read_json, read_ledger, require
@@ -57,8 +59,11 @@ def check_restore_approval(approval: dict, plan_sha: str, execution_id: str) -> 
     return source
 
 
-def check_entries(entries: list[dict]) -> None:
-    """入口在预览之后没被手改：形态与链接目标都要与计划一致，且没有普通文件入口。"""
+def check_entries(entries: list[dict], content_sha: str) -> None:
+    """入口在预览之后没被手改：形态、链接目标与当前内容都要与计划一致，且没有普通文件入口。
+
+    逐个入口核对，不只看第一个：共享入口读的必须是本计划要改的那份内容，否则应用会把它的不同内容改没。
+    """
     for entry in entries:
         path = Path(entry["path"])
         if not entry["writable"]:
@@ -66,6 +71,25 @@ def check_entries(entries: list[dict]) -> None:
         state, target = current_state(path)
         if state != entry["state"] or target != entry["target"]:
             raise ValueError(f"入口 {path} 与预览时不同（{entry['state']} → {state}）：请重新预览")
+        if planning.sha_of(path) != entry["sha256"]:
+            raise ValueError(f"入口 {path} 的内容在预览之后变了：请重新预览")
+        if entry["sha256"] != content_sha:
+            raise ValueError(f"入口 {path} 读的不是本计划要改的内容（{entry['sha256']} != {content_sha}）：请重新预览")
+
+
+def check_restore_entries(entries: list[dict]) -> None:
+    """恢复写入前的核对：入口形态与链接、入口当前内容，以及恢复目标的实际内容都要与恢复预览一致。"""
+    for entry in entries:
+        path = Path(entry["path"])
+        state, target = current_state(path)
+        if state != entry["current"]["state"] or target != entry["current"]["target"]:
+            raise ValueError(f"入口 {path} 在恢复预览之后变了：请重新预览")
+        if planning.sha_of(path) != entry["current"]["sha256"]:
+            raise ValueError(f"入口 {path} 的内容在恢复预览之后变了：请重新预览")
+        restore_target = restoring.link_content(path, entry["restore"]["old_target"])
+        restored_sha = planning.sha_of(restore_target) if restore_target is not None else None
+        if restored_sha != entry["restore"]["content_sha256"]:
+            raise ValueError(f"恢复目标的内容在恢复预览之后变了（{path} → {restore_target}）：请重新预览")
 
 
 def deploy_planned(writer, phe: Path, plan: dict, release_id: str) -> list[str]:
@@ -89,6 +113,7 @@ def deploy_planned(writer, phe: Path, plan: dict, release_id: str) -> list[str]:
 def cmd_apply(args: argparse.Namespace) -> int:
     phe = planning.workspace(args.phe_home)
     plan, plan_sha = planning.read_plan(args.plan, planning.PLAN_KIND)
+    planning.require_planned_workspace(plan, phe)
     approval = read_json(args.approval)
     source = check_approval(approval, plan_sha, args.item)
     change_path = Path(plan["change"]["path"])
@@ -109,9 +134,9 @@ def cmd_apply(args: argparse.Namespace) -> int:
     base = content_file.read_bytes()
     if change.sha256_bytes(base) != item_plan["current_sha256"]:
         raise ValueError("入口当前内容在预览之后变了：请重新预览，不要用旧计划执行另一份 diff")
-    check_entries(plan["asset"]["entries"])
+    check_entries(plan["asset"]["entries"], item_plan["current_sha256"])
     targets = [Path(entry["path"]) for entry in plan["asset"]["entries"]]
-    writer = planning.product_writer(phe, targets)
+    writer = planning.product_writer(phe, targets, source)
     execution_id = next_execution_id(read_ledger(phe))
     patch = require(item, "patch", f"条目 {args.item}")
     content = change.apply_patch(writer, phe / "staging" / execution_id, patch, base)
@@ -193,18 +218,15 @@ def cmd_apply(args: argparse.Namespace) -> int:
 def cmd_restore(args: argparse.Namespace) -> int:
     phe = planning.workspace(args.phe_home)
     plan, plan_sha = planning.read_plan(args.plan, planning.RESTORE_PLAN_KIND)
+    planning.require_planned_workspace(plan, phe)
     approval = read_json(args.approval)
     source = check_restore_approval(approval, plan_sha, args.execution)
-    fact, journal_paths = planning.restorable(phe, args.execution)
+    fact, journal_paths = restoring.restorable(phe, args.execution)
     if plan["journals"] != fact["journals"]:
         raise ValueError("恢复计划绑定的 journal 与账本不一致：请重新预览")
-    for entry in plan["entries"]:
-        path = Path(entry["path"])
-        state, target = current_state(path)
-        if state != entry["current"]["state"] or target != entry["current"]["target"]:
-            raise ValueError(f"入口 {path} 在恢复预览之后变了：请重新预览")
+    check_restore_entries(plan["entries"])
     targets = [Path(entry["path"]) for entry in plan["entries"]]
-    writer = planning.product_writer(phe, targets)
+    writer = planning.product_writer(phe, targets, source)
     for entry in plan["entries"]:
         restore_entry(
             writer,

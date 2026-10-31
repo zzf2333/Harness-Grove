@@ -15,7 +15,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from personalize_fixture import TOOL, PersonalizeFixture, snapshot, write
+from personalize_fixture import TOOL, PersonalizeFixture, evidence_at, moment, snapshot, write
 
 
 def load_product_module():
@@ -35,6 +35,17 @@ class TwoCycleTests(PersonalizeFixture):
         result = self.cli(command, "--phe-home", str(self.phe), *args)
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout) if result.stdout.strip().startswith("{") else {}
+
+    def assert_evidence(self, entry: dict, session: Path, lines: list[int], texts: list[str]) -> None:
+        """证据指针回读：那一行的角色、原文与时间戳都要对得上，且落在记录的 from_ts/to_ts 内。"""
+        self.assertEqual(Path(entry["source_path"]), session)
+        self.assertEqual(entry["lines"], lines)
+        for line, text in zip(lines, texts):
+            pointer = evidence_at(session, line)
+            self.assertEqual(pointer["role"], "user")
+            self.assertEqual(pointer["text"], text)
+            self.assertLessEqual(moment(entry["from_ts"]), moment(pointer["ts"]))
+            self.assertLessEqual(moment(pointer["ts"]), moment(entry["to_ts"]))
 
     def test_second_cycle_reads_back_predictions_and_only_adds_new_evidence(self):
         """摘要 → 预览 → 批准 → 应用 → 复盘 → 周期记录 → 第二周期读回预测并只收新证据。"""
@@ -63,6 +74,12 @@ class TwoCycleTests(PersonalizeFixture):
         )
         stored = json.loads((self.phe / "episodes/c1/cycle.json").read_text(encoding="utf-8"))
         self.assertEqual(stored["summary"], "第一周期：只改了偏好一条，收益未知")
+        self.assert_evidence(
+            stored["processed_evidence"][0],
+            self.session_c1,
+            [2, 3],
+            ["以后回答先给结论。", "不对，复盘时也要对照原预测。"],
+        )
 
         # 第二周期：先读回上一周期的证据范围、预测与结论。
         plan = self.cli("cycle-plan", "--phe-home", str(self.phe), "--cycle", "c2")
@@ -108,6 +125,18 @@ class TwoCycleTests(PersonalizeFixture):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.phe / "episodes/c2/digest/pi-1.md").is_file())
+        stored_c2 = json.loads((self.phe / "episodes/c2/cycle.json").read_text(encoding="utf-8"))
+        self.assert_evidence(
+            stored_c2["processed_evidence"][0],
+            self.session_c2,
+            [5, 6],
+            ["恢复前先给我看预览。", "不要再顺手改相邻文件。"],
+        )
+        # 两周期独立新增：行号不重叠，回读到的原文也不是同一句。
+        self.assertEqual(
+            set(stored["processed_evidence"][0]["lines"]) & set(stored_c2["processed_evidence"][0]["lines"]), set()
+        )
+        self.assertNotEqual(evidence_at(self.session_c1, 2)["text"], evidence_at(self.session_c2, 5)["text"])
 
         data = json.loads(self.cli("cycle-plan", "--phe-home", str(self.phe), "--cycle", "c3").stdout)
         self.assertEqual([cycle["cycle"] for cycle in data["previous_cycles"]], ["c1", "c2"])
@@ -167,6 +196,28 @@ class ProductScopeTests(PersonalizeFixture):
                     ]
                 )
             self.assertEqual(code, 2)
+            self.assertEqual(snapshot(self.home), before)
+
+            # 演练批准沿用旧沙箱的真实环境拒绝条件：同一身份下没有真实 home / .phe / Host 入口的写入能力。
+            rehearsal = self.approve(plan, ["P1"], "sandbox_rehearsal", name="rehearsal-scope.json")
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as rehearsal_err:
+                self.assertEqual(
+                    product.main(
+                        [
+                            "apply",
+                            "--phe-home",
+                            str(self.phe),
+                            "--plan",
+                            str(plan),
+                            "--item",
+                            "P1",
+                            "--approval",
+                            str(rehearsal),
+                        ]
+                    ),
+                    2,
+                )
+            self.assertIn("演练批准不能写入真实环境", rehearsal_err.getvalue())
             self.assertEqual(snapshot(self.home), before)
 
             # 同一个“真实 home”身份下，产品入口按批准的计划写入口与 PHE_HOME。

@@ -10,7 +10,7 @@ import os
 import unittest
 from pathlib import Path
 
-from personalize_fixture import BASE, PersonalizeFixture, sha256, snapshot, write
+from personalize_fixture import BASE, PersonalizeFixture, evidence_at, sha256, snapshot, write
 
 FIXTURE_NOTE = "测试夹具"
 
@@ -54,6 +54,19 @@ class PreviewTests(PersonalizeFixture):
         self.assertIn(plan["report"]["sha256"], preview_text)
         self.assertIn("Host 入口（只这些）", preview_text)
         self.assertIn("恢复也要单独预览并再次批准", preview_text)
+
+    def test_preview_stops_when_shared_entries_read_different_content(self):
+        """共享入口已经分叉：只按第一份内容算 diff 会丢掉别的入口的附加规则，所以不生成可执行计划。"""
+        alt = self.tmp / "alt-AGENTS.md"
+        write(alt, BASE + "本地附加规则：只在这台机器上生效。\n")
+        self.entries["codex"].unlink()
+        os.symlink(alt, self.entries["codex"])
+        result = self.preview("c1")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("读的内容与计划要改的那份不同", result.stderr)
+        self.assertIn("不支持多来源合并", result.stderr)
+        self.assertFalse(self.plan_path("c1").exists())
+        self.assertEqual(alt.read_bytes(), (BASE + "本地附加规则：只在这台机器上生效。\n").encode())
 
 
 class ApplyTests(PersonalizeFixture):
@@ -116,8 +129,12 @@ class ApplyTests(PersonalizeFixture):
         self.assertEqual(facts[1]["plan_sha256"], first_plan_sha)
         self.assertEqual(facts[3]["plan_sha256"], (self.phe / "reports/c1/plan.sha256").read_text().strip())
         self.assertEqual(facts[1]["cycle"], "c1")
-        self.assertEqual(facts[3]["prediction"]["why"], "合成证据 L4 指向的偏好或观察")
+        self.assertEqual(facts[3]["prediction"]["why"], "合成证据 L3 指向的偏好或观察")
         self.assertEqual(len(facts[1]["target"]["paths"]), 3)
+        # 证据指针指向原文：P2 指的那一行是用户消息，不是助手回复。
+        pointer = facts[3]["evidence"][0].rsplit(":L", 1)
+        self.assertEqual(evidence_at(Path(pointer[0]), int(pointer[1]))["role"], "user")
+        self.assertEqual(evidence_at(Path(pointer[0]), int(pointer[1]))["text"], "不对，复盘时也要对照原预测。")
 
         # 只有计划列明的入口被写：home 里未登记的入口一个字节都没变。
         extra = self.home / ".pi/agent/extra.md"
