@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 2026-10-31 · R3b 启停：Pi 条目 `enabled` 与 Claude 项目 `disabledMcpServers`
+
+- 背景：第一片把 MCP 收紧到条目级跨度，但启停一直没落实——“启用 / 禁用”是用户最常要的一层开关，第一片只能靠普通参数更新“保留原值”。本片只做这一层：逻辑定义里的 `enabled` 渲染到各 Host 的真实落点，不动项目审批、信任与默认关闭的内置 server，也不把“启用”当成“会连上”。
+- 格式依据（静态，不是 Host 实跑）：Pi 的 `docs/mcp.md` 写明 `enabled: false` 保留条目不连接；Claude Code 的 `/mcp disable` 把 server 名追加进 `~/.claude.json` 的 `projects[<项目键>].disabledMcpServers`，`/mcp enable` 删掉该名，缺这个列表等价于空列表，项目键是启动时工作目录的路径字符串（NFC 规范化，不 realpath），键不在 `projects` 里时会回落默认项目条目、改动静默无效。第二项是 2026-10-31 从本机安装的 2.1.312 二进制只读定位的产品自身说明与读写函数。
+- 实现拆分：跨度定位与拼接移到新增 `tools/mcp_span.py`（`skip_ws` / `object_members` / `array_elements` / `server_location` / `server_span` / `splice`），`tools/mcp_config.py` 只留适配器（新增 `claude-toggle` 路径与 `TOGGLE_ARRAYS`，`render_target_entry` 加 `manage_enabled`，新增 `render_target_fragment`），项目启停在新增 `tools/mcp_toggle.py`（`project_object` / `toggle_edit` / `toggle_drift` / `toggle_diff` / `toggle_restore_span`）。拆分是为了让每个文件在工具的体积上限内，不是新引擎：写入仍只有“替换一个跨度”这一种。发现报告的逻辑类型表另移到新增 `tools/workspace_kinds.py`（`KIND_ROWS` 与两条目录说明），`tools/workspace.py` 只留入口与主流程，同样是为了带上 MCP 能力行的新说法后仍在体积上限内。
+- 登记与漂移：`mcp-adopt` 接受 `--target claude-toggle=<~/.claude.json> --project-key <项目键>`（一个资产只能一个启停目标，且至少一个条目目标）；项目键不在文件里就退出 1，不创建项目条目；`mcp-drift` 对启停目标单独报，定义没写 `enabled` 时是 `not_managed`，定义写了就比项目启停列表里有没有这个名字。
+- 计划、应用与恢复：启停目标与条目目标一样进 `host_writes`，渲染差异里多一行项目键与数组名；有 Claude 条目却没有启停目标时，改启停的整包标 `not_applicable`，不退化成只改 Pi；journal 多记 `project_key`，恢复按 journal 的编辑方向反推跨度（插入就删、删除就插回），启停列表“原本没有”这个区间也能恢复回“没有这个列表”。`~/.claude.json` 只记启停数组里这一个名字的片段与两侧整份文件 sha256，不备份整份文件；预览、计划与 journal 都不出现其他名字。
+- 语义细节：普通参数更新不改启停（`manage_enabled` 只在这次 patch 动了 `enabled` 时生效）；条目渲染结果与当前条目一致时保持原字节，不为了统一格式重排；把 `enabled` 从定义里拿掉（改成不管理）本片不支持，会明确报出。
+- 测试：新增 `tests/personalize_mcp_toggle_fixture.py`（合成 `~/.claude.json`：声明项目桶带信任/审批字段、另一个项目桶有同名与另一个禁用名、user 作用域条目；权限 0o600）与 `tests/test_personalize_mcp_toggle.py`（8 项：禁用 → 复盘 → 启用 → 逆序恢复的两个字节 + 权限位；已有禁用项保留且冗余禁用不写字节；预览后改 `~/.claude.json` 就失效；Claude 没有启停目标时整组不可执行；Pi 单目标可启停；未知项目键拒绝；Pi 只含 `enabled` 的项目级覆盖报不支持；外部手改按目标分开报）。`tests/test_personalize_mcp_review.py` 的启停不适用用例改成“没有启停目标时不可执行”，并补一项“Pi 条目带 `enabled: false` 也能登记”。红：同一份用例在实现前跑出 7/8 失败（`--target claude-toggle` / `--project-key` 认不出、消息是“首片不支持改启停”），实现后 `-k test_personalize_mcp_toggle` → 8 tests OK。
+- 文档：新增 [docs/acceptance/r3b-enable.md](acceptance/r3b-enable.md)（静态格式依据与边界、合成输入、可机械提取的命令序列、实测输出、红→绿、未验证项）；README 的 R3b 段改成条目 + 启停两片并补启停目标与 `--project-key` 的最小输入；ROADMAP 的 R3b 现状 / 缺口 / 验收 / 完成口径、顶部已交付清单与现状矩阵同步；AGENTS 当前阶段、SPEC §5、Skill §14 第 9 条与命令块同步；`tools/workspace_kinds.py` 的 MCP 能力行从“`enabled` 开关未支持”改成“启停只改一层（Pi 条目 / Claude 项目），静态依据、未 Host 实跑”。
+- 验证：`python3 -m unittest discover -s tests -t tests` → 435 tests OK（exit 0）；`-k test_personalize_mcp` → 23 tests OK；`-k test_personalize_mcp_toggle` → 8 tests OK；`ruff check .` → All issues clean；`ruff format --check .` → 120 files already formatted；`docs/acceptance/r3b-enable.md` 的 `bash` 块从最终文件机械提取，在仓库副本与无关 cwd 里用 `bash -e` 执行，退出 0，`cmp` 与 drift 状态核对通过；临时工作区已删除。
+- 未验证：Claude Code 是否真的按 `disabledMcpServers` 启停（只有静态格式依据）、Host 是否加载条目、能否连上 server、启停有没有收益；Pi 侧同样没在 Host 里实跑过启停效果；新增 / 删除条目、Codex `config.toml`、审批与信任开关的写入仍未支持；未读真实 Host 配置或凭证、未启动 MCP 连接、未调用付费服务、未推送；仓库无类型检查配置，未跑 typecheck。
+
 ## 2026-10-31 · R3b 第一片第 1 轮审查修复：server 标识、恢复逆序、目标本地启停与 Claude stdio
 
 - 依据：R3b 第一片候选 `3c26e2b`（本树 cherry-pick 后为 `886dd2b` + `b164850`）的第 1 轮独立审查，4 项 P1 与 2 项 P2。四项 P1 都先用真实 CLI 序列写成失败用例（`tests/test_personalize_mcp_review.py`，5 项），在候选内容上跑出 5 项失败，再做最小修复；没有新增防护、锁、重试或 fallback，旧 `change.py` / `release*.py` 守卫与旧 instructions / Skill 路径未回退。

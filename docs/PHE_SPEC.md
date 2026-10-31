@@ -329,7 +329,7 @@ Proposal：draft → frozen → evaluated → closed
 - 所有 Active 绑定都指向不可变的 Release。候选 V2 在隔离目录里测试，不直接改写可变的共享文件，避免同时影响所有 Agent。
 - 软链接减少的是重复维护，**不一定减少 Token**。
 - 只有在建立已知基线之后才会出现 `ExternalChange`。扫描、评测、审批和发布之前，都要核对实际文件内容的 Hash、软链接及其目标、加载顺序，以及工具和依赖的指纹。发现冲突就停止覆盖，由用户审查后选择 `adopt / reconcile / leave_unmanaged`。
-- 各 Agent 的指令文件名、加载优先级、Skill 搜索路径和软链接支持，都由对应的 Adapter 在实际版本上探测，不依赖文档中的版本断言。MCP 先共享逻辑定义，再按平台渲染，不能假定所有客户端都用同一种配置文件。R3b 第一片只实现两个 JSON 适配器（Pi 的 `mcpServers`、Claude Code 项目级 `.mcp.json`），托管对象是配置里的一个条目而不是整份文件；凭证值不进逻辑定义，非引用型字面值让该条目不可托管；启停与显式 stdio `type` 是目标本地状态，普通更新沿用各目标原值，隐式启停不在逻辑定义里。
+- 各 Agent 的指令文件名、加载优先级、Skill 搜索路径和软链接支持，都由对应的 Adapter 在实际版本上探测，不依赖文档中的版本断言。MCP 先共享逻辑定义，再按平台渲染，不能假定所有客户端都用同一种配置文件。R3b 只实现两个 JSON 适配器（Pi 的 `mcpServers`、Claude Code 项目级 `.mcp.json`），托管对象是配置里的一个条目而不是整份文件；凭证值不进逻辑定义，非引用型字面值让该条目不可托管。启停是分层开关，只算额外的一层：逻辑定义里的 `enabled` 渲染成 Pi 条目的 `enabled` 字段与 Claude 项目 `~/.claude.json` 的 `disabledMcpServers` 成员名；项目 `.mcp.json` 的审批（`disabledMcpjsonServers` / `enabledMcpjsonServers`）、信任（`hasTrustDialogAccepted`）与默认关闭的内置 server 不是这一层，不由 PHE 改。“启用”只表示去掉这一层禁用，不保证 Host 会加载或能连上。显式 stdio `type` 仍是目标本地状态，普通更新沿用各目标原值；普通参数更新不改启停，只有启停补丁改它。
 - 各类资产当前做到哪一步（设计、已实现、验证、未支持）以 [ROADMAP](ROADMAP.md) 的现状矩阵为准；矩阵里标“未支持”的能力不是承诺，不写在验收里。
 
 ## 6. 安全与发布权限

@@ -12,10 +12,7 @@ journal、恢复），以及 `tools/personalize*.py` 里按资产 `kind` 的分�
 渲染差异进同一份计划、只批准托管条目、应用只替换 `mcpServers` 下托管成员的值跨度、未托管条目与文件外围字节不变、
 外部手改会被 `mcp-drift` 报成 `drifted`、`review` 记进同一本账本、恢复按账本逆序并核对两侧完整文件字节。**Host 是否
 加载条目、能否连上 server、有没有收益都没有验证**，本记录不声称它们。
-**本片明确不支持：** 新增 / 删除条目（条目不存在时计划标 `not_applicable`，不创建）；改逻辑定义的 `server` 标识（定
-位始终用登记的条目名，改标识标 `not_applicable`）；改 `enabled` 启停（普通更新保留每个目标现在写的值与字段有无，
-Claude 的启停不在 `.mcp.json` 的条目里，本片不写 `~/.claude.json`）；Codex 的 `~/.codex/config.toml`；Pi / Claude 之外
-的 Host；`oauth`、`timeout`、`exposure`、`description`、`headersHelper` 等字段（遇到就报字段名）。
+**本片明确不支持（第二片补上的部分已标出）：** 新增 / 删除条目（条目不存在时计划标 `not_applicable`，不创建）；改逻辑定义的 `server` 标识（定位始终用登记的条目名，改标识标 `not_applicable`）；改 `enabled` 启停——第一片只保留各目标现有值，**第二片已补上**（Pi 条目 `enabled` 与 Claude 项目 `disabledMcpServers`，见 [r3b-enable.md](r3b-enable.md)）；Codex 的 `~/.codex/config.toml`；Pi / Claude 之外的 Host；`oauth`、`timeout`、`exposure`、`description`、`headersHelper` 等字段（遇到就报字段名）。
 
 ## 官方格式依据（2026-10-31 核对）
 
@@ -41,7 +38,7 @@ Claude 的启停不在 `.mcp.json` 的条目里，本片不写 `~/.claude.json`�
 |---|---|---|
 | P1 改逻辑定义的 `server` 会写错条目且无法恢复：计划用 patch 后的名字定位，同文件的未托管条目被改写，journal 仍记登记的 `demo` | `test_server_rename_is_not_applicable_and_never_rewrites_unmanaged_entries`：修前计划是 `applicable`（`'applicable' != 'not_applicable'`），`apply` 会改写同文件的 `other` | `personalize_mcp_plan.unsupported_patch_reason` 在生成目标行前把改 `server` 标识的 patch 标为 `not_applicable`；`target_row` 的定位与 `server` 字段只用登记绑定名 |
 | P1 旧恢复计划能覆盖后续应用：MCP 恢复在 `restorable()` 与 journal 对照前就返回，`x1 A→B` / `x2 B→C` / `x3 C→B` 后 `x1` 旧计划的 hash 又对上，可恢复 A 而账本仍记 `x3 applied` | `test_stale_restore_plan_is_refused_and_the_newest_restore_still_works`：修前 `restore` 退出 `0`（`0 != 1`），文件被写回 A | `personalize_apply.cmd_restore` 先调 `personalize_restore.restorable()` 核对逆序、计划 `execution_id` 与 journal，再按 `asset_kind` 分派到 MCP 的逐文件内容核对；复用现有账本推导，不建第二套栈 |
-| P1 普通参数更新会删掉 Pi 已有的 `enabled: false`（Claude 目标先登记、其条目没有该字段）：渲染只用逻辑定义，目标本地启停被当成要删的字段 | `test_plain_update_keeps_pi_disabled_and_claude_without_the_field`：修前 adopt 把 Pi 目标报成 `drifted`，应用后 Pi 条目失去 `enabled` | `mcp_config.render_target_entry` 按目标当前条目渲染：显式 `enabled` 原值保留、缺字段就不补；`current_entry` / `drift` / 预览 / 应用 / 登记漂移走同一函数。改 `enabled` 的 patch 由 `unsupported_patch_reason` 标 `not_applicable`（`test_enabled_change_is_not_applicable`） |
+| P1 普通参数更新会删掉 Pi 已有的 `enabled: false`（Claude 目标先登记、其条目没有该字段）：渲染只用逻辑定义，目标本地启停被当成要删的字段 | `test_plain_update_keeps_pi_disabled_and_claude_without_the_field`：修前 adopt 把 Pi 目标报成 `drifted`，应用后 Pi 条目失去 `enabled` | `mcp_config.render_target_entry` 按目标当前条目渲染：显式 `enabled` 原值保留、缺字段就不补；`current_entry` / `drift` / 预览 / 应用 / 登记漂移走同一函数。改启停的整条集在第二片变成可执行（有启停目标时）或整组 `not_applicable`（`test_enabled_change_without_a_claude_toggle_target_is_not_applicable`） |
 | P1 Claude 合法的显式 `"type": "stdio"` 被登记拒绝 | `test_explicit_stdio_type_round_trips_through_the_whole_loop`：修前 `mcp-adopt` 退出 `1`，报 `claude 条目 demo 有本片不支持的字段：type` | `_supported_entry_fields` 承认 `type`，`_check_type` 不再拒绝 Claude stdio 的 `stdio` 值；stdio 条目原本写明 `type` 时渲染保留它。其他未知 transport（如 `sse`）仍拒绝 |
 | P2 验收记录的结束围栏写成带 `text` 标注的版本，CommonMark 无法闭合代码块，后续标题与契约表落进代码块 | 机械检查：7 个代码块的结束行都带这个标注 | 改成三个反引号，11 个围栏全部成对闭合；机械提取到 4 个 `bash` 块 |
 | P2 ROADMAP 现状矩阵与“仅观察”仍说 MCP 只有文件级观察 | 只读核对 `docs/ROADMAP.md` 的 MCP 行与发现覆盖段 | 矩阵改成第一片的产品入口、验证与未支持，发现覆盖改成 `部分可托管`；与 `workspace.py` 的 `product_partial` 和 AGENTS 一致，整个 R3b 仍未完成 |
@@ -293,7 +290,7 @@ before_fragment 首行 {
 | journal 只记托管前后片段、目标与两侧文件 sha256 | `personalize_mcp_apply.write_journal`（`kind=mcp_fragments`） | “含 LEGACY_TOKEN: False” |
 | 写前核对整份文件与片段 sha256，变了要求重新预览 | `check_target_current`、`build_restore_plan`、`restore` | `tests/test_personalize_mcp.py` 的 `test_apply_refuses_when_a_host_config_changed_after_preview`、`test_external_edit_is_reported_and_blocks_restore` |
 | 恢复先核对逆序、执行身份与 journal，再看内容 hash | `personalize_apply.cmd_restore` 调 `personalize_restore.restorable()` 后才分派；`personalize_mcp_apply.restore` 复核两侧 sha256 | `test_stale_restore_plan_is_refused_and_the_newest_restore_still_works`：`x1`/`x2`/`x3` 回到旧字节后，旧计划退出 `1`，最新执行的逆序恢复正常 |
-| 普通更新保留目标本地状态（启停、显式 stdio `type`），不改隐式启停 | `mcp_config.render_target_entry` / `current_entry`；登记、预览、应用与 `mcp-drift` 走同一函数 | `test_plain_update_keeps_pi_disabled_and_claude_without_the_field`、`test_explicit_stdio_type_round_trips_through_the_whole_loop`、`test_enabled_change_is_not_applicable` |
+| 普通更新保留目标本地状态（启停、显式 stdio `type`），不改隐式启停 | `mcp_config.render_target_entry` / `current_entry`；登记、预览、应用与 `mcp-drift` 走同一函数 | `test_plain_update_keeps_pi_disabled_and_claude_without_the_field`、`test_explicit_stdio_type_round_trips_through_the_whole_loop`、`test_enabled_change_without_a_claude_toggle_target_is_not_applicable` |
 | 改 `server` 标识不生成可执行修改，定位只用登记名 | `personalize_mcp_plan.unsupported_patch_reason`、`target_row` | `test_server_rename_is_not_applicable_and_never_rewrites_unmanaged_entries`（同文件 `demo` + `other`，无写入、无标记串泄露） |
 | 凭证只允许引用 | `mcp_config._check_reference` / `_check_url` | `test_adapter_rules_and_credential_field_contract` |
 
