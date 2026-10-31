@@ -314,9 +314,23 @@ Pi 读到的是恢复后的原版内容（原件 `docs/acceptance/r3a/host-probe
 
 类型检查：仓库没有 `pyproject.toml`，`pyright` / `mypy` 未安装，**未执行**。
 
+## 补充核验：Skill 复盘入账
+
+在提交 `067b64b` 上另跑一个隔离 CLI 场景，复用 `tests/test_personalize_skill.py` 的 `SkillFixture` 创建合成目录、入口和批准；产品操作均由临时源码副本中的真实 CLI 执行，不替换产品函数。执行序列：`preview → apply → review-plan → review → review-plan/status → restore-preview → restore`。原始日志与脚本留在仓库外 `${TMPDIR}/pi-runner/`（`r3a-review-gap-20261031-141105.log`、`r3a-review-gap/run.py`）。
+
+结果：33 项断言通过，退出 0。`x0001` 的 apply 事实带 `asset_kind=skill`；复盘前后原预测与计划一致，追加的 review 为 `observe/unknown`，`review-plan` 和 `status` 的最新 review 摘要一致。复盘未改变两个入口链接、来源目录字节或已应用文件集合；随后恢复到应用前文件集合，临时目录在解除只读后删除成功。批准记录是合成夹具，不代表真人批准。
+
+本场景未运行 Host，未知结论仅针对本场景的效果证据；前文 Pi 发现与显式展开的独立证据仍有效。此前工件 `r3a/ledger.jsonl` 只有批准、应用和恢复三条事实，不将它冒充复盘入账证据。中间两次失败来自核验脚本取错属性与把编号文件当目录，修正脚本后复跑通过，未修改产品实现。
+
+## 第二轮定向复审
+
+范围 `e61ee1b..067b64b`，结论 PASS。暂存残留、仅删除 patch、旧 R2 单文件计划兼容及资产原名问题均经源码与红绿日志核对修复。旧计划夹具来自 `5000e23`，测试迁移路径与 journal 后重算绑定并建立合成批准，验证的是旧契约兼容，不是原始生成字节的直接重放。复审未重新运行 Host；已核对两份探针工件、计划、账本与内容摘要一致。
+
+补充格式说明：本文、预览工件和测试 patch 中单个空格的行是 unified diff 的空白上下文行，须保留，不能当作普通尾随空白删除。
+
 ## 未验证 / 剩余缺口
 
-- 模型自主选用 Skill、任务执行效果、收益：**未验证**，`review` 仍只能记 `observe` / `unknown`。
+- 模型自主选用 Skill、任务执行效果、收益：**未验证**；本次样例因此记 `observe` / `unknown`，产品的其他复盘结论仍可按证据使用。
 - Codex 读 `~/.agents/skills`：仍未核实（Pi 已核实）。
 - 目录 import（`release.py import` 一个 Skill 目录）仍只在旧沙箱入口；产品入口的 skill 资产由 `apply` 首次写出
   资产内容，`personalize` 没有 import 子命令。
