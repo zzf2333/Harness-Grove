@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 2026-10-31 · R2 交付：产品批准入口（预览 → 批准 → 应用 → 复盘 → 跨次 → 恢复）
+
+- 新增 `tools/personalize.py`（计划与预览在 `tools/personalize_plan.py`，执行在 `tools/personalize_apply.py`，只用标准库、无新依赖），把闭环做成安装用户在明确授权范围内可跑的入口。写入政策与旧沙箱入口分开：`ApprovedScope` 只放行「本次计划列明的入口路径（精确匹配）」和「显式 PHE_HOME 产物」，外加原子替换用的同目录临时链接名；`change.py`、`release*.py` 的 `PROTECTED_SUBPATHS`、`refusal_reason`、`sandbox_roots` 与 CLI 守卫调用一行未改，仍拒绝真实 home 及 Host 入口路径，继续只用于演练。
+- `preview` 读报告、变更包、登记表与每个入口当前生效的内容，写 `<PHE_HOME>/reports/<cycle>/preview.md`、`plan.json` 与 `plan.sha256`，不写 Host：计划绑定报告与变更包 sha256、每个入口形态与内容 sha256、每条目实际 diff 与前后 sha256、写入范围与恢复方式；上一轮已应用的条目打不上当前内容时标 `not_applicable`，不挡同包其他条目。
+- `apply` 要求批准记录绑定计划原始字节（`plan_sha256`）并覆盖该条目；变更包、报告、入口形态或当前内容在预览之后变了就退出 1，不用旧计划执行另一份 diff。执行只写计划列明的入口与显式 PHE_HOME，复用既有 `release` / `deploy` / journal / 绑定 / 账本格式，不建第二套引擎。`source=user` 由宿主按用户原话写成记录，工具不自造；`sandbox_rehearsal` 仍是演练批准，两者的记录都不表示效果已验证。
+- `restore-preview` / `restore` 先绑定执行、journal 与恢复后的实际内容，再按这份恢复计划的原始字节批准；逆序限制不变。`status` / `review-plan` / `review` 直接读写自己的 PHE_HOME 账本，`status` 多补一列批准来源。
+- 产物落点：`digest` 用 `history_digest.build_digest` 的纯逻辑（旧 `history.py` 的守卫与写入政策不变）把摘要写进 `<PHE_HOME>/episodes/<cycle>/digest/`；`cycle-record` 追加周期事实（`processed_evidence` 带源文件绝对路径、行号、类别与原文 `from_ts`/`to_ts`，重复上一周期处理过的证据退出 1），`cycle-plan` 读回上周期证据范围、三行说明与复盘结论，并写明 `cycle.at`/`review.at` 是记录时间、不是已处理证据水位。
+- 共享逻辑做了最小提取，语义不变：`release_deploy` 新增 `Writer`（策略对象）与 `Sandbox` 子类、抽出 `deploy_paths`；`change` 抽出 `git_apply` 并让执行函数接受 `Writer`；`change_review` 抽出 `build_review_row`；`change_ledger.append_ledger` 参数改名；`history_digest` 抽出纯函数 `build_digest`；`release` 的复制/冻结/收集接受 `Writer`。
+- 测试：新增 `tests/personalize_fixture.py`（合成 home 三个共享入口 + 仓外 PHE_HOME + 仓库副本 + 无关 cwd）、`tests/test_personalize.py`（预览只读、选择性应用、两条批准来源分支、预览失效三例、批准绑定、逆序恢复与恢复绑定、账本视图）、`tests/test_personalize_cycles.py`（两周期增量、重复证据被拒、旧守卫与产品入口的写入政策对照——用 `mock.patch` 把合成 home 变成“真实 home”，旧入口退出 2 且不写，产品入口按计划写）。先写用例确认入口不存在时 11 项全红，实现后转绿；中途两处实现缺口（同目录临时链接名、上一轮条目已不适用）按失败证据补齐。
+- 文档：新增 [docs/acceptance/r2.md](acceptance/r2.md)（命令、退出码、关键输出、负例、两套政策对照、红→绿、剩余缺口）；README 新增「R2：用你批准的改动更新自己的指令」可复制流程与 `tools/personalize.py` 目录说明；Skill 新增 §14 产品入口，并在 §11–§13 标注它们是演练入口；ROADMAP R2 现状/缺口/验收/完成口径、AGENTS 当前阶段、SPEC §2.2 与 §7 同步（版本 v0.10）。
+- 验证：`python3 -m unittest discover -s tests -t tests -p "test_personalize*.py"` → 11 tests OK（exit 0）；全量 `python3 -m unittest discover -s tests -t tests` → 391 tests OK（exit 0）；`ruff check .` → All checks passed（exit 0）；`ruff format --check .` → 96 files already formatted（exit 0）；README/acceptance 的命令串在仓库副本 + 无关 cwd + 临时 home/PHE_HOME 上逐条重跑，退出码与断言符合记录。日志在仓库外。
+- 未验证：Host 是否加载或触发这些入口（`review` 只能记 `observe`/`unknown`）；安装包、默认 `~/.phe`、安装引导；收益量化；skill/MCP/Hooks 与普通文件入口（R3）。本轮未读真实 Host 配置，未启动 Host，未推送。
+
 ## 2026-10-31 · R1 第 2 轮审查修复：登记身份索引分开来源与历史入口
 
 - 依据：R1 第 2 轮独立审查新增的 P1（第 1 轮三项已修复）。`workspace.py` 的 `registered_index` 把登记来源 `resolved_path` 和 `observed` 入口路径合成一个字典并用 `setdefault`，按入口优先认身份；入口改指另一个文件并重新登记后，旧资产仍占着入口路径，报告认不出新登记的资产。

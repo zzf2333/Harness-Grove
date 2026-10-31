@@ -156,7 +156,9 @@ python3 -I tools/proposal.py check --experiment-id <实验 ID> [--retired <Retir
 
 ## 11. 经验复盘（闭环切片 1）
 
-本入口读取最近真实会话、当前配置与已有改动，产出可直接逐条审批的报告；不需要先启动规则消融实验。M3a B2/C 暂停，宿主显式写出 Retired 检索与独立性判断的依据；D 只保留改动前写三行说明（为什么改 / 期待 / 凭什么判断）。
+本入口读取最近真实会话、当前配置与已有改动，产出可直接逐条审批的报告；不需要先启动规则消融实验。
+
+> 这一节与 §12–§13 描述的是**演练入口**（`history.py` / `change.py`，守卫拒绝真实 home）。在自己机器上按批准更新配置用 §14 的产品入口 `tools/personalize.py`；两套入口共用同一套发布、journal、绑定与账本格式。M3a B2/C 暂停，宿主显式写出 Retired 检索与独立性判断的依据；D 只保留改动前写三行说明（为什么改 / 期待 / 凭什么判断）。
 
 1. 说明由哪个宿主模型处理摘要、读取哪些 Host 与时间窗。先生成本地摘要（只读会话，不调用模型）：
 
@@ -177,7 +179,7 @@ python3 -I tools/proposal.py check --experiment-id <实验 ID> [--retired <Retir
 
 ## 12. 经验复盘应用（闭环切片 2）
 
-本入口把 §11 报告里被批准的条目应用到临时配置，并留下可恢复的事实记录。§11 的“只读报告、不改配置”不变：真实 `~/.pi`、`~/.codex`、`~/.claude` 与 temper 仍需用户按具体 diff、目标路径和恢复方式单独批准，本轮只在临时 home 上跑。
+本入口把 §11 报告里被批准的条目应用到临时配置，并留下可恢复的事实记录（产品入口见 §14）。§11 的“只读报告、不改配置”不变：真实 `~/.pi`、`~/.codex`、`~/.claude` 与 temper 仍需用户按具体 diff、目标路径和恢复方式单独批准，本轮只在临时 home 上跑。
 
 1. 逐条确认批准。用户说批准哪几条才算批准；演练或复跑用 `source=sandbox_rehearsal`，不得写成 `user`，也不得把演练说成用户已批准某条报告建议。
 2. 显式准备输入，不解析 Markdown：
@@ -202,7 +204,7 @@ python3 -I tools/proposal.py check --experiment-id <实验 ID> [--retired <Retir
 
 ## 13. 复盘记录（闭环切片 3）
 
-本入口在下次复盘时读账本、对照原预测，并把宿主自己的结论写回同一本账。它只记录判断：不改配置、不改发布、不调用 `restore`。
+本入口在下次复盘时读账本、对照原预测，并把宿主自己的结论写回同一本账。它只记录判断：不改配置、不改发布、不调用 `restore`（产品入口见 §14）。
 
 1. 先读账本，不先看结论：
 
@@ -234,3 +236,46 @@ python3 -I tools/proposal.py check --experiment-id <实验 ID> [--retired <Retir
 6. `revert` 只是建议：用户批准后才走 §12 的 `restore`；已恢复的执行不重复恢复。`observe` 表示证据不足，对已恢复执行表述为“待补证据”，对用户批准应用、还没有效果证据的条目表述为“未验证采纳”，演练批准的条目仍写演练。
 
 边界：没有自动取样、自动统计和自动判定，观察窗与计数由宿主给出。演练入口：`python3 -I tools/rehearse_review.py --out <新目录> --source <切片 2 的 phe 目录>`，工件留在 `--out`；合成样例按 `[from, 上界)` 取样（未恢复时上界取声明的模拟复盘时刻，并放一条晚于它的命中证明不计入），只证明复盘流程可运行，不证明规则有效。
+## 14. 产品入口：在自己的 PHE_HOME 上跑同一条闭环（R2）
+
+§11–§13 的命令留在沙箱：`history.py`、`change.py` 与 `release*.py` 的守卫拒绝真实 home 及其下 `.claude`、`.codex`、
+`.pi`、`.phe`、`.agents`。在自己机器上按用户批准更新配置用 `tools/personalize.py`：它复用同一套发布内容、patch、
+登记表读取、journal、绑定与账本格式，但写入范围只来自你批准的那份计划，不查旧沙箱守卫。
+
+```bash
+T=<源码>/tools/personalize.py
+python3 -I "$T" preview --phe-home "$PHE_HOME" --change <变更包> --cycle <周期>
+python3 -I "$T" apply --phe-home "$PHE_HOME" --plan "$PHE_HOME/reports/<周期>/plan.json"     --item P1 --approval <批准记录>
+python3 -I "$T" status --phe-home "$PHE_HOME"
+python3 -I "$T" review-plan --phe-home "$PHE_HOME"
+python3 -I "$T" review --phe-home "$PHE_HOME" --execution x0001 --record <复盘记录>
+python3 -I "$T" digest --phe-home "$PHE_HOME" --cycle <周期> --host pi --root <Host 根>
+python3 -I "$T" cycle-record --phe-home "$PHE_HOME" --cycle <周期> --record <周期记录>
+python3 -I "$T" cycle-plan --phe-home "$PHE_HOME" --cycle <下一周期>
+python3 -I "$T" restore-preview --phe-home "$PHE_HOME" --execution x0001 --cycle <周期>
+python3 -I "$T" restore --phe-home "$PHE_HOME" --execution x0001 --plan <恢复计划> --approval <恢复批准>
+```
+
+与演练入口的区别，逐条记牢：
+
+1. **批准对象是计划原始字节。** `preview` 把计划写到 `<PHE_HOME>/reports/<周期>/plan.json` 并给出 `plan_sha256`；
+   批准记录必须带同一个 `plan_sha256` 和获批条目。工具不会自己造用户批准：`source=user` 由你（宿主）按用户原话写，
+   演练一律写 `sandbox_rehearsal`，两者都不等于“效果已验证”。
+2. **预览之后一切以重新预览为准。** 变更包、报告、入口形态或入口当前内容任何一处变了，`apply` 退出 1。上一周期已经
+   应用的条目在新计划里标 `not_applicable`（patch 打不上当前内容），不挡同包其他条目，也不代表已经生效。
+3. **写入范围是计划列明的入口 + 显式 PHE_HOME。** 不在计划里的 Host 路径一律拒绝；共享来源文件本身不改，改的是 PHE
+   发布，入口软链指过去。
+4. **恢复也先预览、再批准。** 只允许逆序（先撤销最后一次生效的执行），恢复计划绑定账本执行、journal 与恢复后的实际
+   内容，批准绑定这份恢复计划。
+5. **产物都在 PHE_HOME。** 摘要写 `<PHE_HOME>/episodes/<周期>/digest/`，周期记录写
+   `<PHE_HOME>/episodes/<周期>/cycle.json`，预览与恢复计划写 `<PHE_HOME>/reports/<周期>/`；不再写仓库内的
+   `episodes/`、`reports/`。
+6. **跨次只认新证据。** `cycle-plan` 读回上一周期的 `processed_evidence`（源文件绝对路径 + `L<行号>` + 类别 + 原文
+   `from_ts`/`to_ts`）、三行说明与复盘结论。`cycle.at` 与 `review.at` 是记录时间，**不是**已处理证据水位；`cycle-record`
+   里重复上一周期处理过的证据直接退出 1。
+7. **收益仍要按 §13 的观察窗与 `prediction.verify` 核对。** 应用成功只说明入口指向了 PHE 发布；没有 Host 加载或行为
+   证据时记 `observe` / `unknown`。`keep` / `adjust` / `revert` 是建议，`revert` 经再次批准才 `restore`。
+
+边界与演练入口相同：只覆盖单个 instructions 资产 + 多个 Host 软链入口，不碰普通文件入口、skill、MCP、Hooks（R3）。
+验收记录见 [docs/acceptance/r2.md](../../docs/acceptance/r2.md)。
+

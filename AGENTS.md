@@ -25,8 +25,8 @@
 
 ## 当前阶段：按 ROADMAP 补齐产品主线
 
-- 当前排程唯一来源：[docs/ROADMAP.md](docs/ROADMAP.md) 的 R1–R4。R1 的初始化与只读发现入口已交付（`tools/workspace.py init/discover`，沙箱验收，证据在 [docs/acceptance/r1.md](docs/acceptance/r1.md)）；当前焦点是 R2（指令上的持续个性化闭环），它依赖 R1 已提供的初始化与入口发现；R3a–R3e（Skills、MCP、Hooks、扩展与工具配置）的契约可并行设计与沙箱验收；R4 的实例隔离核对可以提前做。不把 R1–R4 当成只能串行的固定顺序，也不把 R4 定成“必须最后才能开始”。
-- 已交付的是零件、沙箱闭环与 R1 入口：`tools/workspace.py init/discover`（克隆后从任意目录用 `python3 -I <源码>/tools/workspace.py` 运行，报告写 `<PHE_HOME>/reports/`）；`history.py digest` 生成摘要，`tools/proposal.py draft/check` 生成候选提案，`tools/change.py apply/status/restore/review-plan/review` 在临时配置上跑通批准、应用、复盘与恢复，Skill §11–§13 编排这条流程。R2 部分是沙箱实现，不是产品完成；安装用户在授权范围内更新自己配置的入口仍未提供。
+- 当前排程唯一来源：[docs/ROADMAP.md](docs/ROADMAP.md) 的 R1–R4。R1 的初始化与只读发现入口已交付（`tools/workspace.py init/discover`，沙箱验收，证据在 [docs/acceptance/r1.md](docs/acceptance/r1.md)）；R2 的产品入口已交付（`tools/personalize.py`，文件层验收，证据在 [docs/acceptance/r2.md](docs/acceptance/r2.md)），剩下的是 Host 加载验证与安装包/默认路径；R3a–R3e（Skills、MCP、Hooks、扩展与工具配置）的契约可并行设计与沙箱验收；R4 的实例隔离核对可以提前做。不把 R1–R4 当成只能串行的固定顺序，也不把 R4 定成“必须最后才能开始”。
+- 已交付的是零件、沙箱闭环与 R1 入口：`tools/workspace.py init/discover`（克隆后从任意目录用 `python3 -I <源码>/tools/workspace.py` 运行，报告写 `<PHE_HOME>/reports/`）；`history.py digest` 生成摘要，`tools/proposal.py draft/check` 生成候选提案，`tools/change.py apply/status/restore/review-plan/review` 在临时配置上跑通批准、应用、复盘与恢复，Skill §11–§13 编排这条流程。R2 的产品入口 `tools/personalize.py`（`preview/apply/restore-preview/restore/status/review-plan/review/digest/cycle-record/cycle-plan`）按批准的计划写计划列明的 Host 入口与显式 PHE_HOME；旧 `change.py` / `release*.py` 的守卫一字未改，仍拒绝真实 home 与 Host 入口路径，继续只用于演练。R2 验收是文件层，不等于产品完成：Host 是否加载未验证，安装包、默认 `~/.phe` 与安装引导仍未提供。
 - 复用现有 `tools/` 实现和 Skill 串联，不新建通用框架，不建第二套任务账本或资产布局。
 - M3a 的 B2（自动 Retired 检索）、C（自动独立性判定）暂停，由宿主显式写出依据；D 只保留“改动前写下预测和验证方法”。L2 对照实验是可选手段，只在有争议的改动上用。
 

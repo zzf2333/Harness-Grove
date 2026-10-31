@@ -1,6 +1,6 @@
 # Personal Harness Evolution（PHE）· 产品与架构规范
 
-**版本：** v0.9 · 2026-10-31
+**版本：** v0.10 · 2026-10-31
 **状态：** 产品契约与设计基线。当前开发排程只在 [ROADMAP](ROADMAP.md)；已运行的真实实验及结论见 [README](../README.md)「当前状态」和各历史阶段计划。本文写长期设计与验收口径，命令、数据结构和效果以路线、计划与代码为准。
 **配套文档：** 排程与完成状态见 [ROADMAP](ROADMAP.md)；M-1 的执行细节见 [M-1 评测可行性探针协议](M-1_PROTOCOL.md)；版本变化见 [CHANGELOG](CHANGELOG.md)。
 
@@ -86,6 +86,8 @@
 6. 用户明确批准后才做版本化发布。发布前再核对一次真实文件、链接和版本。
 
 **用户需要审批的节点：** 首次 `adopt`、有成本或外部副作用的实验、最终发布。只读观察不重复弹审批。系统只显示预算上限和费用口径里的未知项，不承诺不可靠的绝对费用。
+
+R2 的产品入口把这一步做成可核对的命令序列：`preview` 写预览与机读计划（不改 Host），用户按计划原始字节逐条批准，`apply` 只写计划列明的入口与显式 PHE_HOME；下一周期用 `cycle-plan` 读回上周期证据范围与结论，只收新证据。命令见 [README](../README.md) 的 R2 流程与 [Skill §14](../skill/harness-evolve/SKILL.md#14-产品入口在自己的-phe_home-上跑同一条闭环r2)。
 
 ### 2.3 从讨论一篇文章开始
 
@@ -354,7 +356,7 @@ Proposal：draft → frozen → evaluated → closed
 
 上表的 M 阶段是已交付的证据与契约来源，**不是当前排程**。当前排程只有 [ROADMAP](ROADMAP.md) 的 R1–R4：R1 独立开始使用（初始化、发现现有资产与 Host 入口；已交付初始化与只读发现入口 `tools/workspace.py`，沙箱验收）；R2 首条持续个性化闭环（指令：会话与偏好 → 三行说明与 diff → 逐条批准 → 更新 → 下次增量复盘）；R3 把同一闭环扩到 Skills、MCP、Hooks、扩展与工具配置，逐类验收；R4 多用户、多周期维护。R2 完成不等于产品完成。
 
-经验复盘闭环（摘要 → 报告 → 批准应用 → 复盘）的沙箱实现是 R2 的零件：`history.py digest`、`change.py apply/status/restore/review-plan/review` 与 Skill §11–§13。安装用户批准后写入真实入口的入口还没提供（当前守卫拒绝真实路径），排在 R2；写入仍按 §6 逐条批准。M3a B2（自动 Retired 检索）和 C（自动独立性判定）暂停，由宿主显式写出依据；D 只保留改动前写下三行说明（为什么改、期待什么、凭什么判断）。L2 对照实验是可选手段，只在有争议的改动上使用；默认评估方式见 [§2.5](#25-怎么评估一条改动默认轻量值得时才实验2026-10-30)。下面保留原实验路线的 Gate 与退出条件,供选择实验时使用。
+经验复盘闭环（摘要 → 报告 → 批准应用 → 复盘）的产品入口是 `tools/personalize.py`：`preview/apply/restore-preview/restore/status/review-plan/review/digest/cycle-record/cycle-plan`，预览与恢复都要求先看计划、再按计划原始字节批准，写入范围只含计划列明的 Host 入口与显式 PHE_HOME（R2，文件层验收，见 [acceptance/r2.md](acceptance/r2.md)）；Skill §14 编排这条流程。旧沙箱入口 `history.py digest`、`change.py apply/status/restore/review-plan/review` 与 Skill §11–§13 保留用于演练，守卫仍拒绝真实 home 及 Host 入口路径。写入仍按 §6 逐条批准；Host 加载与实际收益未验证。M3a B2（自动 Retired 检索）和 C（自动独立性判定）暂停，由宿主显式写出依据；D 只保留改动前写下三行说明（为什么改、期待什么、凭什么判断）。L2 对照实验是可选手段，只在有争议的改动上使用；默认评估方式见 [§2.5](#25-怎么评估一条改动默认轻量值得时才实验2026-10-30)。下面保留原实验路线的 Gate 与退出条件,供选择实验时使用。
 
 ### 7.1 放弃 L2 主张的出口
 
