@@ -1,7 +1,7 @@
 # M0 计划：最小评测链路
 
 **状态：** 完成条件 1、2、4 已达到（2026-10-28）；条件 3 只验证到 dry-run：Skill 已于 2026-10-28 经用户批准以软链安装到 `~/.claude/skills/harness-evolve` 和 `~/.agents/skills/harness-evolve`（指向本仓库 `skill/harness-evolve`，删软链即撤销），尚未在真实宿主会话里加载和走完流程。切片 A、B 完成；切片 C 第 1 次 c-001（fb77805d）因任务过难判 pivot，第 2 次 c-002（2010f3a9）在生产等价基线上判 go，真实规则信号 inconclusive。报告在被忽略的 `experiments/c-00{1,2}/report.md`。
-**上位文档：** [PHE_SPEC](PHE_SPEC.md) 的「里程碑与 Gate」、[M-1 协议](M-1_PROTOCOL.md)。
+**上位文档：** [PHE_SPEC](PHE_SPEC.md) 的「历史阶段与 Gate」、[M-1 协议](M-1_PROTOCOL.md)。
 
 M0 把 M-1 的一次性脚本变成可复用的最小评测链路：宿主 Agent 能起草并冻结 proposal，调用同一套 Runner 和判定，读到报告。M0 不做发布，不改任何生产配置。
 

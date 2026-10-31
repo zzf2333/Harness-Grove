@@ -1,8 +1,10 @@
 # M3a 计划：从经验扫描产生可证伪提案
 
+**排程从属（2026-10-31）：** 本文是历史阶段计划，当前排程见 [ROADMAP](ROADMAP.md)。闭环切片 1–3 是 R2 的沙箱实现；切片 A/B1 是提案与 Retired 的契约证据；B2/C 暂停，不当作 R2 的前置条件。
+
 **状态（2026-10-30）：** 进行中。切片 A 完成：本地草稿 CLI `tools/proposal.py draft/check`。切片 B1 完成：显式 Retired 检索文件的逐条列举与关系核对（`--retired`、`retired_review`）。切片 B2（真实退役数据源与自动检索）、C（独立证据判定）暂停（2026-10-30 调整，见 [AGENTS.md](../AGENTS.md)）；D 缩小为改前写三行说明（为什么改 / 期待什么 / 凭什么判断）。当前优先跑通经验复盘闭环：切片 1 的 `history.py digest` 已提供摘要入口，可审批报告的诊断与合并由宿主按 Skill 编排；切片 2 的 `tools/change.py apply/status/restore` 已在临时配置上跑通批准、应用与逆序恢复；切片 3 的 `tools/change.py review-plan/review` 已在切片 2 账本副本上跑通复盘记录（观察窗、原预测对照、合成计数样例），仍只记录宿主判断，不证明效果。真实配置仍未写入。**M3a 未完成**，不能把 A/B1 的报告当作完整协议验证。
 
-**上位文档：** [PHE_SPEC](PHE_SPEC.md)「里程碑与 Gate」「独立证据与 Retired 账本」；历史输入格式见 [M2_PLAN](M2_PLAN.md)、[M2_HISTORY_FORMATS](M2_HISTORY_FORMATS.md)。
+**上位文档：** [PHE_SPEC](PHE_SPEC.md)「历史阶段与 Gate」「独立证据与 Retired 账本」；历史输入格式见 [M2_PLAN](M2_PLAN.md)、[M2_HISTORY_FORMATS](M2_HISTORY_FORMATS.md)。
 
 原 M3a 实验路线的 Gate（选择实验时适用）：使用固定指标、冻结预测和 Retired 检索；不自动发布。2026-10-30 起优先按下述闭环切片推进，默认三行评估说明，L2 对照实验可选。已完成的 A/B1 CLI 仍只读报告明显未闭合项，原有实验入口保留。
 

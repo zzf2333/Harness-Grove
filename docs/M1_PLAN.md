@@ -1,7 +1,9 @@
 # M1 计划：首次导入与资产库
 
+**排程从属（2026-10-31）：** 本文是历史阶段计划，当前排程见 [ROADMAP](ROADMAP.md)。M1 交付的 `inventory`/`registry`/`release` 是 R1–R3 的复用基础；D2（MCP、hooks、Codex config.toml）与真实接管不在当前路线排程里，接管真实环境须用户另行批准。
+
 **状态：** 进行中（2026-10-28）。切片 A、B、C 完成（A 经 reviewer 3 轮、B/C 经 2 轮 PASS）；切片 D1 完成（沙箱）：见下文「切片 D1 演练」。D2（MCP、hooks、Codex config.toml）未开始；接管真实环境待用户批准。切片 A 结果：本机盘点 56 条、7 个共享分组，其中 6 组指向 `~/AI/temper/config/`（2026-10-28 口径修订后同机复跑为 55 条，见「盘点口径修订」）。M0 结果见 [M0_PLAN](M0_PLAN.md)。
-**上位文档：** [PHE_SPEC](PHE_SPEC.md) 的「第一次运行：先盘点，再接管」「统一的 Harness 资产库」「里程碑与 Gate」。
+**上位文档：** [PHE_SPEC](PHE_SPEC.md) 的「第一次运行：先盘点，再接管」「统一的 Harness 资产库」「历史阶段与 Gate」。
 
 M1 的 Gate 是：首次接管不改变配置含义；发布不覆盖带外修改。
 

@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 2026-10-31 · 用户澄清与开发计划重排
+
+- 用户澄清（最高产品依据）：PHE 是面向所有用户的开源产品，不是开发者私人配置管理工具；项目测试与验收默认用隔离沙箱，独立可复现，不依赖开发者电脑的真实配置；用户安装后结合已有的完整 Agent Harness、行为习惯和会话反馈持续个性化，越用越好；不是仅配置管理器或评测框架，不扩成人格画像，效果按证据区分未知。
+- 新增 `docs/ROADMAP.md`，作为唯一产品开发总计划：产品目标、三个空间（源码仓库 / 每用户 PHE_HOME / Host 入口）与数据归属、Harness 资产现状矩阵（设计、已实现、验证、未支持）、R1–R4 路线（每片给真实场景、复用代码、缺口与交付物、验收、依赖、完成/停止标准）、证据口径、完成口径。
+- 重排原因：旧排程把评测能力（M-1/M0）和沙箱样例（M1 D1、闭环切片 1–3）当成产品完成，核心的 Harness 管理主线（安装与发现、完整资产类型、跨周期累积）没有排进去。
+- 事实核对：SPEC §5 原来的 `assets/common/AGENTS.md`、`bindings.yaml` 树与 `tools/release.py` 实际布局不同，按代码写清当前物理布局（`assets/<asset_id>/content` + `asset.json`、`releases/rNNNN/manifest.json` 逐文件 sha256、`bindings.json`、`ledger.jsonl`、`journal/`、`staging/`），原树标为逻辑视图/规划；`inventory`/`registry` 能盘点、登记与报漂移；`release` 能在沙箱导入、发布、部署与恢复（含 skill 整目录）；`change.py` 只支持单个 instructions 资产 + 三个 Agent 软链入口；MCP 只有文件级盘点，Hooks 无独立候选路径，Extensions/工具配置无完整资产支持；skills 缺更新复盘与发现/触发验证；M1 的 D2（MCP、hooks、Codex config.toml）未开始。
+- `docs/PHE_SPEC.md` 升到 v0.7：新增「三个空间与数据归属」；§5 区分逻辑资产类型与物理 `asset_id` 存储并写明 `~/.phe` 只是产品规划、当前无安装入口；§7 改为「历史阶段与 Gate」并指向 ROADMAP；成功标准增加产品级一条；§2.5 的字段引用标为历史计划契约。
+- `AGENTS.md` 新增稳定产品约束：「产品是什么」「三个分离的空间」「验证与完成口径」（沙箱是长期原则、偏好/观察/假设分证据、阶段通过不等于产品完成、开发者迁移不是里程碑），当前阶段改为按 ROADMAP R1–R4 推进；保留禁止防御/安全编程铁律和真实写入的具体 diff 批准边界。
+- `README.md` 同步用途、当前状态、文档地图、阅读顺序与「仓库与用户资产的区别」；修正 M1 口径为「A–D1 沙箱完成、D2 未开始」，闭环切片 1–3 标为 R2 的沙箱零件。`M1_PLAN`、`M2_PLAN`、`M3a_PLAN` 顶部标排程从属，保留原有证据与限制。
+- 验证：`python3 -m unittest discover -s tests -t tests` → 358 tests OK（exit 0）；`ruff check .` → All checks passed（exit 0）；`ruff format --check .` → 84 files already formatted（exit 0）。完整日志在仓库外。纯文档改动，未新增测试；本次未运行 Host、未写真实配置，也未实现 ROADMAP 里的任何新产品功能。
+
 ## 2026-10-31 · 轻量评估示例 W3 表述的时间顺序纠正
 
 - 删掉 `examples/lightweight-loop/host-report.md` 与 `examples/lightweight-loop/render_inputs.py` 里的两处“之后”：`一次可见越界 + 之后两条叫停` → `一次可见越界 + 两条叫停`。前文已经按 L9 叫停 → L10/L11 写入 → L12 叫停写清顺序，“之后”反而暗示两条叫停都在这唯一一次越界之后，读起来像两次独立越界。合成会话原文不动，其余表述不动。

@@ -2,22 +2,32 @@
 
 本文覆盖用户级 AGENTS.md 中与之冲突的条目。所有 Agent（Pi、Codex、Claude Code）和子代理都适用。
 
-## 项目目标
+## 产品是什么
 
-- PHE 是 temper（`~/AI/temper`）的独立、开源升级版，最终替代 temper。temper 是粗糙原型，PHE 的设计和执行都要全面超过它，不以“和 temper 差不多”为标准。
-- 用户得到的结果：PHE 读会话、当前配置和既往改动，指出具体问题并附可追溯证据，给出改法、实际 diff 和验证办法；用户逐条批准后应用并记账；下次复盘对照原预测，建议保留、调整或撤销。文章和主动讨论走同一条流程。
+- PHE 是面向所有用户的**开源产品**：用户安装后，结合自己已有的完整 Agent Harness（指令、Skills、MCP、Hooks、扩展、工具配置）、行为习惯、思考与使用方式和会话反馈，持续个性化优化，帮助驾驭 Agent，目标是越用越好。
+- 资产管理是基础，评测是手段；产品不是仅配置管理器，不是评测框架，也不扩成人格画像。
+- 不以开发者个人环境或 temper 迁移作为产品验收前提。temper 只是历史原型和一份现有部署。
 - “超过 temper”落实为可检查的质量：问题判断有依据、建议讲清楚、改动可逐条审批、执行可追溯、复盘不夸大结论。
 
-## 当前阶段：先跑通闭环
+## 三个分离的空间
 
-- 第一优先是一条用户能完整走完的流程，不再按技术层单独加深某一层。按完整结果切片：
-  1. 用真实会话生成可直接审批的报告（问题、证据、diff、预测指标），只读。
-  2. 批准 → 应用 → PHE 自有账本 → 恢复，先在临时配置上跑通。
-  3. 下次复盘读账本、核对原预测，给出保留/调整/撤销建议。
-- 复用现有 `tools/history.py`、`tools/proposal.py`、`tools/release*.py`，由 Skill 指导宿主 Agent 串联；不新建通用框架。
-- 账本由 PHE 自己维护，不依赖 temper 的 `ledger.md`。退役记录从这个账本产生。
-- M3a 的 B2（自动 Retired 检索）、C（自动独立性判定）暂停，由宿主 Agent 显式写出依据。D 只保留“改动前写下预测和验证方法”。L2 对照实验是可选手段，只在有争议的改动上用。
-- 修改真实 `~/.pi`、`~/.codex`、`~/.claude` 前，须用户批准具体 diff、目标路径和恢复方式。
+- **源码仓库（本仓库）：** 代码、Skill、测试、文档与手写合成示例。不含任何用户的会话或真实配置。
+- **每用户 PHE_HOME：** 资产源、发布、绑定与账本，在仓库外。默认 `~/.phe` 只是产品规划，当前没有安装/初始化命令；开发和验收用显式隔离目录。
+- **Host 实际配置入口：** `~/.pi`、`~/.codex`、`~/.claude`、`~/.agents` 和项目级目录，归用户所有。修改真实入口须用户批准具体 diff、目标路径和恢复方式。
+
+## 验证与完成口径
+
+- **隔离沙箱是长期验收原则，不是临时妥协。** 所有项目测试、示例和阶段验收在临时目录里独立复现，不依赖开发者电脑的真实配置。涉及 Host 加载/触发的结论必须在一次性隔离 Host 里验证，同样不依赖开发者日常环境，且须预算授权。
+- **效果分证据：** 区分用户明确偏好、会话观察和假设；不把推断当人格画像，不把批准、应用或“没人报错”当收益证据；没有证据时写 `unknown`。
+- **单文件演练或某阶段通过不等于产品完成。** 交付必须说明映射到 [ROADMAP](docs/ROADMAP.md) 的哪一片、验证到哪一层（文件 / 加载 / 行为），以及剩余缺口。
+- “接管开发者本机现有配置”不是里程碑，只是用户批准后的可选迁移任务。
+
+## 当前阶段：按 ROADMAP 补齐产品主线
+
+- 当前排程唯一来源：[docs/ROADMAP.md](docs/ROADMAP.md) 的 R1–R4。焦点是 R1（安装/初始化与发现），随后 R2（指令上的持续个性化闭环），再逐类扩到 Skills、MCP、Hooks、扩展与工具配置（R3），最后做多用户多周期维护（R4）。
+- 已完成的是零件和沙箱闭环：`history.py digest` 生成摘要，`tools/proposal.py draft/check` 生成候选提案，`tools/change.py apply/status/restore/review-plan/review` 在临时配置上跑通批准、应用、复盘与恢复，Skill §11–§13 编排这条流程。它们是 R2 的沙箱实现，不是产品完成；真实配置写入仍未执行。
+- 复用现有 `tools/` 实现和 Skill 串联，不新建通用框架，不建第二套任务账本或资产布局。
+- M3a 的 B2（自动 Retired 检索）、C（自动独立性判定）暂停，由宿主显式写出依据；D 只保留“改动前写下预测和验证方法”。L2 对照实验是可选手段，只在有争议的改动上用。
 
 ## 铁律：未经用户同意，禁止防御性和安全性编程
 
@@ -29,5 +39,5 @@
 
 ## 文档
 
-- 设计基线：[docs/PHE_SPEC.md](docs/PHE_SPEC.md)；当前计划：[docs/M3a_PLAN.md](docs/M3a_PLAN.md)；版本记录：[docs/CHANGELOG.md](docs/CHANGELOG.md)。
+- 产品契约与设计基线：[docs/PHE_SPEC.md](docs/PHE_SPEC.md)；当前排程：[docs/ROADMAP.md](docs/ROADMAP.md)；历史阶段计划：[docs/M1_PLAN.md](docs/M1_PLAN.md)、[docs/M2_PLAN.md](docs/M2_PLAN.md)、[docs/M3a_PLAN.md](docs/M3a_PLAN.md)；版本记录：[docs/CHANGELOG.md](docs/CHANGELOG.md)。
 - 检查命令：`python3 -m unittest discover -s tests -t tests`、`ruff check .`、`ruff format --check .`。
