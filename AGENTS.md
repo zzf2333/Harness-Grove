@@ -1,6 +1,8 @@
-# Harness Grove 项目约定
+# Jianhe 项目约定
 
 ## 当前范围
+
+- 项目品牌与 GitHub 仓库名为 Jianhe（渐合），自 `v0.0.2` 起使用；三个 `harness-*` Skill ID 和 `.harness-grove/` 用户数据目录为兼容保留，不随品牌更名迁移。已发布版本保留原名和原内容。
 
 - 本项目帮助用户持续改善整套 AI 工作环境和使用方式：结合任务目标、实际习惯与工具能力，主动发现机会、研究做法、设计并维护单工具或多 Agent 方案。用户不必先知道问题或工具名称，不能将产品收窄为配置清理。
 - 第一版只交付三个独立可用的 Skill：`harness-review` 研究到足以解释机会，`harness-improve` 研究到足以选择和落实方案，`harness-maintain` 用新证据重新判断已有方案。产品定位与流程图统一维护在 [README](README.md)。
