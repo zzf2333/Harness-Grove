@@ -2,9 +2,9 @@
 
 让 AI 与你的工作越用越合拍。
 
-**v0.0.2 · 测试版（Pre-release）**。用于首次真实安装、体验与问题反馈，不是稳定版，也不表示已经可以完整替代现有 Harness。
+**v0.0.3 · 测试版（Pre-release）**。用于首次真实安装、体验与问题反馈，不是稳定版，也不表示已经可以完整替代现有 Harness。
 
-[下载 Skill 安装包](https://github.com/zzf2333/Jianhe/releases/download/v0.0.2/jianhe-v0.0.2.zip) · [发布说明与 SHA256SUMS](https://github.com/zzf2333/Jianhe/releases/tag/v0.0.2) · [反馈问题](https://github.com/zzf2333/Jianhe/issues)
+[下载 Skill 安装包](https://github.com/zzf2333/Jianhe/releases/download/v0.0.3/jianhe-v0.0.3.zip) · [发布说明与 SHA256SUMS](https://github.com/zzf2333/Jianhe/releases/tag/v0.0.3) · [反馈问题](https://github.com/zzf2333/Jianhe/issues)
 
 Jianhe（渐合）是一组帮助用户持续审查和改善 **AI 工作环境与使用方式** 的 Skills。它结合用户的目标、习惯、实际使用记录和工具能力，主动研究更合适的做法，设计并落实单工具或多 Agent 协作方案，再根据后续使用持续调整。
 
@@ -16,9 +16,9 @@ Jianhe（渐合）是一组帮助用户持续审查和改善 **AI 工作环境�
 
 | Skill | 什么时候用 | 帮你得到什么 |
 |---|---|---|
-| [harness-review](skill/harness-review/SKILL.md) | 已有使用记录，或“看看还能怎样优化” | 理解当前工作、主动研究相关能力，发现用户尚未指出的机会与成功经验；研究到能解释机会为什么值得考虑 |
-| [harness-improve](skill/harness-improve/SKILL.md) | 新目标、观点、文章或发现的机会 | 比较做法并设计单工具或多工具方案；研究到足以选择和落实，按批准试用、配置或安装 |
-| [harness-maintain](skill/harness-maintain/SKILL.md) | 已经采用的方案，或环境与需求变化 | 用后续证据重新判断整套方案，主动研究新能力和更简单的替代，决定保留、调整、精简、替换或退出 |
+| [jianhe-review](skill/jianhe-review/SKILL.md) | 已有使用记录，或“看看还能怎样优化” | 理解当前工作、主动研究相关能力，发现用户尚未指出的机会与成功经验；研究到能解释机会为什么值得考虑 |
+| [jianhe-improve](skill/jianhe-improve/SKILL.md) | 新目标、观点、文章或发现的机会 | 比较做法并设计单工具或多工具方案；研究到足以选择和落实，按批准试用、配置或安装 |
+| [jianhe-maintain](skill/jianhe-maintain/SKILL.md) | 已经采用的方案，或环境与需求变化 | 用后续证据重新判断整套方案，主动研究新能力和更简单的替代，决定保留、调整、精简、替换或退出 |
 
 三个入口可以单独使用，也可以配合。用户无需连续调用三次，不必重复提供同一份背景。尚未安装其他入口时，每个 Skill 仍能独立完成自己的工作。
 
@@ -41,9 +41,9 @@ Jianhe（渐合）是一组帮助用户持续审查和改善 **AI 工作环境�
 
 ```mermaid
 flowchart TD
-    U[用户在现有 Agent 中发起] -->|复盘使用| R[harness-review]
-    U -->|新目标或观点| I[harness-improve]
-    U -->|维护已有方案| M[harness-maintain]
+    U[用户在现有 Agent 中发起] -->|复盘使用| R[jianhe-review]
+    U -->|新目标或观点| I[jianhe-improve]
+    U -->|维护已有方案| M[jianhe-maintain]
     R -->|寻找机会| K[理解用户工作并研究相关能力]
     I -->|选择与设计| K
     M -->|重新判断| K
@@ -64,11 +64,11 @@ flowchart TD
 
 ## 安装与首次使用
 
-1. 从上方 Release 下载 `jianhe-v0.0.2.zip` 并解压；包内 `VERSION` 与各 `SKILL.md` 的 `metadata.version` 都应为 `0.0.2`。
+1. 从上方 Release 下载 `jianhe-v0.0.3.zip` 并解压；包内 `VERSION` 与各 `SKILL.md` 的 `metadata.version` 都应为 `0.0.3`。
 2. 将 `skill/` 内三个完整目录安装到主要使用的 Agent 的技能目录，按宿主要求重载或重开会话。只想使用其中一个入口也可以。
 3. 在日常工作目录开启新会话，不在本项目源码目录运行，也不带开发讨论或预置结论。直接提出真实需求。
 
-把 `skill/` 内需要的完整目录复制到宿主支持的 Skill 目录，然后按宿主方式重载或重开会话。每个目录包含自己的 `SKILL.md` 和按需附带的参考文档，没有跨 Skill 的文件依赖。`harness-review/references/session-reading.md` 随 review 一起复制，不能只复制入口文件。
+把 `skill/` 内需要的完整目录复制到宿主支持的 Skill 目录，然后按宿主方式重载或重开会话。每个目录包含自己的 `SKILL.md` 和按需附带的参考文档，没有跨 Skill 的文件依赖。`jianhe-review/references/session-reading.md` 随 review 一起复制，不能只复制入口文件。
 
 常见位置：
 
@@ -82,19 +82,19 @@ flowchart TD
 
 也可使用宿主提供的项目级技能目录或自定义搜索路径。将三个目录分别放进去，不要只复制最外层 `skill/`。安装路径以所用宿主的实际配置为准。
 
-安装后，用自然语言点名要使用的 Skill。请确认宿主实际读到的是新目录中的 `SKILL.md`，其版本为 `0.0.2`；若已有同名目录或旧链接，先核对来源，保留自己的修改，避免重复安装造成遮蔽。旧的 `harness-evolve` 不是本版本入口。是否自动发现或选用取决于宿主，本项目不接管宿主设置。
+安装后，用自然语言点名要使用的 Skill。请确认宿主实际读到的是新目录中的 `SKILL.md`，其版本为 `0.0.3`；若已有同名目录或旧链接，先核对来源，保留自己的修改，避免重复安装造成遮蔽。是否自动发现或选用取决于宿主，本项目不接管宿主设置。
 
 第一次可以直接说：
 
-> 第一次使用 Jianhe。请用 harness-improve 了解我的 AI 工作方式，建立必要的环境说明，给出下一步建议，先不修改工具配置。
+> 第一次使用 Jianhe。请用 jianhe-improve 了解我的 AI 工作方式，建立必要的环境说明，给出下一步建议，先不修改工具配置。
 
 没有独立初始化 Skill 或项目启动命令。用户日志与目录由宿主按需创建；没有旧总览或历史就明确说明，从本次目标开始，不能要求用户先准备全部资料。保留现有 Agent 和工具环境，不预先导入 temper 账本或运行其提取器；已有用户记录也不要为试用擅自清空。
 
 ## 更新与反馈
 
-项目自 `v0.0.2` 起由 Harness Grove 更名为 Jianhe。三个 `harness-*` Skill 名称和 `.harness-grove/` 用户数据目录保持不变，已有安装仍使用原入口，记录无需迁移。`v0.0.1` 的标签、附件和历史说明保留原样。
+项目自 `v0.0.2` 起由 Harness Grove 更名为 Jianhe。从 `v0.0.3` 起，三个入口统一为 `jianhe-review`、`jianhe-improve`、`jianhe-maintain`，默认用户数据目录为 `.jianhe/`，替代上一版保留旧入口和目录的安排。旧测试版使用者应按新名称安装并停用旧入口；需要接续旧记录时可显式指定原数据目录。本版本不提供旧入口别名或自动迁移，已发布版本的标签、附件和历史说明保留原样。
 
-后续测试版使用 `v0.0.3`、`v0.0.4` 等版本，每次从对应 Release 下载完整目录，按宿主方式替换本产品的已安装副本并重载。先保留自己改过的 Skill 内容，不覆盖其他技能；更新 Skill 不等于清空 `.harness-grove/` 的日志、维护项或备份，也不自动迁移这些数据。回到旧 Skill 版本不等于撤销它已对用户环境实施的改动，恢复仍按原事项处理。
+后续测试版使用 `v0.0.4`、`v0.0.5` 等版本，每次从对应 Release 下载完整目录，按宿主方式替换本产品的已安装副本并重载。先保留自己改过的 Skill 内容，不覆盖其他技能；更新 Skill 不等于清空 `.jianhe/` 的日志、维护项或备份，也不自动迁移这些数据。回到旧 Skill 版本不等于撤销它已对用户环境实施的改动，恢复仍按原事项处理。
 
 正常使用后在 [GitHub Issues](https://github.com/zzf2333/Jianhe/issues) 描述遇到的问题即可。尽量提供：产品版本、操作系统与宿主版本、使用的 Skill、当时的请求、预期和实际结果、最短可复现步骤。能提供证据时只附必要的脱敏片段；不要上传完整私人会话、配置、备份、凭证或整份原生轨迹。
 
@@ -104,25 +104,25 @@ flowchart TD
 
 **定期分析：**
 
-> 用 harness-review 分析上次到现在的使用，了解我怎样完成任务，研究相关工具能力，看看有哪些我还没想到的改进机会。先给依据和建议，不改环境。
+> 用 jianhe-review 分析上次到现在的使用，了解我怎样完成任务，研究相关工具能力，看看有哪些我还没想到的改进机会。先给依据和建议，不改环境。
 
 首次使用没有截止记录时，Agent 会明确起始范围。记录不可获取或没有读完时，它应说明缺口，不把部分分析当全部完成。
 
 **维护已有优化：**
 
-> 用 harness-maintain 看看之前采用的工具分工和优化方案是否还适合现在的任务。结合后续表现和工具变化，判断哪些值得保留、简化或替换。
+> 用 jianhe-maintain 看看之前采用的工具分工和优化方案是否还适合现在的任务。结合后续表现和工具变化，判断哪些值得保留、简化或替换。
 
 维护会回看原来的理由和后续表现。最近没触发不等于可以删，效果不明时可以继续观察。
 
 **应用新观点：**
 
-> 用 harness-improve 分析这个想法是否适合我，查证相关工具能力，比较已有功能和其他做法，设计一套实际能用的流程，让我确认后再实施。
+> 用 jianhe-improve 分析这个想法是否适合我，查证相关工具能力，比较已有功能和其他做法，设计一套实际能用的流程，让我确认后再实施。
 
 也可以提供自己的想法，或说明一个新任务。没有历史记录也可以开始，不需要先全量盘点或接管配置。
 
 ## 读取记录与找回未完成事项
 
-`harness-review` 随附 [跨 Agent 记录读取指导](skill/harness-review/references/session-reading.md)：先核对 Pi、Codex、Claude Code 的实际版本和存储位置，再按记录结构区分用户交互、子代理、自动任务、演练及性质未知的材料。文档给出候选入口和核对依据，不承诺所有版本格式稳定，也不调用新的模型会话来重建历史。
+`jianhe-review` 随附 [跨 Agent 记录读取指导](skill/jianhe-review/references/session-reading.md)：先核对 Pi、Codex、Claude Code 的实际版本和存储位置，再按记录结构区分用户交互、子代理、自动任务、演练及性质未知的材料。文档给出候选入口和核对依据，不承诺所有版本格式稳定，也不调用新的模型会话来重建历史。
 
 读取进度按来源记录会话、文件位置和可用事件 ID，时间不是唯一断点。同时间戳的新记录不能漏掉；分叉继承与重复导出不能重复计数，分叉后的独立执行保留。分批读取、未获取与未完成都要有覆盖说明，不把抽样当全量完成。
 
@@ -158,12 +158,12 @@ flowchart TD
 
 日志回答“为什么改、实际改了什么”，内容目录回答“现在维护什么、在哪里使用、应该怎样更新”。这些内容存放在用户目录中，不进入本项目源码，也不需要安装管理程序。
 
-默认用户根目录：macOS 为 `$HOME/.harness-grove/`，Windows 为 `%USERPROFILE%\.harness-grove\`。用户明确指定整个根目录时使用指定位置；单独指定日志路径只影响日志，不改变内容目录。已有内容不自动迁移，各目录按需要创建，不要求首次整理全部工具。
+默认用户根目录：macOS 为 `$HOME/.jianhe/`，Windows 为 `%USERPROFILE%\.jianhe\`。用户明确指定整个根目录时使用指定位置；单独指定日志路径只影响日志，不改变内容目录。已有内容不自动迁移，各目录按需要创建，不要求首次整理全部工具。
 
 下面是用户目录的布局示意，其中的 `README.md` 是用户自己的环境说明，与本仓库的 README 不同：
 
 ```text
-.harness-grove/
+.jianhe/
 ├── README.md                       # 当前环境、维护项索引与待跟进导航
 ├── assets/
 │   ├── shared-instructions/
@@ -217,20 +217,20 @@ flowchart TD
 
 | 系统 | 默认日志根目录 | 用户目录如何取得 |
 |---|---|---|
-| macOS | `$HOME/.harness-grove/logs/`，也可写为 `~/.harness-grove/logs/` | 当前用户的 `HOME` |
-| Windows | `%USERPROFILE%\.harness-grove\logs\` | 当前用户的 `USERPROFILE`；PowerShell 中是 `$env:USERPROFILE` |
+| macOS | `$HOME/.jianhe/logs/`，也可写为 `~/.jianhe/logs/` | 当前用户的 `HOME` |
+| Windows | `%USERPROFILE%\.jianhe\logs\` | 当前用户的 `USERPROFILE`；PowerShell 中是 `$env:USERPROFILE` |
 
 Agent 使用宿主能力把这些位置解析成实际绝对路径，不硬编码盘符或用户名，不把环境变量占位符当作文件夹名。首次使用时直接创建任务目录并告知实际路径，不再例行询问保存位置；无法确定用户目录或不能写入时，才说明原因并请求可用位置。
 
 目录结构示例（时间和入口名按实际任务替换）：
 
 ```text
-.harness-grove/
+.jianhe/
 └── logs/
-    ├── 20261103-143000-harness-review/
+    ├── 20261103-143000-jianhe-review/
     │   ├── log.md
     │   └── backups/        # 需要保存改前副本时才创建
-    └── 20261104-100000-harness-maintain/
+    └── 20261104-100000-jianhe-maintain/
         └── log.md          # 引用上一次任务的日志和条目
 ```
 
