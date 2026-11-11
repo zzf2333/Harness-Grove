@@ -2,7 +2,7 @@
 
 **以人为唯一主体的 AI 工作方式演进引擎——沉淀你的内在工作核心，让各类 Agent 成为可替换的外骨骼。**
 
-`v0.0.4` · Pre-release · 纯 Skill 零运行时 · [下载安装包](https://github.com/zzf2333/Jianhe/releases/download/v0.0.4/jianhe-v0.0.4.zip) · [Release 与校验值](https://github.com/zzf2333/Jianhe/releases/tag/v0.0.4) · [问题反馈](https://github.com/zzf2333/Jianhe/issues)
+`v0.0.5` · Pre-release · 纯 Skill 零运行时 · [下载安装包](https://github.com/zzf2333/Jianhe/releases/download/v0.0.5/jianhe-v0.0.5.zip) · [Release 与校验值](https://github.com/zzf2333/Jianhe/releases/tag/v0.0.5) · [问题反馈](https://github.com/zzf2333/Jianhe/issues)
 
 ---
 
@@ -51,12 +51,12 @@ flowchart LR
 
 ### 1. 安装
 
-1. 下载并解压 [`jianhe-v0.0.4.zip`](https://github.com/zzf2333/Jianhe/releases/download/v0.0.4/jianhe-v0.0.4.zip)。
+1. 下载并解压 [`jianhe-v0.0.5.zip`](https://github.com/zzf2333/Jianhe/releases/download/v0.0.5/jianhe-v0.0.5.zip)。
 2. 将 `skill/` 下的**完整子目录**（`jianhe-review`、`jianhe-improve`、`jianhe-maintain`，按需全装或单装）复制到宿主的技能目录。
 3. 重载宿主或新开会话，切回你的日常项目目录直接用自然语言对话（无需初始化命令或填写配置表）。
 
 > [!IMPORTANT]
-> **请整目录复制，不要只复制单个 `SKILL.md`。** 每个目录内均自带独立的 `references/contract.md` 与 `references/signal-reading.md`。从 `v0.0.3` 升级时用 `0.0.4` 完整目录替换旧目录即可；已有 `.jianhe/` 数据原样保留，超额旧待办会自动归入“旧版待跟进（待分诊）”。
+> **请整目录复制，不要只复制单个 `SKILL.md`。** 每个目录内均自带独立的 `references/contract.md` 与 `references/signal-reading.md`。从旧版升级时用 `0.0.5` 完整目录替换旧目录即可；已有 `.jianhe/` 数据原样保留，`v0.0.3` 超额旧待办会自动归入“旧版待跟进（待分诊）”。
 
 常见用户级技能目录（以各宿主当前官方文档为准；Windows 原生环境将 `~` 对应为 `%USERPROFILE%`）：
 
@@ -91,14 +91,14 @@ flowchart LR
 
 ## 验证状态与边界
 
-当前版本为 **Pre-release（`v0.0.4`）**，不附带代码测试框架，如实区分已完成核验与未验证边界：
+当前版本为 **Pre-release（`v0.0.5`）**，不附带代码测试框架，如实区分已完成核验与未验证边界：
 
 - **结构与一致性核验**：`VERSION` 与三份 `SKILL.md` 元数据一致，三目录 `references/` SHA-256 逐字节一致，全部本地相对链接可达且单目录零外部依赖。
 - **隔离沙箱演练证据**：
   - `v0.0.3` 基础机制合成走查：验证了跨来源去重续接、轨迹身份关联与权限判断（初版曾有失效链接、推断作事实及完成语气时序瑕疵，均留档修正）、五类指标限制（比例反向、`0/0` 禁写 `0%`、环境变化不可比等，初版附加算术解释瑕疵已复核关闭），以及写前备份与保留后续手改的三方恢复。
   - `v0.0.4` 三场景仓库外单 Skill 沙箱演练：在仅安装单个目标 Skill 的新鲜上下文中，实测通过两次纠偏提炼候选且不擅建 `CORE.md`、手贴 `diff` 隔离为迁就 `A1`、拦截被当场否决的会话线索、双端漂移检出与旧版待办平滑分诊（`jianhe-review`）；`5/5` 满额阻塞新增流水线并放行纯删减豁免（`jianhe-improve`）；无证据项三方撤回且保留后续手改、宿主手改提议反向吸收、`N=0` 与异构环境不可比判定及元自评（`jianhe-maintain`，其中场景 A 因请求限制未测新建 `CORE.md`，场景 C 顺带修正了获批资产说明头部的相对路径层级）。
 - **尚未验证的真实边界**：跨宿主（Pi / Codex / Claude Code）原生自动发现表现、Windows 实机路径解析、同一文本片段被后续手改重叠时的三方冲突暂停分支，以及跨多轮真实日常使用后的长期收敛收益。
-- **反馈建议**：欢迎在 [Issues](https://github.com/zzf2333/Jianhe/issues) 反馈体验与问题，建议附上版本号（`0.0.4`）、宿主环境与脱敏后的 `log.md` 片段（勿含私钥、Token 或私人源码）。
+- **反馈建议**：欢迎在 [Issues](https://github.com/zzf2333/Jianhe/issues) 反馈体验与问题，建议附上版本号（`0.0.5`）、宿主环境与脱敏后的 `log.md` 片段（勿含私钥、Token 或私人源码）。
 
 ---
 
